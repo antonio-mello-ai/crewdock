@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Run inside CT 160, from /opt/ai-platform/
-# Deploys the application via Docker Compose
+# Run inside VM 160, from /opt/ai-platform/
+# Deploys or updates the application via Docker Compose
 set -euo pipefail
 
 APP_DIR="/opt/ai-platform"
@@ -12,17 +12,21 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-echo "=== Building and starting services ==="
-docker compose build
-docker compose up -d
+echo "=== Pulling latest code ==="
+git pull origin main
 
+echo ""
+echo "=== Building and starting services ==="
+sudo docker compose build
+sudo docker compose up -d
+
+echo ""
 echo "=== Waiting for services to be healthy ==="
 sleep 5
 
-# Check health
 echo ""
 echo "=== Service status ==="
-docker compose ps
+sudo docker compose ps
 
 echo ""
 echo "=== Health check ==="
@@ -30,11 +34,8 @@ curl -sf http://localhost:8001/api/v1/health && echo "" || echo "Backend not rea
 
 echo ""
 echo "=== Running database migrations ==="
-docker compose exec backend alembic upgrade head
+sudo docker compose exec backend bash -c "cd /app && PYTHONPATH=/app alembic upgrade head"
 
 echo ""
 echo "=== Deploy complete ==="
-echo "Backend:  http://localhost:8001"
-echo "Frontend: http://localhost:3001"
-echo ""
-echo "Configure Cloudflare Tunnel to expose ai.felhen.ai"
+echo "Dashboard: https://ai.felhen.ai"
