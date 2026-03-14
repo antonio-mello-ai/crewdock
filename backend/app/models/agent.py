@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import String, Text
@@ -34,9 +34,9 @@ class Agent(Base):
     description: Mapped[str | None] = mapped_column(Text, default=None)
     avatar_url: Mapped[str | None] = mapped_column(String(500), default=None)
     config: Mapped[dict[str, object] | None] = mapped_column(JSONB, default=None)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow
+        default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
     )
 
     tasks: Mapped[list[Task]] = relationship(back_populates="agent")

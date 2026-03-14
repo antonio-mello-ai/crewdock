@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_name: str = "AI Platform"
     app_version: str = "0.1.0"
     debug: bool = False
+    cors_origins: str = "http://localhost:3001,https://ai.felhen.ai"
 
     # Database
     db_host: str = "localhost"

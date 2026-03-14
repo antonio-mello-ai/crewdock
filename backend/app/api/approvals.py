@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -71,7 +71,7 @@ async def decide_approval(
         )
 
     approval.status = decision.status
-    approval.resolved_at = datetime.utcnow()
+    approval.resolved_at = datetime.now(UTC)
 
     await log_activity(
         session,

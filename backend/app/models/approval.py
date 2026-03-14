@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, String, Text
@@ -35,7 +35,7 @@ class Approval(Base):
         ForeignKey("tasks.id", ondelete="SET NULL"), default=None
     )
     resolved_at: Mapped[datetime | None] = mapped_column(default=None)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
 
     agent: Mapped[Agent] = relationship()
     task: Mapped[Task | None] = relationship()
