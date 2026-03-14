@@ -11,6 +11,7 @@ const navigation = [
   { name: "Activity", href: "/activity", icon: "activity" },
   { name: "Knowledge", href: "/knowledge", icon: "book" },
   { name: "Costs", href: "/costs", icon: "dollar" },
+  { name: "Skills", href: "/skills", icon: "zap" },
   { name: "Settings", href: "/settings", icon: "settings" },
 ];
 
