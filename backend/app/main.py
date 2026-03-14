@@ -3,7 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.activity import router as activity_router
 from app.api.agents import router as agents_router
+from app.api.costs import router as costs_router
+from app.api.events import router as events_router
 from app.api.health import router as health_router
+from app.api.knowledge import router as knowledge_router
 from app.api.tasks import router as tasks_router
 from app.core.config import settings
 from app.core.events import lifespan
@@ -30,6 +33,9 @@ def create_app() -> FastAPI:
     app.include_router(agents_router, prefix=API_PREFIX)
     app.include_router(tasks_router, prefix=API_PREFIX)
     app.include_router(activity_router, prefix=API_PREFIX)
+    app.include_router(costs_router, prefix=API_PREFIX)
+    app.include_router(knowledge_router, prefix=API_PREFIX)
+    app.include_router(events_router, prefix=API_PREFIX)
 
     return app
 

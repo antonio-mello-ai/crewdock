@@ -11,6 +11,7 @@ class TaskCreate(BaseModel):
     description: str | None = None
     status: TaskStatus = TaskStatus.SCHEDULED
     schedule: str | None = None
+    is_recurring: bool = False
     agent_id: uuid.UUID
 
 
@@ -19,6 +20,7 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     status: TaskStatus | None = None
     schedule: str | None = None
+    is_recurring: bool | None = None
     agent_id: uuid.UUID | None = None
 
 
@@ -30,6 +32,9 @@ class TaskResponse(BaseModel):
     description: str | None
     status: TaskStatus
     schedule: str | None
+    is_recurring: bool
+    last_run_at: datetime | None
+    next_run_at: datetime | None
     agent_id: uuid.UUID
     created_at: datetime
     updated_at: datetime

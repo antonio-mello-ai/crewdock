@@ -8,6 +8,7 @@ from app.core.database import get_session
 from app.core.security import verify_token
 from app.models.agent import Agent
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate
+from app.services.activity_logger import log_activity
 
 router = APIRouter(prefix="/agents", tags=["agents"], dependencies=[Depends(verify_token)])
 
@@ -38,6 +39,10 @@ async def create_agent(
 ) -> Agent:
     agent = Agent(**data.model_dump())
     session.add(agent)
+    await session.flush()
+    await log_activity(
+        session, agent_id=agent.id, action="agent.created", payload={"name": data.name}
+    )
     await session.commit()
     await session.refresh(agent)
     return agent
@@ -57,6 +62,12 @@ async def update_agent(
     for field, value in update_data.items():
         setattr(agent, field, value)
 
+    await log_activity(
+        session,
+        agent_id=agent_id,
+        action="agent.updated",
+        payload={"fields": list(update_data.keys())},
+    )
     await session.commit()
     await session.refresh(agent)
     return agent
@@ -71,5 +82,8 @@ async def delete_agent(
     if agent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
 
+    await log_activity(
+        session, agent_id=agent_id, action="agent.deleted", payload={"name": agent.name}
+    )
     await session.delete(agent)
     await session.commit()
