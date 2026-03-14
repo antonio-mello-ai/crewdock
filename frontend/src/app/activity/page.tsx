@@ -2,37 +2,9 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Activity } from "@/lib/api/types";
+import { useActivity } from "@/hooks/use-api";
 
-// Placeholder data — will be replaced by API calls + SSE
-const PLACEHOLDER_ACTIVITIES: Activity[] = [
-  {
-    id: "1",
-    action: "agent.created",
-    payload: { name: "Nexus" },
-    agent_id: "nexus",
-    task_id: null,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: "2",
-    action: "task.created",
-    payload: { title: "Morning Briefing" },
-    agent_id: "atlas",
-    task_id: "task-1",
-    created_at: new Date(Date.now() - 60000).toISOString(),
-  },
-  {
-    id: "3",
-    action: "agent.updated",
-    payload: { fields: ["status"] },
-    agent_id: "bernard",
-    task_id: null,
-    created_at: new Date(Date.now() - 120000).toISOString(),
-  },
-];
-
-function actionColor(action: string): string {
+function actionColor(action: string): "default" | "secondary" | "destructive" | "outline" {
   if (action.includes("created")) return "default";
   if (action.includes("updated")) return "secondary";
   if (action.includes("deleted")) return "destructive";
@@ -40,15 +12,11 @@ function actionColor(action: string): string {
 }
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return new Date(iso).toLocaleString();
 }
 
 export default function ActivityPage() {
-  const activities = PLACEHOLDER_ACTIVITIES;
+  const { data: activities = [], isLoading } = useActivity({ limit: 50 });
 
   return (
     <div>
@@ -57,38 +25,38 @@ export default function ActivityPage() {
         Unified activity feed across all agents.
       </p>
 
-      <div className="mt-4 space-y-2">
-        {activities.map((activity) => (
-          <Card key={activity.id}>
-            <CardContent className="flex items-center justify-between p-3">
-              <div className="flex items-center gap-3">
-                <Badge
-                  variant={
-                    actionColor(activity.action) as
-                      | "default"
-                      | "secondary"
-                      | "destructive"
-                      | "outline"
-                  }
-                >
-                  {activity.action}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {activity.agent_id}
-                </span>
-                {activity.payload && (
-                  <span className="text-sm">
-                    {Object.values(activity.payload).join(", ")}
+      {isLoading ? (
+        <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
+      ) : activities.length === 0 ? (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No activity recorded yet.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {activities.map((activity) => (
+            <Card key={activity.id}>
+              <CardContent className="flex items-center justify-between p-3">
+                <div className="flex items-center gap-3">
+                  <Badge variant={actionColor(activity.action)}>
+                    {activity.action}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {activity.agent_id.slice(0, 8)}
                   </span>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {formatTime(activity.created_at)}
-              </span>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  {activity.payload && (
+                    <span className="text-sm">
+                      {Object.values(activity.payload).join(", ")}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {formatTime(activity.created_at)}
+                </span>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

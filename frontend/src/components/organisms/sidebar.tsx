@@ -11,6 +11,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navigation = [
   { name: "Dashboard", href: "/" },
@@ -96,8 +97,9 @@ export function Sidebar() {
     <>
       {/* Desktop sidebar */}
       <aside className="hidden h-screen w-64 flex-col border-r bg-background md:flex">
-        <div className="flex h-14 items-center border-b px-4">
+        <div className="flex h-14 items-center justify-between border-b px-4">
           <h1 className="text-lg font-semibold">AI Platform</h1>
+          <ThemeToggle />
         </div>
         <NavLinks pathname={pathname} />
       </aside>
@@ -105,7 +107,8 @@ export function Sidebar() {
       {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden">
         <MobileNav pathname={pathname} />
-        <h1 className="text-lg font-semibold">AI Platform</h1>
+        <h1 className="flex-1 text-lg font-semibold">AI Platform</h1>
+        <ThemeToggle />
       </div>
     </>
   );
