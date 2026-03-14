@@ -38,7 +38,7 @@ export default function CostsPage() {
         Token usage and cost tracking per agent.
       </p>
 
-      <div className="mt-4 grid grid-cols-3 gap-4">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">

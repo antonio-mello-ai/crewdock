@@ -41,13 +41,13 @@ export default function KnowledgePage() {
         Search the knowledge base (QMD).
       </p>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         <Input
           placeholder="Search documents..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          className="max-w-md"
+          className="w-full sm:max-w-md"
         />
         <Button onClick={handleSearch} disabled={loading}>
           {loading ? "Searching..." : "Search"}

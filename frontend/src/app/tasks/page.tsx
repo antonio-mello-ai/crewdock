@@ -74,7 +74,7 @@ export default function TasksPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold">Tasks</h1>
-      <div className="mt-4 grid grid-cols-4 gap-4">
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {COLUMNS.map((col) => {
           const columnTasks = tasks.filter((t) => t.status === col.status);
           return (
@@ -85,7 +85,7 @@ export default function TasksPage() {
                   <Badge variant="secondary">{columnTasks.length}</Badge>
                 </CardTitle>
               </CardHeader>
-              <div className="min-h-[200px]">
+              <div className="min-h-[100px] lg:min-h-[200px]">
                 {columnTasks.map((task) => (
                   <TaskCard key={task.id} task={task} />
                 ))}
