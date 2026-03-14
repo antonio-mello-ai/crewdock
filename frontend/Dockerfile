@@ -6,6 +6,10 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 FROM base AS build
+
+ARG NEXT_PUBLIC_API_TOKEN
+ENV NEXT_PUBLIC_API_TOKEN=$NEXT_PUBLIC_API_TOKEN
+
 COPY . .
 RUN npm run build
 
