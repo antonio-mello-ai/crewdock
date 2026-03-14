@@ -15,22 +15,28 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-
-// Placeholder data — will be replaced by API calls
-const PLACEHOLDER_DATA = [
-  { name: "Nexus", cost: 12.5, tokens: 450000 },
-  { name: "Bernard", cost: 8.3, tokens: 320000 },
-  { name: "Pulse", cost: 3.2, tokens: 280000 },
-  { name: "Atlas", cost: 5.1, tokens: 350000 },
-];
-
-const TOTALS = {
-  totalCost: PLACEHOLDER_DATA.reduce((s, d) => s + d.cost, 0),
-  totalTokens: PLACEHOLDER_DATA.reduce((s, d) => s + d.tokens, 0),
-  agents: PLACEHOLDER_DATA.length,
-};
+import { useCosts, useCostSummary } from "@/hooks/use-api";
+import { useAgents } from "@/hooks/use-api";
 
 export default function CostsPage() {
+  const { data: costs = [] } = useCosts();
+  const { data: summary = [] } = useCostSummary();
+  const { data: agents = [] } = useAgents();
+
+  const agentMap = Object.fromEntries(agents.map((a) => [a.id, a.name]));
+
+  const chartData = summary.map((s) => ({
+    name: agentMap[s.agent_id] || s.agent_id.slice(0, 8),
+    cost: Number(s.total_cost_usd),
+    tokens: s.total_tokens_in + s.total_tokens_out,
+  }));
+
+  const totalCost = summary.reduce((s, d) => s + Number(d.total_cost_usd), 0);
+  const totalTokens = summary.reduce(
+    (s, d) => s + d.total_tokens_in + d.total_tokens_out,
+    0
+  );
+
   return (
     <div>
       <h1 className="text-2xl font-bold">Costs</h1>
@@ -46,7 +52,7 @@ export default function CostsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">${TOTALS.totalCost.toFixed(2)}</p>
+            <p className="text-2xl font-bold">${totalCost.toFixed(2)}</p>
           </CardContent>
         </Card>
         <Card>
@@ -57,40 +63,48 @@ export default function CostsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold">
-              {(TOTALS.totalTokens / 1000).toFixed(0)}K
+              {totalTokens > 0
+                ? `${(totalTokens / 1000).toFixed(0)}K`
+                : "0"}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Active Agents
+              Cost Entries
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{TOTALS.agents}</p>
+            <p className="text-2xl font-bold">{costs.length}</p>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">
-            Cost by Agent (USD)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={PLACEHOLDER_DATA}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="cost" fill="hsl(var(--primary))" radius={4} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {chartData.length > 0 ? (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">
+              Cost by Agent (USD)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="cost" fill="hsl(var(--primary))" radius={4} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No cost data recorded yet.
+        </p>
+      )}
     </div>
   );
 }

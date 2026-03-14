@@ -6,29 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { SearchResult } from "@/lib/api/types";
+import { apiFetch } from "@/lib/api/client";
 
 export default function KnowledgePage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
     setLoading(true);
+    setError(null);
     try {
-      const apiUrl =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
-      const res = await fetch(`${apiUrl}/api/v1/knowledge/search`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 10 }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setResults(data.results || []);
-      }
+      const data = await apiFetch<{ results: SearchResult[] }>(
+        "/api/v1/knowledge/search",
+        { method: "POST", body: JSON.stringify({ query, limit: 10 }) }
+      );
+      setResults(data.results || []);
     } catch {
-      // QMD unavailable — expected during dev
+      setError("Knowledge base unavailable. QMD may not be connected.");
+      setResults([]);
     } finally {
       setLoading(false);
     }
@@ -53,6 +51,10 @@ export default function KnowledgePage() {
           {loading ? "Searching..." : "Search"}
         </Button>
       </div>
+
+      {error && (
+        <p className="mt-4 text-sm text-destructive">{error}</p>
+      )}
 
       <div className="mt-4 space-y-3">
         {results.map((result) => (
