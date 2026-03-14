@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -50,12 +50,16 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(default=TaskStatus.SCHEDULED)
     schedule: Mapped[str | None] = mapped_column(String(100), default=None)
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
-    last_run_at: Mapped[datetime | None] = mapped_column(default=None)
-    next_run_at: Mapped[datetime | None] = mapped_column(default=None)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id", ondelete="CASCADE"))
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
     agent: Mapped[Agent] = relationship(back_populates="tasks")

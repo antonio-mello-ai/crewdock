@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,8 +34,10 @@ class Approval(Base):
     task_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL"), default=None
     )
-    resolved_at: Mapped[datetime | None] = mapped_column(default=None)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
     agent: Mapped[Agent] = relationship()
     task: Mapped[Task | None] = relationship()

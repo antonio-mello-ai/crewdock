@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -25,7 +25,9 @@ class Activity(Base):
     task_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL"), default=None
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
 
     agent: Mapped[Agent] = relationship(back_populates="activities")
     task: Mapped[Task | None] = relationship(back_populates="activities")

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy import DateTime, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -27,7 +27,9 @@ class CostEntry(Base):
     task_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tasks.id", ondelete="SET NULL"), default=None
     )
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True
+    )
 
     agent: Mapped[Agent] = relationship(back_populates="costs")
     task: Mapped[Task | None] = relationship(back_populates="costs")

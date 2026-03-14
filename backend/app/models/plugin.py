@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -19,4 +19,6 @@ class PluginRecord(Base):
     description: Mapped[str | None] = mapped_column(Text, default=None)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     config: Mapped[dict[str, object] | None] = mapped_column(JSONB, default=None)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
