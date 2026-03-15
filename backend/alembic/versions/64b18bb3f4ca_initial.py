@@ -1,22 +1,21 @@
-"""initial_schema
+"""initial
 
-Revision ID: ec52a1ed17e8
+Revision ID: 64b18bb3f4ca
 Revises: 
-Create Date: 2026-03-14 22:07:53.547463
+Create Date: 2026-03-15 16:38:38.304911
 
 """
-from collections.abc import Sequence
+from typing import Sequence, Union
 
+from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from alembic import op
-
 # revision identifiers, used by Alembic.
-revision: str = 'ec52a1ed17e8'
-down_revision: str | None = None
-branch_labels: str | Sequence[str] | None = None
-depends_on: str | Sequence[str] | None = None
+revision: str = '64b18bb3f4ca'
+down_revision: Union[str, None] = None
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
@@ -29,8 +28,8 @@ def upgrade() -> None:
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('avatar_url', sa.String(length=500), nullable=True),
     sa.Column('config', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_agents_name'), 'agents', ['name'], unique=True)
@@ -41,7 +40,7 @@ def upgrade() -> None:
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('enabled', sa.Boolean(), nullable=False),
     sa.Column('config', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_plugins_name'), 'plugins', ['name'], unique=True)
@@ -51,7 +50,7 @@ def upgrade() -> None:
     sa.Column('events', postgresql.ARRAY(sa.String(length=100)), nullable=False),
     sa.Column('secret', sa.String(length=200), nullable=True),
     sa.Column('enabled', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('skills',
@@ -61,7 +60,7 @@ def upgrade() -> None:
     sa.Column('agent_id', sa.Uuid(), nullable=False),
     sa.Column('config', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('enabled', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['agent_id'], ['agents.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -73,11 +72,11 @@ def upgrade() -> None:
     sa.Column('status', sa.Enum('SCHEDULED', 'QUEUED', 'IN_PROGRESS', 'DONE', 'FAILED', name='taskstatus'), nullable=False),
     sa.Column('schedule', sa.String(length=100), nullable=True),
     sa.Column('is_recurring', sa.Boolean(), nullable=False),
-    sa.Column('last_run_at', sa.DateTime(), nullable=True),
-    sa.Column('next_run_at', sa.DateTime(), nullable=True),
+    sa.Column('last_run_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('next_run_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('agent_id', sa.Uuid(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['agent_id'], ['agents.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -87,7 +86,7 @@ def upgrade() -> None:
     sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('agent_id', sa.Uuid(), nullable=False),
     sa.Column('task_id', sa.Uuid(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['agent_id'], ['agents.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
@@ -102,8 +101,8 @@ def upgrade() -> None:
     sa.Column('payload', postgresql.JSONB(astext_type=sa.Text()), nullable=True),
     sa.Column('agent_id', sa.Uuid(), nullable=False),
     sa.Column('task_id', sa.Uuid(), nullable=True),
-    sa.Column('resolved_at', sa.DateTime(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('resolved_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['agent_id'], ['agents.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
@@ -116,7 +115,7 @@ def upgrade() -> None:
     sa.Column('cost_usd', sa.Numeric(precision=10, scale=6), nullable=False),
     sa.Column('agent_id', sa.Uuid(), nullable=False),
     sa.Column('task_id', sa.Uuid(), nullable=True),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.ForeignKeyConstraint(['agent_id'], ['agents.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ondelete='SET NULL'),
     sa.PrimaryKeyConstraint('id')
