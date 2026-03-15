@@ -11,10 +11,10 @@ class SearchRequest(BaseModel):
 class SearchResult(BaseModel):
     docid: str
     file: str
-    title: str
-    score: float
-    context: str
-    snippet: str
+    title: str = ""
+    score: float = 0
+    context: str | None = None
+    snippet: str = ""
 
 
 class SearchResponse(BaseModel):
