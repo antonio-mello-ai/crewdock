@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +35,9 @@ class Agent(Base):
     system_prompt: Mapped[str | None] = mapped_column(Text, default=None)
     avatar_url: Mapped[str | None] = mapped_column(String(500), default=None)
     config: Mapped[dict[str, object] | None] = mapped_column(JSONB, default=None)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC)
     )

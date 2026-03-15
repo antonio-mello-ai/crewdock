@@ -8,6 +8,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [0.9.0] - 2026-03-15
+
+### Added
+- **Workspace model** — data isolation foundation for multi-tenant
+- **Agent ownership** — created_by field links agents to users
+- **User profile endpoint** — GET /auth/me returns current user info
+- **Logout support** — frontend clearAuth() for session cleanup
+
+### Changed
+- Agent model has optional created_by FK to users table
+- Models registry includes Workspace and User
+
 ## [0.8.0] - 2026-03-15
 
 ### Added

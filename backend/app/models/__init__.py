@@ -7,6 +7,7 @@ from app.models.skill import Skill
 from app.models.task import Task
 from app.models.user import User
 from app.models.webhook import Webhook
+from app.models.workspace import Workspace
 
 __all__ = [
     "Activity",
@@ -18,4 +19,5 @@ __all__ = [
     "Task",
     "User",
     "Webhook",
+    "Workspace",
 ]
