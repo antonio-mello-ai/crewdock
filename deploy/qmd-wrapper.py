@@ -9,22 +9,30 @@ Usage:
 """
 
 import json
+import os
 import subprocess
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 
 QMD_BIN = "qmd"
+QMD_INDEX = os.environ.get("QMD_INDEX", "")
 
 
 def run_qmd(*args: str) -> str:
     """Run a QMD CLI command and return stdout."""
+    cmd = [QMD_BIN]
+    if QMD_INDEX:
+        cmd.extend(["--index", QMD_INDEX])
+    cmd.extend(args)
+    env = os.environ.copy()
+    env["PATH"] = "/home/amello/.bun/bin:/usr/local/bin:/usr/bin:/bin"
     result = subprocess.run(
-        [QMD_BIN, *args],
+        cmd,
         capture_output=True,
         text=True,
         timeout=30,
-        env={"PATH": "/home/amello/.bun/bin:/usr/local/bin:/usr/bin:/bin"},
+        env=env,
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr or f"QMD exited with code {result.returncode}")
