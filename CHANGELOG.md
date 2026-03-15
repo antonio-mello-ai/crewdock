@@ -8,6 +8,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [0.6.0] - 2026-03-15
+
+### Added
+- **OpenClaw WebSocket adapter** — real WebSocket connection to gateway (with stub fallback)
+- **Gateway status API** — GET /gateway/status for connection monitoring
+- **CI/CD pipeline** — GitHub Actions for backend (ruff, mypy, pytest) and frontend (lint, build)
+- **websockets dependency** — for gateway communication
+
+### Changed
+- OpenClaw adapter attempts real WebSocket connection on startup
+- Gateway adapter reports connected/disconnected status
+- Adapter falls back gracefully to stub when gateway unreachable
+
 ## [0.5.0] - 2026-03-15
 
 ### Added
