@@ -23,8 +23,8 @@ import {
   Settings,
   Menu,
   Sparkles,
+  Anchor,
 } from "lucide-react";
-import { Logo } from "@/components/atoms/logo";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -86,7 +86,7 @@ function MobileNav({ pathname }: { pathname: string }) {
       <SheetContent side="left" className="w-64 p-0">
         <SheetHeader className="border-b px-4 py-3">
           <SheetTitle className="flex items-center gap-2 text-lg">
-            <Logo className="h-6 w-5 text-primary" />
+            <Anchor className="h-5 w-5 text-primary" />
             CrewDock
           </SheetTitle>
         </SheetHeader>
@@ -105,7 +105,7 @@ export function Sidebar() {
       <aside className="hidden h-screen w-60 flex-col border-r bg-card md:flex">
         <div className="flex h-14 items-center justify-between border-b px-4">
           <div className="flex items-center gap-2">
-            <Logo className="h-6 w-5 text-primary" />
+            <Anchor className="h-5 w-5 text-primary" />
             <span className="text-lg font-bold">CrewDock</span>
           </div>
           <ThemeToggle />
@@ -120,7 +120,7 @@ export function Sidebar() {
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden">
         <MobileNav pathname={pathname} />
         <div className="flex flex-1 items-center gap-2">
-          <Logo className="h-6 w-5 text-primary" />
+          <Anchor className="h-5 w-5 text-primary" />
           <span className="text-lg font-bold">CrewDock</span>
         </div>
         <ThemeToggle />
