@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # QMD (knowledge base)
     qmd_base_url: str = ""
 
+    # Anthropic API
+    anthropic_api_key: str = ""
+
     # Costs (per 1M tokens)
     anthropic_pricing_opus_input: float = 15.0
     anthropic_pricing_opus_output: float = 75.0

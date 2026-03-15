@@ -17,6 +17,7 @@ dependencies = [
     "websockets>=13.0",
     "passlib[bcrypt]>=1.7.4",
     "python-jose[cryptography]>=3.3.0",
+    "anthropic>=0.40.0",
 ]
 
 [project.optional-dependencies]
@@ -70,7 +71,7 @@ warn_unused_configs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["redis.*", "asyncpg.*", "apscheduler.*", "jose.*", "passlib.*"]
+module = ["redis.*", "asyncpg.*", "apscheduler.*", "jose.*", "passlib.*", "anthropic.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
