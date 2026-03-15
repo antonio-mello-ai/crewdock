@@ -8,6 +8,29 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [1.0.0] - 2026-03-15
+
+### Milestone
+CrewDock v1.0.0 — first stable release of the open-source AI agent orchestration platform.
+
+### Platform Summary
+- **26 API endpoints** across 14 routers
+- **10 database models** (Agent, Task, Activity, Cost, Skill, Approval, Webhook, Plugin, User, Workspace)
+- **10 frontend pages** + login + agent chat + templates gallery
+- **Design system** with branded theme, dark mode, responsive layout
+- **Task scheduler** with APScheduler and cron support
+- **Knowledge base** integration via QMD
+- **Real-time events** via Redis SSE with in-memory fallback
+- **Webhook dispatcher** with HMAC-SHA256 signatures
+- **Gateway adapter** for OpenClaw with WebSocket support
+- **Plugin system** with lifecycle management
+- **JWT authentication** with setup flow and backwards compatibility
+- **Multi-tenant foundation** with workspace model
+- **10 agent templates** across 6 categories
+- **CI/CD** via GitHub Actions
+- **Docker Compose** deployment tested on clean install
+- **Landing page** at crewdock.ai
+
 ## [0.9.0] - 2026-03-15
 
 ### Added
