@@ -2,6 +2,10 @@
 
 Open-source platform for orchestrating, monitoring, and managing multiple autonomous AI agents. Web dashboard + API for agent/task management, with integrated knowledge base, cost tracking, and extensible plugin system.
 
+![Dashboard](docs/screenshots/dashboard.png)
+
+![Tasks Kanban](docs/screenshots/tasks-kanban.png)
+
 ## Features
 
 - **Multi-agent management** — Register, monitor, and control AI agents with real-time status
