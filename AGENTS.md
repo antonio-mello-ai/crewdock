@@ -1,4 +1,4 @@
-# AGENTS.md — AI Agent Management Platform
+# AGENTS.md — Relaix
 
 ## Propósito
 

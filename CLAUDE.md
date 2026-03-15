@@ -1,4 +1,4 @@
-# CLAUDE.md — AI Agent Management Platform
+# CLAUDE.md — Relaix
 
 ## Propósito
 

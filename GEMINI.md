@@ -1,4 +1,4 @@
-# GEMINI.md — AI Agent Management Platform
+# GEMINI.md — Relaix
 
 ## Propósito
 

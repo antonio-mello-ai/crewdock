@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI Platform",
+  title: "Relaix",
   description: "AI Agent Management Platform",
 };
 

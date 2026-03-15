@@ -15,22 +15,22 @@ ssh proxmox
 bash /path/to/01-create-vm.sh
 ```
 
-Creates CT 160 (`ai-platform`) with 4 cores, 8GB RAM, 50GB SSD.
+Creates CT 160 (`relaix`) with 4 cores, 8GB RAM, 50GB SSD.
 
 ### 2. Setup CT environment
 
 ```bash
 pct enter 160
-# or: ssh ai-platform (after Tailscale)
+# or: ssh relaix (after Tailscale)
 bash /path/to/02-setup.sh
 ```
 
-Installs Docker, Tailscale, creates `/opt/ai-platform/`.
+Installs Docker, Tailscale, creates `/opt/relaix/`.
 
 ### 3. Deploy application
 
 ```bash
-cd /opt/ai-platform
+cd /opt/relaix
 # Copy project files or git clone
 cp .env.example .env
 # Edit .env with real values (DB password, auth token, etc.)
@@ -60,7 +60,7 @@ ai.felhen.ai (Cloudflare Tunnel)
 
 ```bash
 # Update
-cd /opt/ai-platform && git pull && docker compose build && docker compose up -d
+cd /opt/relaix && git pull && docker compose build && docker compose up -d
 
 # Logs
 docker compose logs -f backend

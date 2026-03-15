@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CT_ID=160
-CT_NAME="ai-platform"
+CT_NAME="relaix"
 CT_TEMPLATE="local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
 CT_STORAGE="ssd-fast"
 CT_DISK="50"

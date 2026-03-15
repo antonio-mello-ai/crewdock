@@ -1,4 +1,4 @@
-# AI Platform
+# Relaix
 
 Open-source platform for orchestrating, monitoring, and managing multiple autonomous AI agents. Web dashboard + API for agent/task management, with integrated knowledge base, cost tracking, and extensible plugin system.
 
@@ -33,8 +33,8 @@ Open-source platform for orchestrating, monitoring, and managing multiple autono
 
 ```bash
 # Clone the repository
-git clone https://github.com/felhen/ai-platform.git
-cd ai-platform
+git clone https://github.com/felhen/relaix.git
+cd relaix
 
 # Configure environment
 cp .env.example .env
@@ -112,7 +112,7 @@ The gateway adapter layer is intentionally abstract — it supports any agent ru
 ## Project Structure
 
 ```
-ai-platform/
+relaix/
 ├── backend/           # FastAPI application
 │   ├── app/
 │   │   ├── api/       # Route handlers
