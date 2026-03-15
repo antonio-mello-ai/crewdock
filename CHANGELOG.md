@@ -7,6 +7,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+
+## [0.5.0] - 2026-03-15
+
+### Added
+- **Task scheduler** — APScheduler loads recurring tasks from DB, executes via cron expressions
+- **Scheduler API** — GET /scheduler/jobs, POST /scheduler/reload
+- **Redis SSE** — pub/sub on crewdock:events channel with 15s heartbeat
+- **In-memory SSE fallback** — graceful degradation when Redis unavailable
+- **Webhook dispatcher** — HMAC-SHA256 signed payloads to all matching webhooks
+- **APScheduler dependency** — pinned to v3.x (stable async support)
+
+### Changed
+- SSE events endpoint now uses Redis pub/sub (was in-memory only)
+- Scheduler integrated into FastAPI lifespan (startup/shutdown)
+
 ## [0.4.0] - 2026-03-15
 
 ### Added
