@@ -115,7 +115,7 @@ async def chat_stream(
         if len(history) > 20:
             _chat_histories[session_id] = history[-20:]
 
-        # Log activity in background
+        # Log activity and estimate costs
         async with async_session_factory() as session:
             await log_activity(
                 session,
@@ -123,6 +123,17 @@ async def chat_stream(
                 action="chat.message",
                 payload={"message": request.message[:100], "session_id": session_id},
             )
+            # Estimate tokens for cost tracking (streaming doesn't return usage)
+            est_in = len(request.message) // 4 + 50  # rough estimate
+            est_out = len(response_text) // 4
+            if est_in > 0 or est_out > 0:
+                await record_usage(
+                    session,
+                    agent_id=agent_id,
+                    model=agent_model,
+                    tokens_in=est_in,
+                    tokens_out=est_out,
+                )
             await session.commit()
 
         done_data = {"done": True, "session_id": session_id, "agent_name": agent_name}
