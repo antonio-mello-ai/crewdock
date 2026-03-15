@@ -32,21 +32,22 @@ Open-source platform for orchestrating, monitoring, and managing multiple autono
 ### Docker Compose (recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/felhen/relaix.git
+# Clone
+git clone https://github.com/antonio-mello-ai/relaix.git
 cd relaix
 
-# Configure environment
+# Configure (generate secrets automatically)
 cp .env.example .env
-# Edit .env with your settings (at minimum, set DB_PASSWORD and LOCAL_AUTH_TOKEN)
+sed -i "s/changeme_password/$(openssl rand -hex 24)/" .env
+sed -i "s/changeme_token/$(openssl rand -hex 32)/" .env
 
-# Start all services
+# Start
 docker compose up -d
 
-# Run database migrations
-docker compose exec backend bash -c "cd /app && PYTHONPATH=/app alembic upgrade head"
+# Create database tables
+docker compose exec backend alembic upgrade head
 
-# Access the dashboard
+# Open the dashboard
 open http://localhost:3001
 ```
 
