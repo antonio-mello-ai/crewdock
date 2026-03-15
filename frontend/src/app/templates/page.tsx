@@ -12,6 +12,7 @@ import {
   type AgentTemplate,
 } from "@/lib/agent-templates";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   Search,
   BarChart2,
@@ -144,6 +145,7 @@ export default function TemplatesPage() {
       }),
     onSuccess: (_, template) => {
       setInstalled((prev) => new Set(prev).add(template.id));
+      toast.success(`${template.name} installed`);
       queryClient.invalidateQueries({ queryKey: ["agents"] });
     },
   });

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,12 +36,16 @@ export function AgentForm({ agent, trigger }: AgentFormProps) {
         : createAgent({ name, model, description }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
+      toast.success(agent ? `${name} updated` : `${name} created`);
       setOpen(false);
       if (!agent) {
         setName("");
         setModel("claude-sonnet-4-6");
         setDescription("");
       }
+    },
+    onError: () => {
+      toast.error("Failed to save agent");
     },
   });
 

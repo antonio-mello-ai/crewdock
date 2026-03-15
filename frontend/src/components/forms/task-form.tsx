@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,12 +41,16 @@ export function TaskForm({ task, agents, trigger }: TaskFormProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["activity"] });
+      toast.success(task ? "Task updated" : "Task created");
       setOpen(false);
       if (!task) {
         setTitle("");
         setDescription("");
         setSchedule("");
       }
+    },
+    onError: () => {
+      toast.error("Failed to save task");
     },
   });
 

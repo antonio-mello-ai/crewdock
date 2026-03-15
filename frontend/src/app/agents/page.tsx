@@ -9,6 +9,7 @@ import { AgentForm } from "@/components/forms/agent-form";
 import { DeleteConfirm } from "@/components/forms/delete-confirm";
 import { deleteAgent } from "@/lib/api/mutations";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Bot, MessageSquare, Pencil, Trash2, Plus } from "lucide-react";
 
 const AGENT_COLORS = [
@@ -96,6 +97,7 @@ export default function AgentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
       queryClient.invalidateQueries({ queryKey: ["activity"] });
+      toast.success("Agent deleted");
     },
   });
 
