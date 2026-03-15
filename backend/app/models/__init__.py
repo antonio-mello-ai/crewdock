@@ -5,6 +5,7 @@ from app.models.cost import CostEntry
 from app.models.plugin import PluginRecord
 from app.models.skill import Skill
 from app.models.task import Task
+from app.models.user import User
 from app.models.webhook import Webhook
 
 __all__ = [
@@ -15,5 +16,6 @@ __all__ = [
     "PluginRecord",
     "Skill",
     "Task",
+    "User",
     "Webhook",
 ]

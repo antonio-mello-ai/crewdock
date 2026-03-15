@@ -1,3 +1,5 @@
+import { getToken } from "@/lib/auth";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "";
 
@@ -22,8 +24,11 @@ export async function apiFetch<T>(
     ...(options?.headers as Record<string, string>),
   };
 
-  if (API_TOKEN) {
-    headers["Authorization"] = `Bearer ${API_TOKEN}`;
+  // Priority: JWT from localStorage > build-time static token
+  const jwtToken = getToken();
+  const token = jwtToken || API_TOKEN;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const res = await fetch(`${API_URL}${path}`, {
@@ -46,7 +51,6 @@ export async function apiFetch<T>(
     throw new ApiError(res.status, detail);
   }
 
-  // Handle 204 No Content (delete operations)
   if (res.status === 204) {
     return undefined as T;
   }

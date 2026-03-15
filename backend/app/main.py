@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.activity import router as activity_router
 from app.api.agents import router as agents_router
 from app.api.approvals import router as approvals_router
+from app.api.auth import router as auth_router
 from app.api.chat import router as chat_router
 from app.api.costs import router as costs_router
 from app.api.events import router as events_router
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(chat_router, prefix=API_PREFIX)
     app.include_router(scheduler_router, prefix=API_PREFIX)
     app.include_router(gateway_router, prefix=API_PREFIX)
+    app.include_router(auth_router, prefix=API_PREFIX)
 
     return app
 

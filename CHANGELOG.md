@@ -8,6 +8,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [0.8.0] - 2026-03-15
+
+### Added
+- **User authentication** — email/password login with JWT tokens
+- **Login page** — clean login UI with setup flow for first user
+- **Initial setup** — first user becomes admin via /auth/setup endpoint
+- **Auth check endpoint** — GET /auth/check to detect if setup is needed
+- **User model** — email, hashed password, name, admin flag
+- **JWT tokens** — 24h expiry, stored in localStorage
+- **Backwards compatible auth** — accepts both JWT and static bearer tokens
+
+### Changed
+- API client now uses JWT from localStorage (priority) or build-time token (fallback)
+- Security middleware accepts both JWT and static tokens
+
 ## [0.7.0] - 2026-03-15
 
 ### Added
