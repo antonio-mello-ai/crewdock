@@ -1,58 +1,82 @@
 # CrewDock — Roadmap
 
-**Última atualização**: 15 Mar 2026
-
-## Status Atual (v0.1.0)
-
-Backend com 22 endpoints, frontend com 9 páginas read-only, deploy em VM no home server, QMD integrado, OpenClaw 4 agentes configurados. Dashboard acessível em your-domain.com.
+**Atualizado**: 15 Mar 2026 | **Versão atual**: v0.1.0
 
 ---
 
-## Prioridade 1 — Frontend de Escrita
+## Concluído (v0.1.0)
 
-O frontend é 100% read-only. Precisa de formulários CRUD para ser utilizável.
+- [x] Backend: 22 API endpoints, 8 models, 14 testes, mypy strict
+- [x] Frontend: 9 páginas, CRUD agents/tasks, dark mode, mobile responsive
+- [x] Deploy: Docker Compose, Cloudflare Tunnel, clean install testado
+- [x] Knowledge: QMD integrado com REST wrapper (177 docs, 801 embeddings)
+- [x] OpenClaw: 4 agentes configurados com IDENTITY.md
+- [x] Open source: repo público, MIT license, README com screenshots
+- [x] Landing page: crewdock.ai via Cloudflare Pages
 
-- [ ] **Criar/editar agentes** — modal/form com nome, modelo, descrição, avatar
-- [ ] **Criar/editar tasks** — form com título, descrição, agent, schedule, recurring
+---
+
+## P0 — Demo-Ready (próximas 2 semanas)
+
+O que falta para um demo convincente e lançamento público.
+
+- [ ] **Agent chat interface** — conversar com um agente pelo dashboard via gateway. É o "wow moment" que transforma um CRUD em uma plataforma de AI agents
+- [ ] **Demo video** — 3 minutos mostrando: criar agente, criar task, chat com agente, ver atividade
 - [ ] **Drag-and-drop no Kanban** — mover tasks entre colunas (@dnd-kit já instalado)
-- [ ] **Aprovar/rejeitar approvals** — botões de ação no feed
-- [ ] **Criar/editar webhooks** — form com URL, eventos, secret
-- [ ] **Configurar settings** — editar gateway URL, auth, enable/disable plugins
-- [ ] **Criar/editar skills** — form com nome, agent, config
-- [ ] **Deletar** — confirmação em todas as entidades
 
-## Prioridade 2 — Conectar Peças Existentes
+## P1 — Diferenciação vs Sintra (próximo mês)
 
-- [ ] **OpenClaw WebSocket adapter** — RPC client real para status live dos agentes (online/offline/busy)
-- [ ] **Skills e Settings pages** — conectar à API (ainda usam placeholder)
-- [ ] **Orval** — gerar API client tipado do OpenAPI spec (configurado, não executado)
+Features que constroem o diferencial competitivo.
 
-## Prioridade 3 — Funcionalidade Nova
+- [ ] **Agent templates** — gallery de agentes pré-configurados ("SEO Specialist", "Content Writer", "Dev Assistant") instaláveis com 1 click
+- [ ] **Skills com conteúdo real** — pelo menos 3 skills funcionais (web search, email draft, SEO audit)
+- [ ] **Integrações via MCP** — Gmail, Calendar, Notion como MCP tools acessíveis pelos agentes
+- [ ] **Shared context** — agentes compartilham knowledge base (diferencial principal vs Sintra)
+- [ ] **OpenClaw WebSocket adapter** — conexão real ao gateway para status live dos agentes
 
-- [ ] **Task scheduler** — APScheduler para crons dos agentes (morning briefing, infra health, etc)
-- [ ] **Redis pub/sub no SSE** — substituir event bus in-memory por Redis
+## P2 — Produção (mês 2)
+
+Robustez para uso real diário.
+
+- [ ] **Task scheduler** — APScheduler executando crons de verdade (morning briefing, infra health)
+- [ ] **Redis pub/sub no SSE** — substituir event bus in-memory por Redis para persistência
 - [ ] **Webhook dispatcher** — worker RQ que envia webhooks nos eventos
-- [ ] **Agent chat** — interface para enviar mensagens a um agente e ver resposta (via gateway)
-
-## Prioridade 4 — Polish e Produção
-
+- [ ] **CI/CD** — GitHub Actions (ruff, mypy, pytest, npm build, lint)
 - [ ] **Testes de integração** — pytest com DB real (test database)
-- [ ] **CI/CD** — GitHub Actions (ruff, mypy, pytest, npm build, npm lint)
-- [ ] **Theming** — CSS variables customizáveis além do dark mode
-- [ ] **Screenshots** — capturar para README
-- [ ] **Sync QMD automático** — cron rsync Nextcloud → VM 160
-- [ ] **Domínio** — registrar crewdock.ai
+- [ ] **Approval workflow no frontend** — aprovar/rejeitar pelo dashboard
+- [ ] **Skills e Settings pages** — conectar à API (ainda usam placeholder)
 
-## Prioridade 5 — Fase 5 do Plano Original
+## P3 — Produto (mês 3)
 
-- [ ] **HA Voice** — Wake Word → STT (Whisper) → Atlas agent → TTS (Piper)
+Transição de open source para open source + produto.
+
+- [ ] **CrewDock Cloud** — versão hosted (sign up → dashboard em 30 segundos)
+- [ ] **Auth real** — login com email/password ou OAuth (substituir bearer token)
+- [ ] **Multi-tenant** — cada usuário tem agentes isolados
+- [ ] **Billing** — Stripe integration para planos pagos
+- [ ] **Orval** — gerar API client tipado do OpenAPI spec
+
+## P4 — Expansão
+
+- [ ] **HA Voice** — Wake Word → STT (Whisper) → agent → TTS (Piper)
 - [ ] **Built-in plugins** — Home Assistant, Telegram digest
-- [ ] **Skills reais** — morning-briefing, infra-health, content-radar
-- [ ] **Abrir repo público** — quando tiver README com screenshots e getting started funcional
+- [ ] **Mobile app** — React Native ou PWA
+- [ ] **Marketplace** — community plugins e agent templates
 
 ---
 
-## Decisões Pendentes
+## Estratégia de Lançamento
 
-- **QMD vs alternativas** — QMD funciona para docs, mas memória de agentes pode precisar de outra solução (Mem0, Zep). Campo em evolução rápida.
-- **Quando abrir o repo** — após Prioridade 1 (frontend funcional) + screenshots
+1. README com screenshots (feito)
+2. LinkedIn post — perfil de executivo que constrói
+3. Show HN — quando tiver demo video + agent chat
+4. Awesome lists PRs — awesome-ai-agents, awesome-llm-tools
+5. Product Hunt — quando v0.2 com templates e skills
+6. Dev.to article — "I built an open-source alternative to Sintra.ai"
+
+---
+
+## Referências
+
+- **Benchmark**: [docs/benchmark-sintra.md](benchmark-sintra.md) — análise completa do Sintra.ai
+- **Known Issues**: [docs/known-issues.md](known-issues.md)
