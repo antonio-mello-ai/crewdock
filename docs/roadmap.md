@@ -1,13 +1,35 @@
 # CrewDock — Roadmap
 
-**Atualizado**: 15 Mar 2026 | **Versão atual**: v0.1.0
+**Atualizado**: 15 Mar 2026 | **Versão atual**: v0.2.0
+
+### Versioning
+
+| Versão | Marco | Status |
+|--------|-------|--------|
+| v0.1.0 | Fundação — backend, frontend, deploy | Lançado 14/Mar |
+| **v0.2.0** | **CRUD, chat, DnD, dark mode, QMD, public repo** | **Lançado 15/Mar** |
+| v0.3.0 | Agent templates, skills, integrações MCP | P1 |
+| v0.4.0 | Scheduler, CI/CD, testes de integração | P2 |
+| v1.0.0 | Auth real, multi-tenant, CrewDock Cloud | P3 |
 
 ---
+
+## Concluído (v0.2.0)
+
+- [x] Agent chat interface — conversar com agentes pelo dashboard
+- [x] Drag-and-drop Kanban — mover tasks entre colunas
+- [x] Frontend CRUD — criar, editar, deletar agents e tasks
+- [x] Dark mode + mobile responsive
+- [x] Knowledge search funcional (QMD REST wrapper)
+- [x] Cost tracking e Activity feed conectados à API
+- [x] Landing page crewdock.ai
+- [x] Clean install testado em VM virgem
+- [x] Repo público com README, screenshots, CHANGELOG
 
 ## Concluído (v0.1.0)
 
 - [x] Backend: 22 API endpoints, 8 models, 14 testes, mypy strict
-- [x] Frontend: 9 páginas, CRUD agents/tasks, dark mode, mobile responsive
+- [x] Frontend: 9 páginas placeholder
 - [x] Deploy: Docker Compose, Cloudflare Tunnel, clean install testado
 - [x] Knowledge: QMD integrado com REST wrapper (177 docs, 801 embeddings)
 - [x] OpenClaw: 4 agentes configurados com IDENTITY.md
