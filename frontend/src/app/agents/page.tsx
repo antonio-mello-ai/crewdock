@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,9 @@ export default function AgentsPage() {
                   <p className="mt-1 text-sm">{agent.description}</p>
                 )}
                 <div className="mt-3 flex gap-2">
+                  <Link href={`/agents/${agent.id}/chat`}>
+                    <Button size="sm">Chat</Button>
+                  </Link>
                   <AgentForm
                     agent={agent}
                     trigger={
