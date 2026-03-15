@@ -51,13 +51,13 @@ export default function AgentChatPage({
         { role: "assistant", content: data.response, timestamp: new Date() },
       ]);
     },
-    onError: () => {
+    onError: (error: Error) => {
+      const errorMsg = error.message || "Unable to reach the agent.";
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content:
-            "Unable to reach the agent. The gateway may not be connected.",
+          content: `Error: ${errorMsg}. Try a shorter message or check if the API key is configured.`,
           timestamp: new Date(),
         },
       ]);

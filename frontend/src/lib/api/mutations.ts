@@ -16,7 +16,7 @@ export async function createAgent(data: {
 
 export async function updateAgent(
   id: string,
-  data: Partial<{ name: string; model: string; description: string; status: string }>
+  data: Partial<{ name: string; model: string; description: string; system_prompt: string; status: string }>
 ): Promise<Agent> {
   return apiFetch(`/api/v1/agents/${id}`, {
     method: "PATCH",

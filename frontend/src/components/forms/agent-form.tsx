@@ -34,14 +34,15 @@ export function AgentForm({ agent, trigger }: AgentFormProps) {
   const [name, setName] = useState(agent?.name ?? "");
   const [model, setModel] = useState(agent?.model ?? "claude-sonnet-4-6");
   const [description, setDescription] = useState(agent?.description ?? "");
+  const [systemPrompt, setSystemPrompt] = useState(agent?.system_prompt ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: () =>
       agent
-        ? updateAgent(agent.id, { name, model, description })
-        : createAgent({ name, model, description }),
+        ? updateAgent(agent.id, { name, model, description, system_prompt: systemPrompt || undefined })
+        : createAgent({ name, model, description, system_prompt: systemPrompt || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
       toast.success(agent ? `${name} updated` : `${name} created`);
@@ -113,6 +114,19 @@ export function AgentForm({ agent, trigger }: AgentFormProps) {
               rows={3}
             />
             {errors.description && <p className="text-xs text-destructive">{errors.description}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="system_prompt">System Prompt</Label>
+            <Textarea
+              id="system_prompt"
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="Instructions for the agent's personality and behavior..."
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground">
+              Defines how the agent responds. Leave empty to use the description.
+            </p>
           </div>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>

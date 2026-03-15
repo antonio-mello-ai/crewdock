@@ -15,6 +15,7 @@ export interface Agent {
   model: string;
   status: AgentStatus;
   description: string | null;
+  system_prompt: string | null;
   avatar_url: string | null;
   config: Record<string, unknown> | null;
   created_at: string;
