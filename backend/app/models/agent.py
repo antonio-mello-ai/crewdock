@@ -32,6 +32,7 @@ class Agent(Base):
     model: Mapped[str] = mapped_column(String(100))
     status: Mapped[AgentStatus] = mapped_column(default=AgentStatus.OFFLINE)
     description: Mapped[str | None] = mapped_column(Text, default=None)
+    system_prompt: Mapped[str | None] = mapped_column(Text, default=None)
     avatar_url: Mapped[str | None] = mapped_column(String(500), default=None)
     config: Mapped[dict[str, object] | None] = mapped_column(JSONB, default=None)
     created_at: Mapped[datetime] = mapped_column(

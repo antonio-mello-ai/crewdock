@@ -6,6 +6,7 @@ export async function createAgent(data: {
   name: string;
   model: string;
   description?: string;
+  system_prompt?: string;
 }): Promise<Agent> {
   return apiFetch("/api/v1/agents", {
     method: "POST",

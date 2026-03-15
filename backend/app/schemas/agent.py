@@ -10,6 +10,7 @@ class AgentCreate(BaseModel):
     name: str = Field(max_length=100)
     model: str = Field(max_length=100)
     description: str | None = None
+    system_prompt: str | None = None
     avatar_url: str | None = None
     config: dict[str, object] | None = None
 
@@ -19,6 +20,7 @@ class AgentUpdate(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     status: AgentStatus | None = None
     description: str | None = None
+    system_prompt: str | None = None
     avatar_url: str | None = None
     config: dict[str, object] | None = None
 
@@ -31,6 +33,7 @@ class AgentResponse(BaseModel):
     model: str
     status: AgentStatus
     description: str | None
+    system_prompt: str | None
     avatar_url: str | None
     config: dict[str, object] | None
     created_at: datetime

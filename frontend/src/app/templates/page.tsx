@@ -140,6 +140,7 @@ export default function TemplatesPage() {
         name: template.name,
         model: template.model,
         description: template.description,
+        system_prompt: template.systemPrompt,
       }),
     onSuccess: (_, template) => {
       setInstalled((prev) => new Set(prev).add(template.id));
