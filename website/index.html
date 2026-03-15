@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrewDock — Open-Source AI Agent Orchestration</title>
+  <meta name="description" content="Open-source platform for orchestrating, monitoring, and managing multiple autonomous AI agents. Self-hosted, extensible, free.">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#x2693;</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwindcss.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7', 700: '#0369a1', 900: '#0c4a6e' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .gradient-bg { background: linear-gradient(135deg, #0c4a6e 0%, #1e293b 50%, #0f172a 100%); }
+    .card-glow { box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.1), 0 4px 24px rgba(0, 0, 0, 0.3); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+
+  <!-- Nav -->
+  <nav class="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">&#x2693;</span>
+        <span class="text-xl font-bold">CrewDock</span>
+      </div>
+      <div class="hidden md:flex items-center gap-8 text-sm text-slate-400">
+        <a href="#features" class="hover:text-white transition">Features</a>
+        <a href="#how-it-works" class="hover:text-white transition">How it Works</a>
+        <a href="#get-started" class="hover:text-white transition">Get Started</a>
+        <a href="https://github.com/antonio-mello-ai/crewdock" class="flex items-center gap-1 hover:text-white transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+      <a href="https://github.com/antonio-mello-ai/crewdock" class="md:hidden text-slate-400 hover:text-white">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="gradient-bg pt-32 pb-20 px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-900/40 border border-brand-700/30 text-brand-100 text-sm mb-8">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        Open Source &middot; v0.1.0
+      </div>
+      <h1 class="text-4xl md:text-6xl font-extrabold leading-tight mb-6">
+        Your AI crew,<br>
+        <span class="text-brand-500">docked and ready.</span>
+      </h1>
+      <p class="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10">
+        Open-source platform for orchestrating, monitoring, and managing multiple autonomous AI agents. Self-hosted, extensible, gateway-agnostic.
+      </p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="#get-started" class="px-8 py-3 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-lg transition">
+          Get Started
+        </a>
+        <a href="https://github.com/antonio-mello-ai/crewdock" class="px-8 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg border border-slate-700 transition">
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screenshot -->
+  <section class="px-6 -mt-8 mb-16">
+    <div class="max-w-5xl mx-auto">
+      <img src="https://raw.githubusercontent.com/antonio-mello-ai/crewdock/main/docs/screenshots/dashboard.png" alt="CrewDock Dashboard" class="rounded-xl card-glow w-full">
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="py-20 px-6">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Everything you need to manage your AI team</h2>
+      <p class="text-slate-400 text-center max-w-2xl mx-auto mb-16">CrewDock gives you a complete dashboard to orchestrate AI agents — create agents, assign tasks, track costs, and monitor activity in real time.</p>
+
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="p-6 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+          <div class="text-3xl mb-4">&#x1F916;</div>
+          <h3 class="text-lg font-semibold mb-2">Multi-Agent Management</h3>
+          <p class="text-slate-400 text-sm">Register, configure, and monitor AI agents with real-time status. Each agent has its own identity, model, and role.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+          <div class="text-3xl mb-4">&#x1F4CB;</div>
+          <h3 class="text-lg font-semibold mb-2">Task Orchestration</h3>
+          <p class="text-slate-400 text-sm">Kanban board with scheduling, recurring tasks, and state machine validation. Assign tasks to agents with cron expressions.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+          <div class="text-3xl mb-4">&#x1F4DA;</div>
+          <h3 class="text-lg font-semibold mb-2">Knowledge Base</h3>
+          <p class="text-slate-400 text-sm">Integrated search across your documents. Agents share context through a unified knowledge layer.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+          <div class="text-3xl mb-4">&#x1F4B0;</div>
+          <h3 class="text-lg font-semibold mb-2">Cost Tracking</h3>
+          <p class="text-slate-400 text-sm">Token usage and cost monitoring per agent. Know exactly how much each agent costs and set budget alerts.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+          <div class="text-3xl mb-4">&#x1F50C;</div>
+          <h3 class="text-lg font-semibold mb-2">Plugin System</h3>
+          <p class="text-slate-400 text-sm">Extensible architecture with lifecycle management. Add integrations without modifying the core.</p>
+        </div>
+        <div class="p-6 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+          <div class="text-3xl mb-4">&#x1F310;</div>
+          <h3 class="text-lg font-semibold mb-2">Gateway Agnostic</h3>
+          <p class="text-slate-400 text-sm">Abstract adapter layer supports any agent runtime. OpenClaw today, custom runtimes tomorrow.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it Works -->
+  <section id="how-it-works" class="py-20 px-6 bg-slate-900/50">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">How it works</h2>
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-brand-600 text-white font-bold text-xl flex items-center justify-center mx-auto mb-4">1</div>
+          <h3 class="text-lg font-semibold mb-2">Create Agents</h3>
+          <p class="text-slate-400 text-sm">Define AI agents with names, models, and roles. Give each one a personality and specialization.</p>
+        </div>
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-brand-600 text-white font-bold text-xl flex items-center justify-center mx-auto mb-4">2</div>
+          <h3 class="text-lg font-semibold mb-2">Assign Tasks</h3>
+          <p class="text-slate-400 text-sm">Create tasks with descriptions, schedules, and assignments. Track progress on the Kanban board.</p>
+        </div>
+        <div class="text-center">
+          <div class="w-12 h-12 rounded-full bg-brand-600 text-white font-bold text-xl flex items-center justify-center mx-auto mb-4">3</div>
+          <h3 class="text-lg font-semibold mb-2">Monitor & Scale</h3>
+          <p class="text-slate-400 text-sm">Track activity, costs, and performance. Add more agents and skills as your needs grow.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Screenshots -->
+  <section class="py-20 px-6">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">See it in action</h2>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div>
+          <img src="https://raw.githubusercontent.com/antonio-mello-ai/crewdock/main/docs/screenshots/agents.png" alt="Agents" class="rounded-xl card-glow w-full mb-3">
+          <p class="text-sm text-slate-400 text-center">Agent management with edit and delete</p>
+        </div>
+        <div>
+          <img src="https://raw.githubusercontent.com/antonio-mello-ai/crewdock/main/docs/screenshots/tasks-kanban.png" alt="Tasks Kanban" class="rounded-xl card-glow w-full mb-3">
+          <p class="text-sm text-slate-400 text-center">Task Kanban with status transitions</p>
+        </div>
+        <div>
+          <img src="https://raw.githubusercontent.com/antonio-mello-ai/crewdock/main/docs/screenshots/activity.png" alt="Activity" class="rounded-xl card-glow w-full mb-3">
+          <p class="text-sm text-slate-400 text-center">Unified activity feed across agents</p>
+        </div>
+        <div class="flex items-center justify-center p-12 rounded-xl bg-slate-900 border border-slate-800">
+          <div class="text-center">
+            <p class="text-5xl mb-4">&#x1F680;</p>
+            <p class="text-lg font-semibold mb-2">And much more</p>
+            <p class="text-slate-400 text-sm">Knowledge search, cost tracking, skills registry, approval workflows, webhooks, plugin system...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tech Stack -->
+  <section class="py-20 px-6 bg-slate-900/50">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-12">Built with modern tools</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">FastAPI</p>
+          <p class="text-xs text-slate-400">Backend</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">Next.js</p>
+          <p class="text-xs text-slate-400">Frontend</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">PostgreSQL</p>
+          <p class="text-xs text-slate-400">Database</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">Redis</p>
+          <p class="text-xs text-slate-400">Cache</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">SQLAlchemy 2.0</p>
+          <p class="text-xs text-slate-400">ORM</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">TypeScript</p>
+          <p class="text-xs text-slate-400">Type Safety</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">Tailwind CSS</p>
+          <p class="text-xs text-slate-400">Styling</p>
+        </div>
+        <div class="p-4 rounded-lg bg-slate-800/50">
+          <p class="font-semibold">Docker</p>
+          <p class="text-xs text-slate-400">Deploy</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Get Started -->
+  <section id="get-started" class="py-20 px-6">
+    <div class="max-w-3xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Get started in 60 seconds</h2>
+      <p class="text-slate-400 text-center mb-12">Docker Compose handles everything. Clone, configure, run.</p>
+
+      <div class="bg-slate-900 rounded-xl border border-slate-800 p-6 md:p-8">
+        <pre class="text-sm text-slate-300 overflow-x-auto"><code><span class="text-slate-500"># Clone</span>
+git clone https://github.com/antonio-mello-ai/crewdock.git
+cd crewdock
+
+<span class="text-slate-500"># Configure (auto-generate secrets)</span>
+cp .env.example .env
+sed -i "s/changeme_password/$(openssl rand -hex 24)/" .env
+sed -i "s/changeme_token/$(openssl rand -hex 32)/" .env
+
+<span class="text-slate-500"># Start</span>
+docker compose up -d
+
+<span class="text-slate-500"># Create tables</span>
+docker compose exec backend alembic upgrade head
+
+<span class="text-slate-500"># Open dashboard</span>
+open http://localhost:3001</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-20 px-6 gradient-bg">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-4">Ready to dock your AI crew?</h2>
+      <p class="text-slate-400 mb-8">Free, open-source, self-hosted. No vendor lock-in.</p>
+      <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a href="https://github.com/antonio-mello-ai/crewdock" class="px-8 py-3 bg-white text-slate-900 font-semibold rounded-lg hover:bg-slate-200 transition">
+          Star on GitHub
+        </a>
+        <a href="https://github.com/antonio-mello-ai/crewdock/blob/main/CONTRIBUTING.md" class="px-8 py-3 bg-transparent border border-white/30 text-white font-semibold rounded-lg hover:bg-white/10 transition">
+          Contribute
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-8 px-6 border-t border-slate-800">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-500">
+      <div class="flex items-center gap-2">
+        <span>&#x2693;</span>
+        <span>CrewDock</span>
+        <span>&middot;</span>
+        <span>MIT License</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/antonio-mello-ai/crewdock" class="hover:text-slate-300 transition">GitHub</a>
+        <a href="https://github.com/antonio-mello-ai/crewdock/blob/main/docs/roadmap.md" class="hover:text-slate-300 transition">Roadmap</a>
+        <a href="https://github.com/antonio-mello-ai/crewdock/blob/main/CONTRIBUTING.md" class="hover:text-slate-300 transition">Contributing</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
