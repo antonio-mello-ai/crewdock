@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.core.database import async_session_factory
 from app.models.task import Task, TaskStatus
 from app.services.activity_logger import log_activity
+from app.services.llm_service import chat_with_llm
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ scheduler = AsyncIOScheduler()
 
 
 async def execute_task(task_id: str) -> None:
-    """Execute a scheduled task. Called by APScheduler."""
+    """Execute a scheduled task by sending it to the assigned agent's LLM."""
     async with async_session_factory() as session:
         task = await session.get(Task, task_id)
         if task is None:
@@ -25,11 +26,15 @@ async def execute_task(task_id: str) -> None:
             scheduler.remove_job(task_id)
             return
 
-        if task.status == TaskStatus.DONE:
-            logger.info("Task %s already done, skipping", task.title)
+        # Load agent for model and prompt
+        from app.models.agent import Agent
+
+        agent = await session.get(Agent, task.agent_id)
+        if agent is None:
+            logger.warning("Agent for task %s not found", task.title)
             return
 
-        logger.info("Executing scheduled task: %s", task.title)
+        logger.info("Executing task: %s (agent: %s)", task.title, agent.name)
 
         # Move to in_progress
         task.status = TaskStatus.IN_PROGRESS
@@ -37,18 +42,58 @@ async def execute_task(task_id: str) -> None:
         await log_activity(
             session,
             agent_id=task.agent_id,
-            action="task.scheduled_run",
+            action="task.executing",
             payload={"title": task.title},
             task_id=task.id,
         )
         await session.commit()
 
-        # TODO: When gateway is connected, actually send the task to the agent
-        # For now, mark as done after "execution"
-        task.status = TaskStatus.DONE
-        await session.commit()
+        # Build the task prompt
+        task_prompt = task.title
+        if task.description:
+            task_prompt = f"{task.title}\n\n{task.description}"
 
-        logger.info("Scheduled task completed: %s", task.title)
+        # Execute via LLM
+        try:
+            result = await chat_with_llm(
+                model=agent.model,
+                system_prompt=agent.system_prompt or agent.description,
+                messages=[{"role": "user", "content": task_prompt}],
+                max_tokens=2048,
+            )
+
+            # Log the result
+            await log_activity(
+                session,
+                agent_id=task.agent_id,
+                action="task.completed",
+                payload={
+                    "title": task.title,
+                    "result": result[:500],
+                },
+                task_id=task.id,
+            )
+
+            # For recurring tasks, reset to scheduled
+            if task.is_recurring:
+                task.status = TaskStatus.SCHEDULED
+            else:
+                task.status = TaskStatus.DONE
+
+            await session.commit()
+            logger.info("Task completed: %s (%d chars)", task.title, len(result))
+
+        except Exception as e:
+            logger.error("Task execution failed: %s — %s", task.title, e)
+            task.status = TaskStatus.FAILED
+            await log_activity(
+                session,
+                agent_id=task.agent_id,
+                action="task.failed",
+                payload={"title": task.title, "error": str(e)[:200]},
+                task_id=task.id,
+            )
+            await session.commit()
 
 
 async def load_scheduled_tasks() -> None:
@@ -90,14 +135,12 @@ async def load_scheduled_tasks() -> None:
 
 
 def start_scheduler() -> None:
-    """Start the APScheduler."""
     if not scheduler.running:
         scheduler.start()
         logger.info("Scheduler started")
 
 
 def stop_scheduler() -> None:
-    """Stop the APScheduler gracefully."""
     if scheduler.running:
         scheduler.shutdown(wait=True)
         logger.info("Scheduler stopped")
