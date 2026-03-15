@@ -1,6 +1,18 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "";
 
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
   options?: RequestInit
@@ -18,8 +30,26 @@ export async function apiFetch<T>(
     ...options,
     headers,
   });
+
   if (!res.ok) {
-    throw new Error(`API error: ${res.status} ${res.statusText}`);
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.json();
+      if (body.detail) {
+        detail = typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail);
+      }
+    } catch {
+      // response body not JSON
+    }
+    throw new ApiError(res.status, detail);
   }
+
+  // Handle 204 No Content (delete operations)
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json();
 }

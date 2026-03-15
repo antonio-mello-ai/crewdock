@@ -8,6 +8,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [0.7.0] - 2026-03-15
+
+### Added
+- **Zod form validation** — client-side validation for agent and task forms
+- **Error boundary** — global error catching with retry button
+- **ApiError class** — structured error parsing from backend responses (status + detail)
+- **Cron validation** — regex check for schedule field before submission
+
+### Changed
+- API client parses backend error detail messages (was generic status text)
+- Forms show field-level error messages with red borders
+- Delete returns handle 204 No Content properly
+
 ## [0.6.0] - 2026-03-15
 
 ### Added
