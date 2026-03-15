@@ -7,6 +7,34 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.3.0] - 2026-03-15
+
+### Added
+- **Design system overhaul** — branded cyan/maritime color palette, not generic gray
+- **Agent chat interface** — send messages to agents directly from dashboard
+- **Drag-and-drop Kanban** — move tasks between columns with state machine validation
+- **Shared UI components** — PageHeader, StatCard, EmptyState, SectionLabel
+- **Lucide icons** across all pages and navigation
+- **Agent color system** — unique colored avatars per agent
+- **Section labels** — uppercase tracking headers for visual hierarchy
+
+### Changed
+- Dark mode now uses navy-tinted backgrounds (not pure black)
+- Light mode backgrounds have subtle blue tint (not pure white)
+- Primary color changed to dock-blue cyan
+- Card radius tightened to 0.5rem (more professional)
+- Global smooth transitions (150ms) on all interactive elements
+- Settings page redesigned with gateway status and plugin cards
+- Skills page redesigned with skill icons and agent labels
+- All pages use consistent PageHeader pattern
+- Removed all inline duplicated components
+
+### Fixed
+- Removed unused imports across pages
+- Consistent status dot colors using shared utility
+
+---
+
 ## [0.2.0] - 2026-03-15
 
 ### Added
