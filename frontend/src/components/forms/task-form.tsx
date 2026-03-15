@@ -28,14 +28,15 @@ export function TaskForm({ task, agents, trigger }: TaskFormProps) {
   const [description, setDescription] = useState(task?.description ?? "");
   const [agentId, setAgentId] = useState(task?.agent_id ?? agents[0]?.id ?? "");
   const [schedule, setSchedule] = useState(task?.schedule ?? "");
-  const [isRecurring, setIsRecurring] = useState(task?.is_recurring ?? false);
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () =>
-      task
-        ? updateTask(task.id, { title, description, agent_id: agentId, schedule, is_recurring: isRecurring })
-        : createTask({ title, description, agent_id: agentId, schedule: schedule || undefined, is_recurring: isRecurring }),
+    mutationFn: () => {
+      const hasSchedule = schedule.trim().length > 0;
+      return task
+        ? updateTask(task.id, { title, description, agent_id: agentId, schedule, is_recurring: hasSchedule })
+        : createTask({ title, description, agent_id: agentId, schedule: schedule || undefined, is_recurring: hasSchedule });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["activity"] });
@@ -44,7 +45,6 @@ export function TaskForm({ task, agents, trigger }: TaskFormProps) {
         setTitle("");
         setDescription("");
         setSchedule("");
-        setIsRecurring(false);
       }
     },
   });
@@ -100,23 +100,18 @@ export function TaskForm({ task, agents, trigger }: TaskFormProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="schedule">Schedule (cron)</Label>
+            <Label htmlFor="schedule">Schedule (cron expression)</Label>
             <Input
               id="schedule"
               value={schedule}
               onChange={(e) => setSchedule(e.target.value)}
-              placeholder="e.g. 0 7 * * * (optional)"
+              placeholder="e.g. 0 7 * * * (every day at 7am)"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="recurring"
-              checked={isRecurring}
-              onChange={(e) => setIsRecurring(e.target.checked)}
-              className="h-4 w-4"
-            />
-            <Label htmlFor="recurring">Recurring</Label>
+            {schedule && (
+              <p className="text-xs text-muted-foreground">
+                This task will run on a recurring schedule.
+              </p>
+            )}
           </div>
           <div className="flex justify-end gap-2">
             <Button
