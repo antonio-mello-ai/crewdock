@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart,
   Bar,
@@ -15,8 +10,34 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useCosts, useCostSummary } from "@/hooks/use-api";
-import { useAgents } from "@/hooks/use-api";
+import { useCosts, useCostSummary, useAgents } from "@/hooks/use-api";
+import { DollarSign, Coins, Hash, TrendingUp } from "lucide-react";
+
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ElementType;
+}) {
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">{title}</p>
+            <p className="text-2xl font-bold mt-1">{value}</p>
+          </div>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+            <Icon className="h-5 w-5 text-primary" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function CostsPage() {
   const { data: costs = [] } = useCosts();
@@ -38,72 +59,57 @@ export default function CostsPage() {
   );
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold">Costs</h1>
-      <p className="mt-1 text-muted-foreground">
-        Token usage and cost tracking per agent.
-      </p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Costs</h1>
+        <p className="text-sm text-muted-foreground">
+          Token usage and cost tracking per agent.
+        </p>
+      </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Cost
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">${totalCost.toFixed(2)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Tokens
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">
-              {totalTokens > 0
-                ? `${(totalTokens / 1000).toFixed(0)}K`
-                : "0"}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Cost Entries
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{costs.length}</p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatCard title="Total Cost" value={`$${totalCost.toFixed(2)}`} icon={DollarSign} />
+        <StatCard
+          title="Total Tokens"
+          value={totalTokens > 0 ? `${(totalTokens / 1000).toFixed(0)}K` : "0"}
+          icon={Coins}
+        />
+        <StatCard title="Cost Entries" value={costs.length} icon={Hash} />
+        <StatCard title="Agents Tracked" value={summary.length} icon={TrendingUp} />
       </div>
 
       {chartData.length > 0 ? (
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">
-              Cost by Agent (USD)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card>
+          <CardContent className="p-6">
+            <h3 className="text-sm font-semibold mb-4">Cost by Agent (USD)</h3>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="cost" fill="hsl(var(--primary))" radius={4} />
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="name" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                    borderRadius: "8px",
+                    color: "hsl(var(--foreground))",
+                  }}
+                />
+                <Bar dataKey="cost" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       ) : (
-        <p className="mt-4 text-sm text-muted-foreground">
-          No cost data recorded yet.
-        </p>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-lg font-medium mb-1">No cost data yet</p>
+            <p className="text-sm text-muted-foreground">
+              Costs will be tracked as agents process tasks.
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
