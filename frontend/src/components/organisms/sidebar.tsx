@@ -112,7 +112,7 @@ export function Sidebar() {
         </div>
         <NavLinks pathname={pathname} />
         <div className="border-t p-3">
-          <p className="text-xs text-muted-foreground">v0.3.0</p>
+          <p className="text-xs text-muted-foreground">v0.4.0</p>
         </div>
       </aside>
 

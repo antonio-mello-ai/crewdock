@@ -7,6 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.0] - 2026-03-15
+
+### Added
+- **Agent templates gallery** — 10 pre-configured agents across 6 categories (Marketing, Analytics, Operations, Engineering, Sales, HR) with one-click install
+- **System prompt field** — agents store personality/instructions for gateway integration
+- **Toast notifications** — visual feedback on all CRUD operations (create, update, delete, install)
+- **Template category filters** — filter templates by category
+- **Skill badges** — each template shows its capabilities
+
 ## [0.3.0] - 2026-03-15
 
 ### Added
@@ -67,21 +76,3 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.1.0] - 2026-03-14
-
-### Added
-- Backend: FastAPI with 22 API endpoints, 8 SQLAlchemy models, Pydantic v2 schemas
-- Frontend: Next.js with 9 pages (Dashboard, Agents, Tasks, Activity, Knowledge, Costs, Skills, Settings)
-- Auth: Bearer token middleware
-- Gateway adapter: abstract interface + OpenClaw stub
-- Plugin system: base class, loader, lifecycle management
-- Task state machine: validated transitions (scheduled → queued → in_progress → done/failed)
-- Activity logging: automatic on all CRUD operations
-- Cost tracker: per-model pricing calculation
-- SSE events endpoint
-- Approval and webhook models
-- Docker Compose (prod + dev)
-- Caddyfile reverse proxy
-- Alembic async migrations
-- README, CONTRIBUTING, MIT LICENSE
-- 14 pytest tests, ruff + mypy strict passing
