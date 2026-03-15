@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240">
+  <!-- CrewDock Logo — Cyan variant (for light backgrounds) -->
+  <g fill="#5BB8E8" stroke="#5BB8E8">
+    <!-- Top ring -->
+    <circle cx="100" cy="28" r="14" stroke-width="8" fill="none"/>
+    <circle cx="100" cy="8" r="5"/>
+
+    <!-- Shaft -->
+    <line x1="100" y1="42" x2="100" y2="195" stroke-width="8" stroke-linecap="round"/>
+
+    <!-- Crossbar -->
+    <line x1="55" y1="82" x2="145" y2="82" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="55" cy="82" r="7"/>
+    <circle cx="145" cy="82" r="7"/>
+
+    <!-- V circuit -->
+    <line x1="70" y1="95" x2="100" y2="130" stroke-width="7" stroke-linecap="round"/>
+    <line x1="130" y1="95" x2="100" y2="130" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="70" cy="95" r="6"/>
+    <circle cx="130" cy="95" r="6"/>
+    <circle cx="100" cy="130" r="6"/>
+
+    <!-- Bottom arms -->
+    <line x1="100" y1="195" x2="55" y2="215" stroke-width="8" stroke-linecap="round"/>
+    <line x1="100" y1="195" x2="145" y2="215" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="55" cy="215" r="6"/>
+    <circle cx="145" cy="215" r="6"/>
+
+    <!-- C letter -->
+    <path d="M 52 188 C 20 188 20 235 52 235" stroke-width="8" stroke-linecap="round" fill="none"/>
+
+    <!-- D letter -->
+    <path d="M 148 188 C 180 188 180 235 148 235" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <line x1="148" y1="188" x2="148" y2="235" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>
