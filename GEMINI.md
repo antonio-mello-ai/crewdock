@@ -1,4 +1,4 @@
-# GEMINI.md — Relaix
+# GEMINI.md — CrewDock
 
 ## Propósito
 

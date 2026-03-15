@@ -15,22 +15,22 @@ ssh proxmox
 bash /path/to/01-create-vm.sh
 ```
 
-Creates CT 160 (`relaix`) with 4 cores, 8GB RAM, 50GB SSD.
+Creates CT 160 (`crewdock`) with 4 cores, 8GB RAM, 50GB SSD.
 
 ### 2. Setup CT environment
 
 ```bash
 pct enter 160
-# or: ssh relaix (after Tailscale)
+# or: ssh crewdock (after Tailscale)
 bash /path/to/02-setup.sh
 ```
 
-Installs Docker, Tailscale, creates `/opt/relaix/`.
+Installs Docker, Tailscale, creates `/opt/crewdock/`.
 
 ### 3. Deploy application
 
 ```bash
-cd /opt/relaix
+cd /opt/crewdock
 # Copy project files or git clone
 cp .env.example .env
 # Edit .env with real values (DB password, auth token, etc.)
@@ -60,7 +60,7 @@ your-domain.com (Cloudflare Tunnel)
 
 ```bash
 # Update
-cd /opt/relaix && git pull && docker compose build && docker compose up -d
+cd /opt/crewdock && git pull && docker compose build && docker compose up -d
 
 # Logs
 docker compose logs -f backend

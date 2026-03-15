@@ -9,7 +9,7 @@ def test_openapi_schema_available() -> None:
     response = client.get("/openapi.json")
     assert response.status_code == 200
     schema = response.json()
-    assert schema["info"]["title"] == "Relaix"
+    assert schema["info"]["title"] == "CrewDock"
     assert "/api/v1/agents" in schema["paths"]
     assert "/api/v1/tasks" in schema["paths"]
     assert "/api/v1/activity" in schema["paths"]

@@ -1,4 +1,4 @@
-# AGENTS.md — Relaix
+# AGENTS.md — CrewDock
 
 ## Propósito
 

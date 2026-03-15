@@ -1,4 +1,4 @@
-# CLAUDE.md — Relaix
+# CLAUDE.md — CrewDock
 
 ## Propósito
 

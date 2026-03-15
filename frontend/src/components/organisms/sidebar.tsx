@@ -82,7 +82,7 @@ function MobileNav({ pathname }: { pathname: string }) {
       </SheetTrigger>
       <SheetContent side="left" className="w-64 p-0">
         <SheetHeader className="border-b px-4 py-3">
-          <SheetTitle className="text-lg">Relaix</SheetTitle>
+          <SheetTitle className="text-lg">CrewDock</SheetTitle>
         </SheetHeader>
         <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
       </SheetContent>
@@ -98,7 +98,7 @@ export function Sidebar() {
       {/* Desktop sidebar */}
       <aside className="hidden h-screen w-64 flex-col border-r bg-background md:flex">
         <div className="flex h-14 items-center justify-between border-b px-4">
-          <h1 className="text-lg font-semibold">Relaix</h1>
+          <h1 className="text-lg font-semibold">CrewDock</h1>
           <ThemeToggle />
         </div>
         <NavLinks pathname={pathname} />
@@ -107,7 +107,7 @@ export function Sidebar() {
       {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden">
         <MobileNav pathname={pathname} />
-        <h1 className="flex-1 text-lg font-semibold">Relaix</h1>
+        <h1 className="flex-1 text-lg font-semibold">CrewDock</h1>
         <ThemeToggle />
       </div>
     </>

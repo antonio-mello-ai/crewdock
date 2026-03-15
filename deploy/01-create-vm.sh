@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Run this on the Proxmox host (ssh proxmox)
-# Creates VM for Relaix
+# Creates VM for CrewDock
 set -euo pipefail
 
 CT_ID=160
-CT_NAME="relaix"
+CT_NAME="crewdock"
 CT_TEMPLATE="local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
 CT_STORAGE="ssd-fast"
 CT_DISK="50"

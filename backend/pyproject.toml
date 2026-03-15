@@ -1,7 +1,7 @@
 [project]
-name = "relaix-backend"
+name = "crewdock-backend"
 version = "0.1.0"
-description = "Relaix — Backend API"
+description = "CrewDock — Backend API"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",

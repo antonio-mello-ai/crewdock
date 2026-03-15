@@ -111,9 +111,9 @@ Sem free trial web (só mobile limitado).
 
 ---
 
-## O que Relaix pode fazer melhor
+## O que CrewDock pode fazer melhor
 
-| Limitação Sintra | Oportunidade Relaix |
+| Limitação Sintra | Oportunidade CrewDock |
 |-----------------|---------------------|
 | Helpers em silos | Agentes com contexto compartilhado (shared brain, QMD) |
 | Sem workflows | Task scheduler + approval workflows + webhooks |

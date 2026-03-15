@@ -1,4 +1,4 @@
-# Relaix — Roadmap
+# CrewDock — Roadmap
 
 **Última atualização**: 15 Mar 2026
 
@@ -41,7 +41,7 @@ O frontend é 100% read-only. Precisa de formulários CRUD para ser utilizável.
 - [ ] **Theming** — CSS variables customizáveis além do dark mode
 - [ ] **Screenshots** — capturar para README
 - [ ] **Sync QMD automático** — cron rsync Nextcloud → VM 160
-- [ ] **Domínio** — registrar relaix.dev
+- [ ] **Domínio** — registrar crewdock.ai
 
 ## Prioridade 5 — Fase 5 do Plano Original
 

@@ -1,4 +1,4 @@
-# Relaix
+# CrewDock
 
 Open-source platform for orchestrating, monitoring, and managing multiple autonomous AI agents. Web dashboard + API for agent/task management, with integrated knowledge base, cost tracking, and extensible plugin system.
 
@@ -33,8 +33,8 @@ Open-source platform for orchestrating, monitoring, and managing multiple autono
 
 ```bash
 # Clone
-git clone https://github.com/antonio-mello-ai/relaix.git
-cd relaix
+git clone https://github.com/antonio-mello-ai/crewdock.git
+cd crewdock
 
 # Configure (generate secrets automatically)
 cp .env.example .env
@@ -113,7 +113,7 @@ The gateway adapter layer is intentionally abstract — it supports any agent ru
 ## Project Structure
 
 ```
-relaix/
+crewdock/
 ├── backend/           # FastAPI application
 │   ├── app/
 │   │   ├── api/       # Route handlers
