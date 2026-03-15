@@ -23,11 +23,13 @@ import {
   Settings,
   Menu,
   Anchor,
+  Sparkles,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Agents", href: "/agents", icon: Bot },
+  { name: "Templates", href: "/templates", icon: Sparkles },
   { name: "Tasks", href: "/tasks", icon: KanbanSquare },
   { name: "Activity", href: "/activity", icon: Activity },
   { name: "Knowledge", href: "/knowledge", icon: BookOpen },
