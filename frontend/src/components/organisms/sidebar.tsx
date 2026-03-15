@@ -12,16 +12,28 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  LayoutDashboard,
+  Bot,
+  KanbanSquare,
+  Activity,
+  BookOpen,
+  DollarSign,
+  Zap,
+  Settings,
+  Menu,
+  Anchor,
+} from "lucide-react";
 
 const navigation = [
-  { name: "Dashboard", href: "/" },
-  { name: "Agents", href: "/agents" },
-  { name: "Tasks", href: "/tasks" },
-  { name: "Activity", href: "/activity" },
-  { name: "Knowledge", href: "/knowledge" },
-  { name: "Costs", href: "/costs" },
-  { name: "Skills", href: "/skills" },
-  { name: "Settings", href: "/settings" },
+  { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Agents", href: "/agents", icon: Bot },
+  { name: "Tasks", href: "/tasks", icon: KanbanSquare },
+  { name: "Activity", href: "/activity", icon: Activity },
+  { name: "Knowledge", href: "/knowledge", icon: BookOpen },
+  { name: "Costs", href: "/costs", icon: DollarSign },
+  { name: "Skills", href: "/skills", icon: Zap },
+  { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 function NavLinks({
@@ -32,24 +44,26 @@ function NavLinks({
   onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex-1 space-y-1 p-2">
+    <nav className="flex-1 space-y-1 p-3">
       {navigation.map((item) => {
         const isActive =
           item.href === "/"
             ? pathname === "/"
             : pathname.startsWith(item.href);
+        const Icon = item.icon;
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={onNavigate}
             className={cn(
-              "flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150",
               isActive
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
           >
+            <Icon className="h-4 w-4 shrink-0" />
             {item.name}
           </Link>
         );
@@ -64,25 +78,15 @@ function MobileNav({ pathname }: { pathname: string }) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger className="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground md:hidden">
-        <svg
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <line x1="3" y1="6" x2="21" y2="6" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-          <line x1="3" y1="18" x2="21" y2="18" />
-        </svg>
+        <Menu className="h-5 w-5" />
         <span className="sr-only">Menu</span>
       </SheetTrigger>
       <SheetContent side="left" className="w-64 p-0">
         <SheetHeader className="border-b px-4 py-3">
-          <SheetTitle className="text-lg">CrewDock</SheetTitle>
+          <SheetTitle className="flex items-center gap-2 text-lg">
+            <Anchor className="h-5 w-5 text-primary" />
+            CrewDock
+          </SheetTitle>
         </SheetHeader>
         <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
       </SheetContent>
@@ -96,18 +100,27 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden h-screen w-64 flex-col border-r bg-background md:flex">
+      <aside className="hidden h-screen w-60 flex-col border-r bg-card md:flex">
         <div className="flex h-14 items-center justify-between border-b px-4">
-          <h1 className="text-lg font-semibold">CrewDock</h1>
+          <div className="flex items-center gap-2">
+            <Anchor className="h-5 w-5 text-primary" />
+            <span className="text-lg font-bold">CrewDock</span>
+          </div>
           <ThemeToggle />
         </div>
         <NavLinks pathname={pathname} />
+        <div className="border-t p-3">
+          <p className="text-xs text-muted-foreground">v0.2.0</p>
+        </div>
       </aside>
 
       {/* Mobile header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b bg-background px-4 md:hidden">
         <MobileNav pathname={pathname} />
-        <h1 className="flex-1 text-lg font-semibold">CrewDock</h1>
+        <div className="flex flex-1 items-center gap-2">
+          <Anchor className="h-5 w-5 text-primary" />
+          <span className="text-lg font-bold">CrewDock</span>
+        </div>
         <ThemeToggle />
       </div>
     </>
