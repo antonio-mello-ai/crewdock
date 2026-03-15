@@ -38,4 +38,4 @@ sudo docker compose exec backend bash -c "cd /app && PYTHONPATH=/app alembic upg
 
 echo ""
 echo "=== Deploy complete ==="
-echo "Dashboard: https://ai.felhen.ai"
+echo "Dashboard: https://your-domain.com"

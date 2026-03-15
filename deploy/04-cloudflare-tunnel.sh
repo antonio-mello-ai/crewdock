@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run inside CT 160
-# Sets up Cloudflare Tunnel for ai.felhen.ai
+# Sets up Cloudflare Tunnel for your-domain.com
 set -euo pipefail
 
 echo "=== Installing cloudflared ==="
@@ -26,13 +26,13 @@ tunnel: ${TUNNEL_ID}
 credentials-file: /root/.cloudflared/${TUNNEL_ID}.json
 
 ingress:
-  - hostname: ai.felhen.ai
+  - hostname: your-domain.com
     service: http://localhost:80
   - service: http_status:404
 EOF
 
 echo "=== Creating DNS record ==="
-cloudflared tunnel route dns "${TUNNEL_NAME}" ai.felhen.ai
+cloudflared tunnel route dns "${TUNNEL_NAME}" your-domain.com
 
 echo "=== Installing as service ==="
 cloudflared service install
@@ -40,4 +40,4 @@ systemctl enable cloudflared
 systemctl start cloudflared
 
 echo "=== Tunnel active ==="
-echo "ai.felhen.ai -> Caddy (:80) -> Backend (:8001) / Frontend (:3001)"
+echo "your-domain.com -> Caddy (:80) -> Backend (:8001) / Frontend (:3001)"

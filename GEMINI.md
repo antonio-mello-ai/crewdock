@@ -146,8 +146,8 @@ ANTHROPIC_PRICING_SONNET_OUTPUT=15.0
 
 - VM: `openclaw-gateway` (e2-standard-4, 4 vCPU, 16GB RAM)
 - Acesso: `ssh openclaw-gateway`
-- Dashboard: `ai.felhen.ai` via Cloudflare Tunnel
-- Grafana: `grafana.felhen.ai` (já configurado)
+- Dashboard: `your-domain.com` via Cloudflare Tunnel
+- Grafana: `grafana.your-domain.com` (já configurado)
 - API: interno via Tailscale (não expor publicamente)
 
 ## Decisões Arquiteturais

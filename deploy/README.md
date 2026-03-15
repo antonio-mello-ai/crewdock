@@ -4,7 +4,7 @@
 
 - Proxmox host accessible via `ssh proxmox`
 - Debian 12 template available on Proxmox
-- Cloudflare account with felhen.ai domain
+- Cloudflare account with your-domain.com domain
 
 ## Steps
 
@@ -45,12 +45,12 @@ Builds images, starts containers, runs migrations.
 bash deploy/04-cloudflare-tunnel.sh
 ```
 
-Exposes `ai.felhen.ai` → Caddy → Backend/Frontend.
+Exposes `your-domain.com` → Caddy → Backend/Frontend.
 
 ## Architecture
 
 ```
-ai.felhen.ai (Cloudflare Tunnel)
+your-domain.com (Cloudflare Tunnel)
   → Caddy (:80)
     → /api/*  → Backend (:8001)
     → /*      → Frontend (:3000)

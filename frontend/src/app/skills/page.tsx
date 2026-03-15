@@ -27,7 +27,7 @@ const SKILLS: SkillInfo[] = [
     phase: 1,
   },
   {
-    name: "felhen-context",
+    name: "company-context",
     agent: "Atlas",
     description: "QMD search for company context questions",
     enabled: false,

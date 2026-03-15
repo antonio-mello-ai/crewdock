@@ -4,7 +4,7 @@
 
 ## Status Atual (v0.1.0)
 
-Backend com 22 endpoints, frontend com 9 páginas read-only, deploy em VM no home server, QMD integrado, OpenClaw 4 agentes configurados. Dashboard acessível em ai.felhen.ai.
+Backend com 22 endpoints, frontend com 9 páginas read-only, deploy em VM no home server, QMD integrado, OpenClaw 4 agentes configurados. Dashboard acessível em your-domain.com.
 
 ---
 

@@ -30,7 +30,7 @@
 ### Atlas (Assistant/Knowledge)
 - **Modelo**: claude-sonnet-4-6
 - **Papel**: Assistente pessoal. Briefings, intake, calendário, HA Voice, default no Telegram.
-- **Skills**: morning-briefing, daily-synthesis, intake-processing, felhen-context
+- **Skills**: morning-briefing, daily-synthesis, intake-processing, company-context
 - **Crons**: Morning briefing (7h), Daily synthesis (19h), Intake processing (9h/14h/19h)
 - **Binding**: Telegram → Atlas por default
 - **Quando usar**: Perguntas gerais, briefings, calendário, voice

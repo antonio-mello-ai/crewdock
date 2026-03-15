@@ -48,7 +48,7 @@ Plataforma open-source para orquestrar, monitorar e gerenciar múltiplos agentes
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    ai.felhen.ai                         │
+│                    your-domain.com                         │
 │               (Caddy reverse proxy)                     │
 ├─────────────┬───────────────┬───────────────────────────┤
 │  Frontend   │   Backend     │    Grafana                │
@@ -244,7 +244,7 @@ frontend/src/app/
 **Fase 1 (MVP):**
 - `morning-briefing` (Atlas) — calendário, emails pendentes, tasks do dia
 - `infra-health` (Nexus) — SSH nas VMs via Tailscale, status dos serviços
-- `felhen-context` (Atlas) — busca QMD para perguntas sobre contexto
+- `company-context` (Atlas) — busca QMD para perguntas sobre contexto
 
 **Fase 2:**
 - `content-radar` (Pulse) — web search por notícias AI/tech
@@ -311,12 +311,12 @@ QMD roda no home server (CT/VM dedicada ou junto do Nextcloud CT 162), exposto v
 
 | Serviço | Porta | Acesso |
 |---------|-------|--------|
-| Dashboard Frontend | 3001 | `ai.felhen.ai` via Cloudflare Tunnel |
+| Dashboard Frontend | 3001 | `your-domain.com` via Cloudflare Tunnel |
 | Backend API | 8001 | Interno + Tailscale (não expor publicamente) |
 | OpenClaw Gateway | 18789 (WS) | Interno + Tailscale |
 | PostgreSQL | 5432 | Interno apenas |
 | Redis | 6379 | Interno apenas |
-| Grafana | 3000 | `grafana.felhen.ai` (já configurado) |
+| Grafana | 3000 | `grafana.your-domain.com` (já configurado) |
 | QMD (home server) | 8787 | Tailscale apenas |
 
 ### 5.4 Deploy
@@ -413,7 +413,7 @@ volumes:
 **1.6 Deploy inicial**
 - [ ] Scale up GCP VM para e2-standard-4
 - [ ] Docker Compose up com todos os serviços
-- [ ] Cloudflare Tunnel para `ai.felhen.ai`
+- [ ] Cloudflare Tunnel para `your-domain.com`
 - [ ] Validar: dashboard acessível, agentes visíveis
 
 **1.7 Multi-agent OpenClaw**
@@ -459,7 +459,7 @@ volumes:
 **3.1 Skills Fase 1**
 - [ ] `morning-briefing` skill (Atlas)
 - [ ] `infra-health` skill (Nexus)
-- [ ] `felhen-context` skill (Atlas) — usa QMD
+- [ ] `company-context` skill (Atlas) — usa QMD
 - [ ] Frontend: Skills page por agente
 
 **3.2 Crons**
@@ -534,7 +534,7 @@ volumes:
 
 ## 7. Verificação Final (Definition of Done)
 
-- [ ] Dashboard acessível em `ai.felhen.ai` com auth local
+- [ ] Dashboard acessível em `your-domain.com` com auth local
 - [ ] 4 agentes visíveis no dashboard com status correto
 - [ ] Tasks kanban funcionando (criar, mover, completar)
 - [ ] Morning briefing executando às 7h via cron → Telegram

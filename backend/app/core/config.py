@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     app_name: str = "Relaix"
     app_version: str = "0.1.0"
     debug: bool = False
-    cors_origins: str = "http://localhost:3001,https://ai.felhen.ai"
+    cors_origins: str = "http://localhost:3001"
 
     # Database
     db_host: str = "localhost"
@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     gateway_url: str = "ws://localhost:18789"
     gateway_auth_token: str = ""
 
-    # QMD
-    qmd_base_url: str = "http://nextcloud:8787"
+    # QMD (knowledge base)
+    qmd_base_url: str = ""
 
     # Costs (per 1M tokens)
     anthropic_pricing_opus_input: float = 15.0

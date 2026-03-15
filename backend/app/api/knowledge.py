@@ -2,11 +2,20 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.core.config import settings
 from app.core.security import verify_token
 from app.schemas.knowledge import DocumentResponse, SearchRequest, SearchResponse
 from app.services.qmd_client import qmd_client
 
 logger = logging.getLogger(__name__)
+
+
+def _check_qmd_configured() -> None:
+    if not settings.qmd_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Knowledge base not configured. Set QMD_BASE_URL in .env",
+        )
 
 router = APIRouter(
     prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(verify_token)]
@@ -15,6 +24,7 @@ router = APIRouter(
 
 @router.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest) -> SearchResponse:
+    _check_qmd_configured()
     try:
         data = await qmd_client.search(
             request.query,
@@ -33,6 +43,7 @@ async def search(request: SearchRequest) -> SearchResponse:
 
 @router.post("/vector_search", response_model=SearchResponse)
 async def vector_search(request: SearchRequest) -> SearchResponse:
+    _check_qmd_configured()
     try:
         data = await qmd_client.vector_search(
             request.query,
@@ -51,6 +62,7 @@ async def vector_search(request: SearchRequest) -> SearchResponse:
 
 @router.post("/deep_search", response_model=SearchResponse)
 async def deep_search(request: SearchRequest) -> SearchResponse:
+    _check_qmd_configured()
     try:
         data = await qmd_client.deep_search(
             request.query,
@@ -69,6 +81,7 @@ async def deep_search(request: SearchRequest) -> SearchResponse:
 
 @router.get("/doc/{doc_id}", response_model=DocumentResponse)
 async def get_document(doc_id: str) -> DocumentResponse:
+    _check_qmd_configured()
     try:
         data = await qmd_client.get(f"#{doc_id}")
         return DocumentResponse(
