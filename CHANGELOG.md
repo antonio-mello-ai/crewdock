@@ -8,6 +8,33 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [1.1.0] - 2026-03-15
+
+### Added
+- **Real LLM chat** — agents respond via Anthropic API with system prompts
+- **Streaming responses** — tokens appear one by one via SSE
+- **Knowledge-aware agents** — QMD knowledge base injected into agent context automatically
+- **Persistent chat history** — Redis-backed with 24h TTL, in-memory fallback
+- **Real cost tracking** — actual token usage recorded from API, estimated for streaming
+- **Real task execution** — scheduler sends tasks to LLM, logs results, handles failures
+- **Onboarding flow** — welcome screen with 3-step guide for new users
+- **Auth guard** — redirects to login when unauthenticated
+- **App shell** — conditional sidebar (hidden on login page)
+- **System prompt editing** — editable field in agent create/edit forms
+- **Templates with prompts** — template install includes system_prompt
+
+### Changed
+- Chat endpoint uses knowledge context from QMD before calling LLM
+- Scheduler executes tasks via LLM instead of marking done immediately
+- Recurring tasks reset to scheduled after completion
+- Streaming chat estimates cost via character-based token approximation
+- Screenshots updated with current design
+
+### Fixed
+- email-validator dependency for Pydantic EmailStr
+- Chat error messages show actual API errors
+- Agent type includes system_prompt field
+
 ## [1.0.0] - 2026-03-15
 
 ### Milestone
