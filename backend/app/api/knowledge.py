@@ -17,9 +17,8 @@ def _check_qmd_configured() -> None:
             detail="Knowledge base not configured. Set QMD_BASE_URL in .env",
         )
 
-router = APIRouter(
-    prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(verify_token)]
-)
+
+router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(verify_token)])
 
 
 @router.post("/search", response_model=SearchResponse)

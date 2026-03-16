@@ -119,9 +119,7 @@ async def load_scheduled_tasks() -> None:
                     name=task.title,
                     replace_existing=True,
                 )
-                logger.info(
-                    "Registered scheduled task: %s (%s)", task.title, task.schedule
-                )
+                logger.info("Registered scheduled task: %s (%s)", task.title, task.schedule)
             except (ValueError, TypeError) as e:
                 logger.warning(
                     "Invalid cron expression for task %s: %s — %s",
