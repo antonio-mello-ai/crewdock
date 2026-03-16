@@ -214,7 +214,11 @@ async def start_telegram_bot() -> None:
         result = await session.execute(select(Agent))
         agents = result.scalars().all()
         for agent in agents:
-            cmd = agent.name.lower()
+            cmd = agent.name.lower().replace(" ", "_")
+            # Telegram commands must be alphanumeric + underscores
+            if not cmd.replace("_", "").isalnum():
+                logger.warning("Skipping invalid Telegram command: /%s", cmd)
+                continue
 
             def _make_handler(
                 agent_name: str,
