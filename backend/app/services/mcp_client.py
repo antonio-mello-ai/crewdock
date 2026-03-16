@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Any
 
 from sqlalchemy import select
@@ -83,6 +84,14 @@ async def execute_tool(
         return f"[Error] {e}"
 
 
+def _build_env(server: McpServer) -> dict[str, str]:
+    """Merge parent process env with server-specific env vars."""
+    env = dict(os.environ)
+    if server.env:
+        env.update(server.env)
+    return env
+
+
 async def _list_tools_stdio(server: McpServer) -> list[McpToolDefinition]:
     """List tools from a stdio MCP server."""
     from mcp import ClientSession, StdioServerParameters
@@ -91,7 +100,7 @@ async def _list_tools_stdio(server: McpServer) -> list[McpToolDefinition]:
     params = StdioServerParameters(
         command=server.command or "",
         args=server.args or [],
-        env=server.env,
+        env=_build_env(server),
     )
 
     async with stdio_client(params) as (read, write), ClientSession(read, write) as mcp_session:
@@ -142,7 +151,7 @@ async def _execute_tool_stdio(
     params = StdioServerParameters(
         command=server.command or "",
         args=server.args or [],
-        env=server.env,
+        env=_build_env(server),
     )
 
     async with stdio_client(params) as (read, write), ClientSession(read, write) as mcp_session:
