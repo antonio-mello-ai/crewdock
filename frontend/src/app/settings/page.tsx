@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/atoms/page-header";
 import { SectionLabel } from "@/components/atoms/section-label";
 import { apiFetch } from "@/lib/api/client";
 import { getUser } from "@/lib/auth";
-import { Settings2, Key, Wifi, WifiOff, User } from "lucide-react";
+import { Settings2, Key, Wifi, WifiOff, User, BookOpen } from "lucide-react";
 
 interface HealthResponse {
   status: string;
@@ -114,6 +114,30 @@ export default function SettingsPage() {
         </Card>
       </div>
 
+      {/* Knowledge Base */}
+      <div className="space-y-3">
+        <SectionLabel>Knowledge Base</SectionLabel>
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <BookOpen className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-semibold">QMD Document Search</h3>
+                  <Badge variant="default" className="text-xs">Active</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Agents automatically search the knowledge base before responding. Documents are indexed from your Nextcloud-synced files.
+                  Configured via <code className="text-xs bg-muted px-1 py-0.5 rounded">QMD_BASE_URL</code> in <code className="text-xs bg-muted px-1 py-0.5 rounded">.env</code>.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Gateway */}
       <div className="space-y-3">
         <SectionLabel>Gateway</SectionLabel>
@@ -130,12 +154,12 @@ export default function SettingsPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <h3 className="font-semibold">OpenClaw Gateway</h3>
-                  <Badge variant={gateway?.connected ? "default" : "secondary"} className="text-xs">
-                    {gateway?.connected ? "Connected" : "Disconnected"}
+                  <Badge variant="secondary" className="text-xs">
+                    Not in use
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Agent chat uses the Anthropic API directly. The gateway is optional for multi-runtime support.
+                  Agent chat connects directly to the Anthropic API. The OpenClaw gateway is available for future multi-runtime support but is not actively used.
                 </p>
               </div>
             </div>
