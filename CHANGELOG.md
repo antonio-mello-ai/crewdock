@@ -8,6 +8,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [1.2.0] - 2026-03-16
+
+### Added
+- **MCP Client** — agents can use external tools via Model Context Protocol
+- **MCP Server registry** — CRUD API for registering MCP servers (stdio + SSE)
+- **Tool-enabled chat** — Claude tool_use loop with max 5 rounds
+- **Whisper MCP** — audio transcription via OpenAI Whisper (included in repo)
+- **Run Now button** — execute tasks immediately from the Kanban board
+- **Chat history endpoint** — GET /chat/history/{session_id}
+- **Logout button** — visible in sidebar footer for all auth modes
+- **Markdown rendering** — react-markdown + typography in agent chat
+- **Settings page** — real platform status, version, user profile, gateway info
+- **Node.js in backend** — Dockerfile includes Node 20 for stdio MCP execution
+
+### Changed
+- Streaming endpoint uses tool-enabled chat when MCP servers are configured
+- MCP stdio processes inherit parent environment variables (API keys etc)
+- Chat loads previous session history on page open
+
+### Fixed
+- Logout button hidden when using static token auth
+
 ## [1.1.0] - 2026-03-15
 
 ### Added
