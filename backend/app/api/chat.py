@@ -17,6 +17,8 @@ from app.services.chat_history import append_message
 from app.services.cost_tracker import record_usage
 from app.services.knowledge_context import build_enhanced_prompt, get_relevant_context
 from app.services.llm_service import chat_with_llm_tracked, stream_chat_with_llm
+from app.services.mcp_client import get_enabled_servers
+from app.services.tool_chat import chat_with_tools
 
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(verify_token)])
 
@@ -52,11 +54,21 @@ async def chat_with_agent(
         agent.system_prompt or agent.description, knowledge
     )
 
-    llm_result = await chat_with_llm_tracked(
-        model=agent.model,
-        system_prompt=enhanced_prompt,
-        messages=history,
-    )
+    # Use tool-enabled chat if MCP servers are configured
+    mcp_servers = await get_enabled_servers(session)
+    if mcp_servers:
+        llm_result = await chat_with_tools(
+            db=session,
+            model=agent.model,
+            system_prompt=enhanced_prompt,
+            messages=history,
+        )
+    else:
+        llm_result = await chat_with_llm_tracked(
+            model=agent.model,
+            system_prompt=enhanced_prompt,
+            messages=history,
+        )
 
     # Save assistant response
     await append_message(session_id, "assistant", llm_result.text)

@@ -19,6 +19,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0",
     "anthropic>=0.40.0",
     "email-validator>=2.0",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -72,7 +73,7 @@ warn_unused_configs = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["redis.*", "asyncpg.*", "apscheduler.*", "jose.*", "passlib.*", "anthropic.*"]
+module = ["redis.*", "asyncpg.*", "apscheduler.*", "jose.*", "passlib.*", "anthropic.*", "mcp.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

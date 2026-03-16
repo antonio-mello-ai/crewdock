@@ -11,6 +11,7 @@ from app.api.events import router as events_router
 from app.api.gateway import router as gateway_router
 from app.api.health import router as health_router
 from app.api.knowledge import router as knowledge_router
+from app.api.mcp import router as mcp_router
 from app.api.plugins import router as plugins_router
 from app.api.scheduler import router as scheduler_router
 from app.api.skills import router as skills_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(scheduler_router, prefix=API_PREFIX)
     app.include_router(gateway_router, prefix=API_PREFIX)
     app.include_router(auth_router, prefix=API_PREFIX)
+    app.include_router(mcp_router, prefix=API_PREFIX)
 
     return app
 

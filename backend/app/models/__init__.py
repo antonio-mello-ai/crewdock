@@ -2,6 +2,7 @@ from app.models.activity import Activity
 from app.models.agent import Agent
 from app.models.approval import Approval
 from app.models.cost import CostEntry
+from app.models.mcp_server import McpServer
 from app.models.plugin import PluginRecord
 from app.models.skill import Skill
 from app.models.task import Task
@@ -14,6 +15,7 @@ __all__ = [
     "Agent",
     "Approval",
     "CostEntry",
+    "McpServer",
     "PluginRecord",
     "Skill",
     "Task",
