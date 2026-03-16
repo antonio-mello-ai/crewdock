@@ -3,6 +3,5 @@ export default function LoginLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Login page uses its own layout without sidebar
   return <>{children}</>;
 }

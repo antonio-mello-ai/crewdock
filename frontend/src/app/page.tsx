@@ -10,6 +10,7 @@ import { AgentForm } from "@/components/forms/agent-form";
 import { PageHeader } from "@/components/atoms/page-header";
 import { StatCard } from "@/components/atoms/stat-card";
 import { SectionLabel } from "@/components/atoms/section-label";
+import { OnboardingWelcome } from "@/components/onboarding";
 import { AGENT_COLORS, statusDotColor } from "@/lib/agent-colors";
 import {
   Bot,
@@ -70,6 +71,11 @@ export default function DashboardPage() {
     (t) => t.status === "in_progress" || t.status === "queued"
   );
   const onlineAgents = agents.filter((a) => a.status === "online");
+
+  // Show onboarding when no agents exist
+  if (agents.length === 0 && tasks.length === 0) {
+    return <OnboardingWelcome />;
+  }
 
   return (
     <div className="space-y-6">
