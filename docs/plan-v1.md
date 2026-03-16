@@ -300,11 +300,11 @@ Estimativa de uso:
 
 Margem confortável para spikes de agentes e crescimento.
 
-### 5.2 QMD — Home Server
+### 5.2 QMD — VM 160 (ai-platform)
 
-QMD roda no home server (CT/VM dedicada ou junto do Nextcloud CT 162), exposto via Tailscale:
-- Endereço: `http://nextcloud:8787` (via Tailscale MagicDNS)
-- **Uma fonte de verdade**: docs no Nextcloud, QMD indexa localmente, GCP consulta via Tailscale
+QMD roda na mesma VM 160 que o CrewDock, indexando docs da felhencloud:
+- Endereço: `http://localhost:8787` (co-located com o backend)
+- **Uma fonte de verdade**: docs sincronizados via Nextcloud, QMD indexa localmente
 - Zero rsync, zero cópia
 
 ### 5.3 Rede e Acesso

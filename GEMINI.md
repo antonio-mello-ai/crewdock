@@ -133,8 +133,8 @@ LOCAL_AUTH_TOKEN=         # min 50 chars
 GATEWAY_URL=ws://localhost:18789
 GATEWAY_AUTH_TOKEN=
 
-# QMD (via Tailscale)
-QMD_BASE_URL=http://nextcloud:8787
+# QMD (runs locally on VM 160 alongside CrewDock)
+QMD_BASE_URL=http://localhost:8787
 
 # Costs
 ANTHROPIC_PRICING_OPUS_INPUT=15.0    # per 1M tokens
