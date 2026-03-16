@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Agent } from "@/lib/api/types";
 import { createAgent, updateAgent } from "@/lib/api/mutations";
+import { apiFetch } from "@/lib/api/client";
+
+interface ModelOption {
+  id: string;
+  label: string;
+  description: string;
+}
 
 const agentSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),
@@ -29,11 +36,24 @@ interface AgentFormProps {
   trigger: React.ReactNode;
 }
 
+const FALLBACK_MODELS: ModelOption[] = [
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", description: "Fast and affordable" },
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6", description: "Most capable" },
+  { id: "claude-haiku-4-5", label: "Claude Haiku 4.5", description: "Fastest and cheapest" },
+];
+
 export function AgentForm({ agent, trigger }: AgentFormProps) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(agent?.name ?? "");
   const [model, setModel] = useState(agent?.model ?? "claude-sonnet-4-6");
   const [description, setDescription] = useState(agent?.description ?? "");
+
+  const { data: apiModels } = useQuery<ModelOption[]>({
+    queryKey: ["models"],
+    queryFn: () => apiFetch("/api/v1/models"),
+    staleTime: 60000,
+  });
+  const models = apiModels && apiModels.length > 0 ? apiModels : FALLBACK_MODELS;
   const [systemPrompt, setSystemPrompt] = useState(agent?.system_prompt ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
@@ -101,9 +121,11 @@ export function AgentForm({ agent, trigger }: AgentFormProps) {
               onChange={(e) => { setModel(e.target.value); setErrors((p) => ({ ...p, model: "" })); }}
               className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors ${errors.model ? "border-destructive" : ""}`}
             >
-              <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (fast, affordable)</option>
-              <option value="claude-opus-4-6">Claude Opus 4.6 (most capable)</option>
-              <option value="claude-haiku-4-5">Claude Haiku 4.5 (fastest, cheapest)</option>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label} ({m.description})
+                </option>
+              ))}
             </select>
             {errors.model && <p className="text-xs text-destructive">{errors.model}</p>}
           </div>
