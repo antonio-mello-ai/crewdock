@@ -1,7 +1,8 @@
-FROM python:3.12-slim AS base
+FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install system deps + Node.js for MCP stdio servers
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     curl \
@@ -11,8 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY pyproject.toml .
 RUN pip install --no-cache-dir .
-
-FROM base AS production
 
 COPY . .
 
