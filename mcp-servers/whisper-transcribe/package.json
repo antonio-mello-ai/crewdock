@@ -1,0 +1,10 @@
+{
+  "name": "mcp-whisper-transcribe",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "openai": "^4.70.0"
+  }
+}
