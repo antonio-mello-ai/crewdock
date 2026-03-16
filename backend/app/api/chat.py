@@ -13,13 +13,12 @@ from app.core.security import verify_token
 from app.models.agent import Agent
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.activity_logger import log_activity
+from app.services.chat_history import append_message
 from app.services.cost_tracker import record_usage
+from app.services.knowledge_context import build_enhanced_prompt, get_relevant_context
 from app.services.llm_service import chat_with_llm_tracked, stream_chat_with_llm
 
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(verify_token)])
-
-# In-memory chat history per session
-_chat_histories: dict[str, list[dict[str, str]]] = {}
 
 
 @router.post("/{agent_id}", response_model=ChatResponse)
@@ -30,25 +29,29 @@ async def chat_with_agent(
 ) -> ChatResponse:
     agent = await session.get(Agent, agent_id)
     if agent is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+        )
 
     session_id = request.session_id or str(uuid.uuid4())
 
-    if session_id not in _chat_histories:
-        _chat_histories[session_id] = []
-    history = _chat_histories[session_id]
-    history.append({"role": "user", "content": request.message})
+    # Get history and add user message
+    history = await append_message(session_id, "user", request.message)
+
+    # Retrieve relevant knowledge context
+    knowledge = await get_relevant_context(request.message)
+    enhanced_prompt = build_enhanced_prompt(
+        agent.system_prompt or agent.description, knowledge
+    )
 
     llm_result = await chat_with_llm_tracked(
         model=agent.model,
-        system_prompt=agent.system_prompt or agent.description,
+        system_prompt=enhanced_prompt,
         messages=history,
     )
 
-    response_text = llm_result.text
-    history.append({"role": "assistant", "content": response_text})
-    if len(history) > 20:
-        _chat_histories[session_id] = history[-20:]
+    # Save assistant response
+    await append_message(session_id, "assistant", llm_result.text)
 
     await log_activity(
         session,
@@ -57,7 +60,6 @@ async def chat_with_agent(
         payload={"message": request.message[:100], "session_id": session_id},
     )
 
-    # Record actual token usage and cost
     if llm_result.input_tokens > 0 or llm_result.output_tokens > 0:
         await record_usage(
             session,
@@ -70,7 +72,7 @@ async def chat_with_agent(
     await session.commit()
 
     return ChatResponse(
-        response=response_text,
+        response=llm_result.text,
         session_id=session_id,
         agent_id=str(agent_id),
         agent_name=agent.name,
@@ -87,56 +89,65 @@ async def chat_stream(
     async with async_session_factory() as session:
         agent = await session.get(Agent, agent_id)
         if agent is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
-
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
+            )
         agent_name = agent.name
         agent_model = agent.model
         agent_prompt = agent.system_prompt or agent.description
 
     session_id = request.session_id or str(uuid.uuid4())
 
-    if session_id not in _chat_histories:
-        _chat_histories[session_id] = []
-    history = _chat_histories[session_id]
-    history.append({"role": "user", "content": request.message})
+    # Get history and add user message
+    history = await append_message(session_id, "user", request.message)
+
+    # Retrieve knowledge context
+    knowledge = await get_relevant_context(request.message)
+    enhanced_prompt = build_enhanced_prompt(agent_prompt, knowledge)
 
     async def event_stream() -> AsyncGenerator[str, None]:
         full_response: list[str] = []
         async for chunk in stream_chat_with_llm(
             model=agent_model,
-            system_prompt=agent_prompt,
+            system_prompt=enhanced_prompt,
             messages=history,
         ):
             full_response.append(chunk)
             yield f"data: {json.dumps({'token': chunk})}\n\n"
 
         response_text = "".join(full_response)
-        history.append({"role": "assistant", "content": response_text})
-        if len(history) > 20:
-            _chat_histories[session_id] = history[-20:]
 
-        # Log activity and estimate costs
-        async with async_session_factory() as session:
+        # Save to persistent history
+        await append_message(session_id, "assistant", response_text)
+
+        # Log activity and costs
+        async with async_session_factory() as db:
             await log_activity(
-                session,
+                db,
                 agent_id=agent_id,
                 action="chat.message",
-                payload={"message": request.message[:100], "session_id": session_id},
+                payload={
+                    "message": request.message[:100],
+                    "session_id": session_id,
+                },
             )
-            # Estimate tokens for cost tracking (streaming doesn't return usage)
-            est_in = len(request.message) // 4 + 50  # rough estimate
+            est_in = len(request.message) // 4 + 50
             est_out = len(response_text) // 4
             if est_in > 0 or est_out > 0:
                 await record_usage(
-                    session,
+                    db,
                     agent_id=agent_id,
                     model=agent_model,
                     tokens_in=est_in,
                     tokens_out=est_out,
                 )
-            await session.commit()
+            await db.commit()
 
-        done_data = {"done": True, "session_id": session_id, "agent_name": agent_name}
+        done_data = {
+            "done": True,
+            "session_id": session_id,
+            "agent_name": agent_name,
+        }
         yield f"data: {json.dumps(done_data)}\n\n"
 
     return StreamingResponse(
