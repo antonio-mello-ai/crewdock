@@ -21,6 +21,14 @@ from app.services.llm_service import chat_with_llm_tracked, stream_chat_with_llm
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(verify_token)])
 
 
+@router.get("/history/{session_id}")
+async def get_chat_history(session_id: str) -> list[dict[str, str]]:
+    """Get chat history for a session."""
+    from app.services.chat_history import get_history
+
+    return await get_history(session_id)
+
+
 @router.post("/{agent_id}", response_model=ChatResponse)
 async def chat_with_agent(
     agent_id: uuid.UUID,

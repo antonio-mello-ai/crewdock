@@ -13,6 +13,9 @@ from app.services.activity_logger import log_activity
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(verify_token)])
 
 
+_background_tasks: set[object] = set()
+
+
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks(
     agent_id: uuid.UUID | None = Query(default=None),
@@ -90,6 +93,28 @@ async def update_task(
     await session.commit()
     await session.refresh(task)
     return task
+
+
+@router.post("/{task_id}/run")
+async def run_task_now(
+    task_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """Execute a task immediately via the assigned agent's LLM."""
+    task = await session.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+
+    import asyncio
+
+    from app.services.scheduler import execute_task
+
+    # Keep reference to prevent GC
+    task_ref = asyncio.create_task(execute_task(str(task_id)))
+    _background_tasks.add(task_ref)
+    task_ref.add_done_callback(_background_tasks.discard)
+
+    return {"status": "started", "task_id": str(task_id)}
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

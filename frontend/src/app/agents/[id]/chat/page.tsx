@@ -10,6 +10,7 @@ import { getToken } from "@/lib/auth";
 import type { Agent } from "@/lib/api/types";
 import Link from "next/link";
 import { Send, ArrowLeft, MessageSquare } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -33,6 +34,31 @@ export default function AgentChatPage({
     queryKey: ["agent", id],
     queryFn: () => apiFetch(`/api/v1/agents/${id}`),
   });
+
+  // Load previous session if available
+  useEffect(() => {
+    const savedSession = sessionStorage.getItem(`chat_session_${id}`);
+    if (!savedSession) return;
+    setSessionId(savedSession);
+    const token = getToken() || process.env.NEXT_PUBLIC_API_TOKEN || "";
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    fetch(`${apiUrl}/api/v1/chat/history/${savedSession}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((history: { role: string; content: string }[]) => {
+        if (Array.isArray(history) && history.length > 0) {
+          setMessages(
+            history.map((m) => ({
+              role: m.role as "user" | "assistant",
+              content: m.content,
+              timestamp: new Date(),
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,6 +130,7 @@ export default function AgentChatPage({
             }
             if (data.done && data.session_id) {
               setSessionId(data.session_id);
+              sessionStorage.setItem(`chat_session_${id}`, data.session_id);
             }
           } catch {
             // ignore parse errors
@@ -175,7 +202,13 @@ export default function AgentChatPage({
                   : "bg-muted"
               }`}
             >
-              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              {msg.role === "assistant" ? (
+                <div className="text-sm prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+              )}
               {msg.content && (
                 <p className="text-xs opacity-50 mt-1">
                   {msg.timestamp.toLocaleTimeString()}

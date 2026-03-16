@@ -18,8 +18,9 @@ import type { Task, TaskStatus } from "@/lib/api/types";
 import { useAgents, useTasks } from "@/hooks/use-api";
 import { TaskForm } from "@/components/forms/task-form";
 import { DeleteConfirm } from "@/components/forms/delete-confirm";
-import { deleteTask, updateTask } from "@/lib/api/mutations";
+import { deleteTask, runTask, updateTask } from "@/lib/api/mutations";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 const COLUMNS: { status: TaskStatus; label: string; color: string }[] = [
   { status: "scheduled", label: "Scheduled", color: "bg-slate-100 dark:bg-slate-900" },
@@ -40,10 +41,12 @@ function DraggableTaskCard({
   task,
   agents,
   onDelete,
+  onRun,
 }: {
   task: Task;
   agents: { id: string; name: string }[];
   onDelete: (id: string) => void;
+  onRun: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
@@ -81,7 +84,16 @@ function DraggableTaskCard({
               </Badge>
             )}
           </div>
-          <div className="mt-2">
+          <div className="mt-2 flex gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => onRun(task.id)}
+            >
+              Run Now
+            </Button>
             <DeleteConfirm
               title={`Delete "${task.title}"?`}
               description="This task will be permanently deleted."
@@ -178,6 +190,18 @@ export default function TasksPage() {
     },
   });
 
+  const runMutation = useMutation({
+    mutationFn: runTask,
+    onSuccess: () => {
+      toast.success("Task started");
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["activity"] });
+    },
+    onError: () => {
+      toast.error("Failed to run task");
+    },
+  });
+
   function handleDragStart(event: DragStartEvent) {
     const task = event.active.data.current?.task as Task | undefined;
     setActiveTask(task ?? null);
@@ -241,6 +265,7 @@ export default function TasksPage() {
                       task={task}
                       agents={agents}
                       onDelete={(id) => deleteMutation.mutate(id)}
+                      onRun={(id) => runMutation.mutate(id)}
                     />
                   ))}
                 </DroppableColumn>

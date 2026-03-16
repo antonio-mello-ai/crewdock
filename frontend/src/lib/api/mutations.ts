@@ -59,6 +59,10 @@ export async function updateTask(
   });
 }
 
+export async function runTask(id: string): Promise<{ status: string }> {
+  return apiFetch(`/api/v1/tasks/${id}/run`, { method: "POST" });
+}
+
 export async function deleteTask(id: string): Promise<void> {
   await apiFetch(`/api/v1/tasks/${id}`, { method: "DELETE" });
 }

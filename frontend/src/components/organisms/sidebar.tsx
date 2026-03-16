@@ -24,7 +24,10 @@ import {
   Menu,
   Sparkles,
   Anchor,
+  LogOut,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { clearAuth, isAuthenticated } from "@/lib/auth";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -37,6 +40,21 @@ const navigation = [
   { name: "Skills", href: "/skills", icon: Zap },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
+
+function LogoutButton() {
+  const router = useRouter();
+  const hasAuth = isAuthenticated();
+  if (!hasAuth) return null;
+  return (
+    <button
+      onClick={() => { clearAuth(); router.push("/login"); }}
+      className="text-muted-foreground hover:text-foreground transition"
+      title="Sign out"
+    >
+      <LogOut className="h-3.5 w-3.5" />
+    </button>
+  );
+}
 
 function NavLinks({
   pathname,
@@ -111,8 +129,9 @@ export function Sidebar() {
           <ThemeToggle />
         </div>
         <NavLinks pathname={pathname} />
-        <div className="border-t p-3">
+        <div className="border-t p-3 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">v1.1.0</p>
+          <LogoutButton />
         </div>
       </aside>
 
