@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "CrewDock"
-    app_version: str = "1.2.3"
+    app_version: str = "1.3.0"
     debug: bool = False
     cors_origins: str = "http://localhost:3001"
 
@@ -44,6 +44,10 @@ class Settings(BaseSettings):
 
     # Anthropic API
     anthropic_api_key: str = ""
+
+    # Telegram Bot
+    telegram_bot_token: str = ""
+    telegram_default_agent: str = "Atlas"  # Agent name for unrouted messages
 
     # Costs (per 1M tokens)
     anthropic_pricing_opus_input: float = 15.0

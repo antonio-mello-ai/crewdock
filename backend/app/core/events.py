@@ -10,6 +10,7 @@ from app.plugins.loader import plugin_loader
 from app.services.gateway.openclaw import OpenClawGateway
 from app.services.gateway.registry import gateway_registry
 from app.services.scheduler import load_scheduled_tasks, start_scheduler, stop_scheduler
+from app.services.telegram_bot import start_telegram_bot, stop_telegram_bot
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +31,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     start_scheduler()
     await load_scheduled_tasks()
 
+    # Startup — Telegram Bot
+    await start_telegram_bot()
+
     yield
 
     # Shutdown
+    await stop_telegram_bot()
     stop_scheduler()
     await plugin_loader.unload_all()
     await openclaw.disconnect()
