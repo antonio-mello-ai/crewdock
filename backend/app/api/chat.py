@@ -125,17 +125,35 @@ async def chat_stream(
     knowledge = await get_relevant_context(request.message)
     enhanced_prompt = build_enhanced_prompt(agent_prompt, knowledge)
 
-    async def event_stream() -> AsyncGenerator[str, None]:
-        full_response: list[str] = []
-        async for chunk in stream_chat_with_llm(
-            model=agent_model,
-            system_prompt=enhanced_prompt,
-            messages=history,
-        ):
-            full_response.append(chunk)
-            yield f"data: {json.dumps({'token': chunk})}\n\n"
+    # Check if MCP tools are available
+    async with async_session_factory() as db_check:
+        mcp_servers = await get_enabled_servers(db_check)
+    has_tools = len(mcp_servers) > 0
 
-        response_text = "".join(full_response)
+    async def event_stream() -> AsyncGenerator[str, None]:
+        if has_tools:
+            # Use non-streaming with tool support
+            async with async_session_factory() as tool_db:
+                llm_result = await chat_with_tools(
+                    db=tool_db,
+                    model=agent_model,
+                    system_prompt=enhanced_prompt,
+                    messages=history,
+                )
+            # Send the full response as a single chunk
+            yield f"data: {json.dumps({'token': llm_result.text})}\n\n"
+            response_text = llm_result.text
+        else:
+            # Stream normally
+            full_response: list[str] = []
+            async for chunk in stream_chat_with_llm(
+                model=agent_model,
+                system_prompt=enhanced_prompt,
+                messages=history,
+            ):
+                full_response.append(chunk)
+                yield f"data: {json.dumps({'token': chunk})}\n\n"
+            response_text = "".join(full_response)
 
         # Save to persistent history
         await append_message(session_id, "assistant", response_text)
