@@ -13,8 +13,9 @@ Plataforma open-source para orquestrar, monitorar e gerenciar múltiplos agentes
 - **API Client**: Orval (auto-gerado do OpenAPI spec do FastAPI)
 - **Database**: PostgreSQL 16 + Redis 7
 - **Gateway**: WebSocket RPC (compatível OpenClaw)
-- **Auth**: Bearer token (local mode)
-- **Deploy**: Docker Compose na GCP VM (e2-standard-4)
+- **LLM**: Anthropic API (Claude Opus/Sonnet) via `anthropic` SDK
+- **Auth**: JWT + Bearer token (backwards compatible)
+- **Deploy**: Docker Compose on home server VM (Proxmox)
 
 ## Estrutura do Projeto
 

@@ -1,104 +1,96 @@
 # CrewDock — Roadmap
 
-**Atualizado**: 15 Mar 2026 | **Versão atual**: v0.2.0
+**Atualizado**: 15 Mar 2026 | **Versão atual**: v1.1.0
 
-### Versioning
+### Release History
 
-| Versão | Marco | Status |
-|--------|-------|--------|
-| v0.1.0 | Fundação — backend, frontend, deploy | Lançado 14/Mar |
-| **v0.2.0** | **CRUD, chat, DnD, dark mode, QMD, public repo** | **Lançado 15/Mar** |
-| v0.3.0 | Agent templates, skills, integrações MCP | P1 |
-| v0.4.0 | Scheduler, CI/CD, testes de integração | P2 |
-| v1.0.0 | Auth real, multi-tenant, CrewDock Cloud | P3 |
-
----
-
-## Concluído (v0.2.0)
-
-- [x] Agent chat interface — conversar com agentes pelo dashboard
-- [x] Drag-and-drop Kanban — mover tasks entre colunas
-- [x] Frontend CRUD — criar, editar, deletar agents e tasks
-- [x] Dark mode + mobile responsive
-- [x] Knowledge search funcional (QMD REST wrapper)
-- [x] Cost tracking e Activity feed conectados à API
-- [x] Landing page crewdock.ai
-- [x] Clean install testado em VM virgem
-- [x] Repo público com README, screenshots, CHANGELOG
-
-## Concluído (v0.1.0)
-
-- [x] Backend: 22 API endpoints, 8 models, 14 testes, mypy strict
-- [x] Frontend: 9 páginas placeholder
-- [x] Deploy: Docker Compose, Cloudflare Tunnel, clean install testado
-- [x] Knowledge: QMD integrado com REST wrapper (177 docs, 801 embeddings)
-- [x] OpenClaw: 4 agentes configurados com IDENTITY.md
-- [x] Open source: repo público, MIT license, README com screenshots
-- [x] Landing page: crewdock.ai via Cloudflare Pages
+| Versão | Marco | Data |
+|--------|-------|------|
+| v0.1.0 | Fundação — backend, frontend, deploy | 14/Mar |
+| v0.2.0 | CRUD, chat stub, dark mode, public repo | 15/Mar |
+| v0.3.0 | Design system, UI polish | 15/Mar |
+| v0.4.0 | Agent templates, toasts | 15/Mar |
+| v0.5.0 | Task scheduler, Redis SSE, webhooks | 15/Mar |
+| v0.6.0 | Gateway adapter, CI/CD | 15/Mar |
+| v0.7.0 | Form validation, error handling | 15/Mar |
+| v0.8.0 | JWT auth, login page | 15/Mar |
+| v0.9.0 | Multi-tenant foundation | 15/Mar |
+| v1.0.0 | Stable release | 15/Mar |
+| **v1.1.0** | **Real AI agents, knowledge context, streaming** | **15/Mar** |
 
 ---
 
-## P0 — Demo-Ready (próximas 2 semanas)
+## Concluído
 
-O que falta para um demo convincente e lançamento público.
+### v1.1.0 — Real AI Agents
+- [x] LLM chat via Anthropic API with system prompts
+- [x] Streaming responses (SSE token-by-token)
+- [x] Knowledge-aware agents (QMD context injection)
+- [x] Persistent chat history (Redis + in-memory fallback)
+- [x] Real cost tracking (actual token usage)
+- [x] Real task execution (scheduler sends to LLM)
+- [x] Onboarding flow for new users
+- [x] Auth guard with redirect to login
 
-- [ ] **Agent chat interface** — conversar com um agente pelo dashboard via gateway. É o "wow moment" que transforma um CRUD em uma plataforma de AI agents
-- [ ] **Demo video** — 3 minutos mostrando: criar agente, criar task, chat com agente, ver atividade
-- [ ] **Drag-and-drop no Kanban** — mover tasks entre colunas (@dnd-kit já instalado)
+### v1.0.0 — Platform
+- [x] JWT authentication with setup flow
+- [x] Multi-tenant foundation (workspace model, agent ownership)
+- [x] 10 agent templates across 6 categories
+- [x] Design system with branded theme
+- [x] CI/CD via GitHub Actions
+- [x] Clean install tested on fresh VM
 
-## P1 — Diferenciação vs Sintra (próximo mês)
-
-Features que constroem o diferencial competitivo.
-
-- [ ] **Agent templates** — gallery de agentes pré-configurados ("SEO Specialist", "Content Writer", "Dev Assistant") instaláveis com 1 click
-- [ ] **Skills com conteúdo real** — pelo menos 3 skills funcionais (web search, email draft, SEO audit)
-- [ ] **Integrações via MCP** — Gmail, Calendar, Notion como MCP tools acessíveis pelos agentes
-- [ ] **Shared context** — agentes compartilham knowledge base (diferencial principal vs Sintra)
-- [ ] **OpenClaw WebSocket adapter** — conexão real ao gateway para status live dos agentes
-
-## P2 — Produção (mês 2)
-
-Robustez para uso real diário.
-
-- [ ] **Task scheduler** — APScheduler executando crons de verdade (morning briefing, infra health)
-- [ ] **Redis pub/sub no SSE** — substituir event bus in-memory por Redis para persistência
-- [ ] **Webhook dispatcher** — worker RQ que envia webhooks nos eventos
-- [ ] **CI/CD** — GitHub Actions (ruff, mypy, pytest, npm build, lint)
-- [ ] **Testes de integração** — pytest com DB real (test database)
-- [ ] **Approval workflow no frontend** — aprovar/rejeitar pelo dashboard
-- [ ] **Skills e Settings pages** — conectar à API (ainda usam placeholder)
-
-## P3 — Produto (mês 3)
-
-Transição de open source para open source + produto.
-
-- [ ] **CrewDock Cloud** — versão hosted (sign up → dashboard em 30 segundos)
-- [ ] **Auth real** — login com email/password ou OAuth (substituir bearer token)
-- [ ] **Multi-tenant** — cada usuário tem agentes isolados
-- [ ] **Billing** — Stripe integration para planos pagos
-- [ ] **Orval** — gerar API client tipado do OpenAPI spec
-
-## P4 — Expansão
-
-- [ ] **HA Voice** — Wake Word → STT (Whisper) → agent → TTS (Piper)
-- [ ] **Built-in plugins** — Home Assistant, Telegram digest
-- [ ] **Mobile app** — React Native ou PWA
-- [ ] **Marketplace** — community plugins e agent templates
+### Earlier (v0.1.0 — v0.9.0)
+- [x] 29 API endpoints across 15 routers
+- [x] 11 database models with Alembic migrations
+- [x] 11+ frontend pages with CRUD
+- [x] Drag-and-drop Kanban board
+- [x] Task scheduler (APScheduler)
+- [x] Redis SSE with fallback
+- [x] Webhook dispatcher (HMAC-signed)
+- [x] Plugin system with lifecycle
+- [x] Gateway-agnostic adapter
+- [x] Docker Compose deployment
+- [x] Landing page at crewdock.ai
 
 ---
 
-## Estratégia de Lançamento
+## Next Up
 
-1. README com screenshots (feito)
-2. LinkedIn post — perfil de executivo que constrói
-3. Show HN — quando tiver demo video + agent chat
-4. Awesome lists PRs — awesome-ai-agents, awesome-llm-tools
-5. Product Hunt — quando v0.2 com templates e skills
-6. Dev.to article — "I built an open-source alternative to Sintra.ai"
+### v1.2.0 — Tools & Actions
+- [ ] MCP tool integration (Gmail, Calendar, Notion)
+- [ ] Web search tool for agents
+- [ ] File read/write capabilities
+- [ ] Agent-to-agent communication
+
+### v1.3.0 — Polish & Scale
+- [ ] Collapsible sidebar
+- [ ] User profile page with settings
+- [ ] More agent templates (15+)
+- [ ] Integration tests with real DB
+- [ ] Demo video for README and crewdock.ai
+
+### v2.0.0 — CrewDock Cloud
+- [ ] Hosted version (sign up → dashboard in 30 seconds)
+- [ ] Stripe billing integration
+- [ ] Full multi-tenant data isolation
+- [ ] Custom domains per workspace
 
 ---
 
-## Referências
+## Strategic Direction
 
-- **Benchmark**: [docs/benchmark-sintra.md](benchmark-sintra.md) — análise completa do Sintra.ai
+**Model**: Open source + product (GitLab, Supabase, n8n model)
+- **CrewDock OSS** — core platform, self-hosted, free
+- **CrewDock Cloud** — hosted version, $29-99/month
+- **Enterprise** — SSO, audit logs, SLA
+
+**Benchmark**: [docs/benchmark-sintra.md](benchmark-sintra.md)
+
+---
+
+## References
+
 - **Known Issues**: [docs/known-issues.md](known-issues.md)
+- **Changelog**: [CHANGELOG.md](../CHANGELOG.md)
+- **Contributing**: [CONTRIBUTING.md](../CONTRIBUTING.md)
