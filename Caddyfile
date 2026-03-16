@@ -1,4 +1,4 @@
-# Production: ai.felhen.ai via Cloudflare Tunnel (no TLS needed, tunnel handles it)
+# Production: reverse proxy behind Cloudflare Tunnel (no TLS needed, tunnel handles it)
 :80 {
     # API
     handle /api/* {

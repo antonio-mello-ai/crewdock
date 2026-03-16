@@ -129,8 +129,7 @@ export default function SettingsPage() {
                   <Badge variant="default" className="text-xs">Active</Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Agents automatically search the knowledge base before responding. Documents are indexed from your Nextcloud-synced files.
-                  Configured via <code className="text-xs bg-muted px-1 py-0.5 rounded">QMD_BASE_URL</code> in <code className="text-xs bg-muted px-1 py-0.5 rounded">.env</code>.
+                  Agents automatically search the knowledge base before responding. Connect your document index via <code className="text-xs bg-muted px-1 py-0.5 rounded">QMD_BASE_URL</code> in <code className="text-xs bg-muted px-1 py-0.5 rounded">.env</code>.
                 </p>
               </div>
             </div>

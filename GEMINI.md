@@ -133,7 +133,7 @@ LOCAL_AUTH_TOKEN=         # min 50 chars
 GATEWAY_URL=ws://localhost:18789
 GATEWAY_AUTH_TOKEN=
 
-# QMD (runs locally on VM 160 alongside CrewDock)
+# QMD (runs locally alongside CrewDock)
 QMD_BASE_URL=http://localhost:8787
 
 # Costs
@@ -143,13 +143,11 @@ ANTHROPIC_PRICING_SONNET_INPUT=3.0
 ANTHROPIC_PRICING_SONNET_OUTPUT=15.0
 ```
 
-## Deploy (GCP VM)
+## Deploy
 
-- VM: `openclaw-gateway` (e2-standard-4, 4 vCPU, 16GB RAM)
-- Acesso: `ssh openclaw-gateway`
 - Dashboard: `your-domain.com` via Cloudflare Tunnel
-- Grafana: `grafana.your-domain.com` (já configurado)
-- API: interno via Tailscale (não expor publicamente)
+- API: internal network (do not expose publicly)
+- See `compose.yml` for full service configuration
 
 ## Decisões Arquiteturais
 

@@ -26,7 +26,8 @@ def run_qmd(*args: str) -> str:
         cmd.extend(["--index", QMD_INDEX])
     cmd.extend(args)
     env = os.environ.copy()
-    env["PATH"] = "/home/amello/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+    home = os.environ.get("HOME", "/root")
+    env["PATH"] = f"{home}/.bun/bin:/usr/local/bin:/usr/bin:/bin"
     result = subprocess.run(
         cmd,
         capture_output=True,

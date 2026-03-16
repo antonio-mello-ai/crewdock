@@ -300,12 +300,12 @@ Estimativa de uso:
 
 Margem confortável para spikes de agentes e crescimento.
 
-### 5.2 QMD — VM 160 (ai-platform)
+### 5.2 QMD — Knowledge Base
 
-QMD roda na mesma VM 160 que o CrewDock, indexando docs da felhencloud:
-- Endereço: `http://localhost:8787` (co-located com o backend)
-- **Uma fonte de verdade**: docs sincronizados via Nextcloud, QMD indexa localmente
-- Zero rsync, zero cópia
+QMD runs alongside CrewDock, indexing markdown documents:
+- Address: `http://localhost:8787` (co-located with backend)
+- **Single source of truth**: docs synced to server, QMD indexes locally
+- Zero duplication
 
 ### 5.3 Rede e Acesso
 

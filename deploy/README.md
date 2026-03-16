@@ -1,56 +1,48 @@
-# Deploy — AI Platform
+# Deploy — CrewDock
 
 ## Prerequisites
 
-- Proxmox host accessible via `ssh proxmox`
-- Debian 12 template available on Proxmox
-- Cloudflare account with your-domain.com domain
+- Linux server (VM or bare metal) with Docker installed
+- Domain configured (e.g. via Cloudflare Tunnel)
 
 ## Steps
 
-### 1. Create CT on Proxmox host
+### 1. Setup server
 
 ```bash
-ssh proxmox
-bash /path/to/01-create-vm.sh
-```
+# Install Docker
+curl -fsSL https://get.docker.com | sh
 
-Creates CT 160 (`crewdock`) with 4 cores, 8GB RAM, 50GB SSD.
-
-### 2. Setup CT environment
-
-```bash
-pct enter 160
-# or: ssh crewdock (after Tailscale)
-bash /path/to/02-setup.sh
-```
-
-Installs Docker, Tailscale, creates `/opt/crewdock/`.
-
-### 3. Deploy application
-
-```bash
+# Clone the repo
+git clone https://github.com/antonio-mello-ai/crewdock.git /opt/crewdock
 cd /opt/crewdock
-# Copy project files or git clone
-cp .env.example .env
-# Edit .env with real values (DB password, auth token, etc.)
-bash deploy/03-deploy.sh
 ```
 
-Builds images, starts containers, runs migrations.
-
-### 4. Configure Cloudflare Tunnel
+### 2. Configure environment
 
 ```bash
-bash deploy/04-cloudflare-tunnel.sh
+cp .env.example .env
+# Edit .env with real values:
+# - DB_PASSWORD
+# - LOCAL_AUTH_TOKEN (min 50 chars)
+# - ANTHROPIC_API_KEY
 ```
 
-Exposes `your-domain.com` → Caddy → Backend/Frontend.
+### 3. Deploy
+
+```bash
+docker compose up -d
+docker compose exec backend alembic upgrade head
+```
+
+### 4. Configure domain (optional)
+
+Set up a Cloudflare Tunnel or nginx reverse proxy pointing to port 80.
 
 ## Architecture
 
 ```
-your-domain.com (Cloudflare Tunnel)
+your-domain.com (Cloudflare Tunnel / Nginx)
   → Caddy (:80)
     → /api/*  → Backend (:8001)
     → /*      → Frontend (:3000)

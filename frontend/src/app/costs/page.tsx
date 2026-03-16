@@ -70,13 +70,13 @@ export default function CostsPage() {
   for (const c of filteredCosts) {
     const key = c.agent_id;
     if (!agentCosts[key]) agentCosts[key] = { cost: 0, tokens: 0 };
-    agentCosts[key].cost += c.cost_usd;
-    agentCosts[key].tokens += c.tokens_in + c.tokens_out;
+    agentCosts[key].cost += Number(c.cost_usd) || 0;
+    agentCosts[key].tokens += (Number(c.tokens_in) || 0) + (Number(c.tokens_out) || 0);
   }
 
   const chartData = Object.entries(agentCosts).map(([agentId, data]) => ({
     name: agentMap[agentId] || agentId.slice(0, 8),
-    cost: Number(data.cost.toFixed(4)),
+    cost: Number(Number(data.cost).toFixed(4)),
     tokens: data.tokens,
     fill: AGENT_CHART_COLORS[(agentIndex[agentId] ?? 0) % AGENT_CHART_COLORS.length],
   }));
