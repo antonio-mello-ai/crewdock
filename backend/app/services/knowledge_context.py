@@ -8,41 +8,60 @@ from app.services.qmd_client import qmd_client
 logger = logging.getLogger(__name__)
 
 
-async def get_relevant_context(query: str, max_results: int = 3) -> str | None:
-    """Search the knowledge base and return relevant context for the LLM.
+async def get_relevant_context(query: str, max_results: int = 5) -> str | None:
+    """Search the knowledge base using keyword + vector search.
 
-    Returns a formatted string of relevant document snippets,
-    or None if QMD is not configured or no results found.
+    Combines both methods for better coverage — keyword for exact matches,
+    vector for semantic similarity.
     """
     if not settings.qmd_base_url:
         return None
 
     try:
-        data = await qmd_client.search(query=query, limit=max_results)
-        results = data.get("results", [])
+        # Run both searches for better coverage
+        keyword_data = await qmd_client.search(query=query, limit=max_results)
+        keyword_results = keyword_data.get("results", [])
 
-        if not results:
+        vector_results: list[dict[str, object]] = []
+        try:
+            vector_data = await qmd_client.vector_search(
+                query=query, limit=max_results, min_score=0.3
+            )
+            vector_results = vector_data.get("results", [])
+        except Exception:
+            pass  # Vector search is optional
+
+        # Merge and deduplicate by file
+        seen_files: set[str] = set()
+        merged: list[dict[str, object]] = []
+        for result in keyword_results + vector_results:
+            file = str(result.get("file", ""))
+            if file not in seen_files:
+                seen_files.add(file)
+                merged.append(result)
+
+        if not merged:
             return None
 
         context_parts: list[str] = []
-        for result in results[:max_results]:
-            title = result.get("title", "")
-            snippet = result.get("snippet", "")
-            file = result.get("file", "")
+        for result in merged[:max_results]:
+            title = str(result.get("title", ""))
+            snippet = str(result.get("snippet", ""))
+            file = str(result.get("file", ""))
 
             # Clean up the snippet
-            clean_snippet = snippet
-            if clean_snippet.startswith("@@ "):
-                # Remove the diff-style header
-                lines = clean_snippet.split("\n", 1)
-                clean_snippet = lines[1] if len(lines) > 1 else clean_snippet
+            if snippet.startswith("@@ "):
+                lines = snippet.split("\n", 1)
+                snippet = lines[1] if len(lines) > 1 else snippet
 
-            context_parts.append(f"### {title}\nSource: {file}\n{clean_snippet}\n")
+            context_parts.append(f"### {title}\nSource: {file}\n{snippet}\n")
 
         return (
-            "## Relevant Knowledge Base Context\n\n"
-            "Use the following information from the knowledge base to inform your response. "
-            "Reference specific documents when relevant.\n\n" + "\n---\n".join(context_parts)
+            "## Knowledge Base Context\n\n"
+            "IMPORTANT: The following information comes from the user's private "
+            "knowledge base. Use it to answer the question. If the information "
+            "is relevant, reference it directly. Do NOT say you don't have "
+            "information if context is provided below.\n\n" + "\n---\n".join(context_parts)
         )
     except Exception as e:
         logger.warning("Knowledge context retrieval failed: %s", e)
