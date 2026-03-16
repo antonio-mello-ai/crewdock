@@ -24,7 +24,7 @@ def test_openapi_all_routers_registered() -> None:
     assert "/api/v1/knowledge/search" in paths
     assert "/api/v1/knowledge/vector_search" in paths
     assert "/api/v1/knowledge/deep_search" in paths
-    assert "/api/v1/knowledge/doc/{doc_id}" in paths
+    assert "/api/v1/knowledge/doc/{doc_path}" in paths
     assert "/api/v1/events" in paths
 
 

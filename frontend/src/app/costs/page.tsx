@@ -4,12 +4,14 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   BarChart,
   Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { AGENT_CHART_COLORS } from "@/lib/agent-colors";
 import { useCosts, useCostSummary, useAgents } from "@/hooks/use-api";
 import { DollarSign, Coins, Hash, TrendingUp } from "lucide-react";
 
@@ -46,10 +48,13 @@ export default function CostsPage() {
 
   const agentMap = Object.fromEntries(agents.map((a) => [a.id, a.name]));
 
+  const agentIndex = Object.fromEntries(agents.map((a, i) => [a.id, i]));
+
   const chartData = summary.map((s) => ({
     name: agentMap[s.agent_id] || s.agent_id.slice(0, 8),
     cost: Number(s.total_cost_usd),
     tokens: s.total_tokens_in + s.total_tokens_out,
+    fill: AGENT_CHART_COLORS[(agentIndex[s.agent_id] ?? 0) % AGENT_CHART_COLORS.length],
   }));
 
   const totalCost = summary.reduce((s, d) => s + Number(d.total_cost_usd), 0);
@@ -95,7 +100,11 @@ export default function CostsPage() {
                     color: "hsl(var(--foreground))",
                   }}
                 />
-                <Bar dataKey="cost" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="cost" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.fill} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

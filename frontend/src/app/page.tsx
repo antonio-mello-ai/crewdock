@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/atoms/page-header";
 import { StatCard } from "@/components/atoms/stat-card";
 import { SectionLabel } from "@/components/atoms/section-label";
 import { OnboardingWelcome } from "@/components/onboarding";
-import { AGENT_COLORS, statusDotColor } from "@/lib/agent-colors";
+import { AGENT_COLORS, agentReadyDot } from "@/lib/agent-colors";
 import {
   Bot,
   ListTodo,
@@ -39,7 +39,7 @@ function AgentCard({ agent, index }: { agent: Agent; index: number }) {
                 <p className="font-semibold truncate">{agent.name}</p>
                 <div className="flex items-center gap-1.5">
                   <div
-                    className={`h-2 w-2 rounded-full ${statusDotColor(agent.status)}`}
+                    className={`h-2 w-2 rounded-full ${agentReadyDot(agent)}`}
                   />
                   <span className="text-xs text-muted-foreground">
                     {agent.status}

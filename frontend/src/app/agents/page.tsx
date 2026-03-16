@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import type { Agent, AgentStatus } from "@/lib/api/types";
+import type { Agent } from "@/lib/api/types";
 import { useAgents } from "@/hooks/use-api";
 import { AgentForm } from "@/components/forms/agent-form";
 import { DeleteConfirm } from "@/components/forms/delete-confirm";
@@ -11,28 +11,7 @@ import { deleteAgent } from "@/lib/api/mutations";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Bot, MessageSquare, Pencil, Trash2, Plus } from "lucide-react";
-
-const AGENT_COLORS = [
-  "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-  "bg-orange-500/10 text-orange-500 border-orange-500/20",
-  "bg-pink-500/10 text-pink-500 border-pink-500/20",
-  "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
-];
-
-function statusColor(status: AgentStatus): string {
-  switch (status) {
-    case "online":
-      return "bg-emerald-500";
-    case "busy":
-      return "bg-yellow-500";
-    case "error":
-      return "bg-red-500";
-    default:
-      return "bg-slate-400";
-  }
-}
+import { AGENT_COLORS, agentReadyDot, agentReadyLabel } from "@/lib/agent-colors";
 
 function AgentCard({ agent, index, onDelete }: { agent: Agent; index: number; onDelete: () => void }) {
   const colorClass = AGENT_COLORS[index % AGENT_COLORS.length];
@@ -47,8 +26,8 @@ function AgentCard({ agent, index, onDelete }: { agent: Agent; index: number; on
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-base truncate">{agent.name}</h3>
               <div className="flex items-center gap-1.5">
-                <div className={`h-2 w-2 rounded-full ${statusColor(agent.status)}`} />
-                <span className="text-xs text-muted-foreground">{agent.status}</span>
+                <div className={`h-2 w-2 rounded-full ${agentReadyDot(agent)}`} />
+                <span className="text-xs text-muted-foreground">{agentReadyLabel(agent)}</span>
               </div>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">{agent.model}</p>

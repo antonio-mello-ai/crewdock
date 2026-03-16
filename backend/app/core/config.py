@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # App
     app_name: str = "CrewDock"
-    app_version: str = "1.2.0"
+    app_version: str = "1.2.1"
     debug: bool = False
     cors_origins: str = "http://localhost:3001"
 

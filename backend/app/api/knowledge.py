@@ -79,11 +79,11 @@ async def deep_search(request: SearchRequest) -> SearchResponse:
         ) from e
 
 
-@router.get("/doc/{doc_id}", response_model=DocumentResponse)
-async def get_document(doc_id: str) -> DocumentResponse:
+@router.get("/doc/{doc_path:path}", response_model=DocumentResponse)
+async def get_document(doc_path: str) -> DocumentResponse:
     _check_qmd_configured()
     try:
-        data = await qmd_client.get(f"#{doc_id}")
+        data = await qmd_client.get(doc_path)
         return DocumentResponse(
             file=data.get("file", ""),
             content=data.get("content", ""),

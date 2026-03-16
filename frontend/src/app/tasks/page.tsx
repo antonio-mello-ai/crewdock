@@ -14,7 +14,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Task, TaskStatus } from "@/lib/api/types";
+import type { Agent, Task, TaskStatus } from "@/lib/api/types";
 import { useAgents, useTasks } from "@/hooks/use-api";
 import { TaskForm } from "@/components/forms/task-form";
 import { DeleteConfirm } from "@/components/forms/delete-confirm";
@@ -44,7 +44,7 @@ function DraggableTaskCard({
   onRun,
 }: {
   task: Task;
-  agents: { id: string; name: string }[];
+  agents: Agent[];
   onDelete: (id: string) => void;
   onRun: (id: string) => void;
 }) {
@@ -94,6 +94,17 @@ function DraggableTaskCard({
             >
               Run Now
             </Button>
+            <div onPointerDown={(e) => e.stopPropagation()}>
+              <TaskForm
+                task={task}
+                agents={agents}
+                trigger={
+                  <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+                    Edit
+                  </Button>
+                }
+              />
+            </div>
             <DeleteConfirm
               title={`Delete "${task.title}"?`}
               description="This task will be permanently deleted."

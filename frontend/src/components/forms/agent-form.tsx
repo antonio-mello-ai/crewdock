@@ -95,13 +95,16 @@ export function AgentForm({ agent, trigger }: AgentFormProps) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="model">Model</Label>
-            <Input
+            <select
               id="model"
               value={model}
               onChange={(e) => { setModel(e.target.value); setErrors((p) => ({ ...p, model: "" })); }}
-              placeholder="e.g. claude-sonnet-4-6"
-              className={errors.model ? "border-destructive" : ""}
-            />
+              className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors ${errors.model ? "border-destructive" : ""}`}
+            >
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (fast, affordable)</option>
+              <option value="claude-opus-4-6">Claude Opus 4.6 (most capable)</option>
+              <option value="claude-haiku-4-5">Claude Haiku 4.5 (fastest, cheapest)</option>
+            </select>
             {errors.model && <p className="text-xs text-destructive">{errors.model}</p>}
           </div>
           <div className="space-y-2">
