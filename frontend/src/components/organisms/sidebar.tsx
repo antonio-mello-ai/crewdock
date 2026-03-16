@@ -43,13 +43,13 @@ const navigation = [
 
 function LogoutButton() {
   const router = useRouter();
-  const hasAuth = isAuthenticated();
-  if (!hasAuth) return null;
+  const hasJwt = isAuthenticated();
+  // Always show — clears JWT if present, redirects to login
   return (
     <button
       onClick={() => { clearAuth(); router.push("/login"); }}
       className="text-muted-foreground hover:text-foreground transition"
-      title="Sign out"
+      title={hasJwt ? "Sign out" : "Switch to login"}
     >
       <LogOut className="h-3.5 w-3.5" />
     </button>
