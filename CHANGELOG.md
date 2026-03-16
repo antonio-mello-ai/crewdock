@@ -8,6 +8,31 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ---
 
 
+## [1.3.1] - 2026-03-16
+
+### Fixed
+- Telegram bot handles agent names with spaces (converts to underscores)
+- Single uvicorn worker for Telegram polling compatibility
+- Knowledge context uses keyword + vector search for better coverage
+- Stronger LLM instruction to use provided context
+- Security audit: removed all personal infrastructure references
+- Cost page toFixed error with string values
+- Gateway status shows "Not in use" instead of misleading "Connected"
+
+### Added
+- Knowledge Base section in Settings page
+- Cost period filter (Today, 7d, 30d, All)
+- 6 GitHub Issues created from known-issues.md
+- Strategic docs removed from public repo
+
+## [1.3.0] - 2026-03-16
+
+### Added
+- **Telegram bot** — chat with agents via Telegram
+- Commands: /atlas, /bernard, /nexus, /pulse, /agents, /help
+- Plain messages route to default agent (configurable)
+- Full knowledge context and MCP tools in Telegram chats
+
 ## [1.2.0] - 2026-03-16
 
 ### Added
