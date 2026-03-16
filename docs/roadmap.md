@@ -85,12 +85,10 @@
 - **CrewDock Cloud** — hosted version, $29-99/month
 - **Enterprise** — SSO, audit logs, SLA
 
-**Benchmark**: [docs/benchmark-sintra.md](benchmark-sintra.md)
-
 ---
 
 ## References
 
-- **Known Issues**: [docs/known-issues.md](known-issues.md)
+- **Issues**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
 - **Changelog**: [CHANGELOG.md](../CHANGELOG.md)
 - **Contributing**: [CONTRIBUTING.md](../CONTRIBUTING.md)

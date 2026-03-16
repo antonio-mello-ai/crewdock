@@ -175,7 +175,7 @@ crewdock/
 - **Website**: [crewdock.ai](https://crewdock.ai)
 - **Roadmap**: [docs/roadmap.md](docs/roadmap.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
-- **Known Issues**: [docs/known-issues.md](docs/known-issues.md)
+- **Issues**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License

@@ -41,3 +41,7 @@ Thumbs.db
 
 # Claude Code
 .claude/settings.local.json
+
+# Internal strategy docs
+docs/plan-v1.md
+docs/benchmark-sintra.md
