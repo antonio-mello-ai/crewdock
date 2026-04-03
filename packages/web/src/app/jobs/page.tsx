@@ -105,13 +105,13 @@ export default function JobsPage() {
               return (
                 <TableRow key={job.id} className="cursor-pointer">
                   <TableCell>
-                    <Link href={`/jobs/${job.id}`} className="block">
+                    <Link href={`/jobs/detail?id=${job.id}`} className="block">
                       <JobStatusBadge status={job.status} />
                     </Link>
                   </TableCell>
                   <TableCell>
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="block font-mono text-sm text-neutral-400"
                     >
                       {agent?.name ?? job.agentId ?? "-"}
@@ -119,7 +119,7 @@ export default function JobsPage() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="block text-xs text-neutral-500 capitalize"
                     >
                       {job.type}
@@ -127,7 +127,7 @@ export default function JobsPage() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="block text-sm text-neutral-400 truncate max-w-md"
                     >
                       {job.objective}
@@ -135,7 +135,7 @@ export default function JobsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="block text-xs text-neutral-500 font-mono"
                     >
                       {duration > 0 ? formatDuration(duration) : "-"}
@@ -143,7 +143,7 @@ export default function JobsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="block text-xs text-neutral-500 font-mono"
                     >
                       {job.totalCostUsd > 0
@@ -153,7 +153,7 @@ export default function JobsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Link
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="block text-xs text-neutral-600"
                     >
                       {job.createdAt

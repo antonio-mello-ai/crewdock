@@ -1,6 +1,7 @@
 "use client";
 
-import { use, useMemo } from "react";
+import { Suspense, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { useJob, useAgents } from "@/hooks/use-api";
 import { LogViewer } from "@/components/log-viewer";
 import { JobStatusBadge } from "@/components/job-status-badge";
@@ -20,13 +21,10 @@ import {
   Loader2,
 } from "lucide-react";
 
-export default function JobDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
-  const { id } = use(params);
-  const { data: jobData, isLoading } = useJob(id);
+function JobDetailContent() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") ?? "";
+  const { data: jobData, isLoading } = useJob(id || undefined);
   const { data: agentsData } = useAgents();
   const job = jobData?.data;
   const agents = agentsData?.data ?? [];
@@ -39,6 +37,14 @@ export default function JobDetailPage({
   }, [job?.startedAt, job?.finishedAt]);
 
   const isStreaming = job?.status === "running" || job?.status === "queued";
+
+  if (!id) {
+    return (
+      <div className="p-6">
+        <p className="text-neutral-500">No job ID provided</p>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -72,7 +78,6 @@ export default function JobDetailPage({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="border-b border-border px-6 py-4">
         <div className="flex items-center gap-3 mb-3">
           <Link href="/jobs">
@@ -84,7 +89,6 @@ export default function JobDetailPage({
             {job.id}
           </span>
         </div>
-
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-3 mb-1">
@@ -97,53 +101,36 @@ export default function JobDetailPage({
           </div>
         </div>
       </div>
-
-      {/* Metadata strip */}
-      <div className="flex items-center gap-6 border-b border-border bg-neutral-950/20 px-6 py-3">
+      <div className="flex flex-wrap items-center gap-4 lg:gap-6 border-b border-border bg-neutral-950/20 px-6 py-3">
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
           <Clock className="h-3 w-3" />
           <span className="font-mono">{formatDuration(duration)}</span>
         </div>
-
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
           <DollarSign className="h-3 w-3" />
           <span className="font-mono">{formatCost(job.totalCostUsd)}</span>
         </div>
-
-        <Separator orientation="vertical" className="h-4" />
-
+        <Separator orientation="vertical" className="h-4 hidden lg:block" />
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
           <ArrowDownRight className="h-3 w-3" />
-          <span className="font-mono">
-            {(job.totalTokensIn / 1000).toFixed(1)}K in
-          </span>
+          <span className="font-mono">{(job.totalTokensIn / 1000).toFixed(1)}K in</span>
         </div>
-
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
           <ArrowUpRight className="h-3 w-3" />
-          <span className="font-mono">
-            {(job.totalTokensOut / 1000).toFixed(1)}K out
-          </span>
+          <span className="font-mono">{(job.totalTokensOut / 1000).toFixed(1)}K out</span>
         </div>
-
-        <Separator orientation="vertical" className="h-4" />
-
+        <Separator orientation="vertical" className="h-4 hidden lg:block" />
         {agent?.model && (
           <div className="flex items-center gap-1.5 text-xs text-neutral-500">
             <Cpu className="h-3 w-3" />
             <span className="font-mono">{agent.model}</span>
           </div>
         )}
-
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
           <Hash className="h-3 w-3" />
-          <span className="font-mono">
-            exit {job.exitCode ?? (isStreaming ? "..." : "-")}
-          </span>
+          <span className="font-mono">exit {job.exitCode ?? (isStreaming ? "..." : "-")}</span>
         </div>
-
-        <Separator orientation="vertical" className="h-4" />
-
+        <Separator orientation="vertical" className="h-4 hidden lg:block" />
         <div className="flex items-center gap-1.5 text-xs text-neutral-600">
           <FileText className="h-3 w-3" />
           <span>{startedDate}</span>
@@ -155,8 +142,6 @@ export default function JobDetailPage({
           )}
         </div>
       </div>
-
-      {/* Log area */}
       <div className="flex-1 p-4 min-h-0">
         {isStreaming ? (
           <LogViewer wsUrl={`${WS_URL}/ws/jobs/${job.id}/logs`} />
@@ -165,5 +150,13 @@ export default function JobDetailPage({
         )}
       </div>
     </div>
+  );
+}
+
+export default function JobDetailPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-5 w-5 animate-spin text-neutral-500" /></div>}>
+      <JobDetailContent />
+    </Suspense>
   );
 }

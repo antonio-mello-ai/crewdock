@@ -150,7 +150,7 @@ export default function OverviewPage() {
                   return (
                     <Link
                       key={job.id}
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
                     >
                       <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
@@ -182,7 +182,7 @@ export default function OverviewPage() {
                   return (
                     <Link
                       key={job.id}
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
                     >
                       <CheckCircle2 className="h-4 w-4 text-green-500/70 mt-0.5 shrink-0" />
@@ -214,7 +214,7 @@ export default function OverviewPage() {
                   return (
                     <Link
                       key={job.id}
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
                     >
                       <Loader2 className="h-4 w-4 text-blue-400 mt-0.5 shrink-0 animate-spin" />
@@ -279,7 +279,7 @@ export default function OverviewPage() {
                   return (
                     <Link
                       key={job.id}
-                      href={`/jobs/${job.id}`}
+                      href={`/jobs/detail?id=${job.id}`}
                       className="flex items-center gap-4 rounded-md px-3 py-2.5 transition-colors hover:bg-neutral-800/40"
                     >
                       <JobStatusBadge status={job.status} />
