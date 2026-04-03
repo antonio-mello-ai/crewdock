@@ -108,12 +108,67 @@ export interface HitlRequest {
   respondedAt: number | null;
 }
 
+// --- Session ---
+
+export type SessionStatus = "active" | "closed";
+
+export interface Session {
+  id: string;
+  agentId: string;
+  title: string | null;
+  status: SessionStatus;
+  totalCostUsd: number;
+  totalTokensIn: number;
+  totalTokensOut: number;
+  messageCount: number;
+  createdAt: number;
+  lastActiveAt: number;
+}
+
+export interface SessionMessage {
+  id: string;
+  sessionId: string;
+  role: "user" | "assistant";
+  content: string;
+  costUsd: number;
+  tokensIn: number;
+  tokensOut: number;
+  durationMs: number;
+  createdAt: number;
+}
+
+export interface CreateSessionRequest {
+  agentId: string;
+  title?: string;
+}
+
+export interface SendMessageRequest {
+  content: string;
+}
+
+// --- Agent Health ---
+
+export interface AgentHealth {
+  agentId: string;
+  totalCost7d: number;
+  totalJobs7d: number;
+  failRate: number;
+  avgDurationMs: number;
+  costTrendPct: number;
+  durationTrendPct: number;
+}
+
 // --- WebSocket messages ---
 
 export type WsMessage =
   | { type: "log"; line: string; stream: "stdout" | "stderr" }
   | { type: "job_complete"; status: JobStatus; exitCode: number | null; costUsd: number }
   | { type: "hitl_request"; hitlId: string; question: string }
+  | { type: "error"; message: string };
+
+export type SessionWsMessage =
+  | { type: "chunk"; content: string }
+  | { type: "done"; messageId: string; costUsd: number; durationMs: number }
   | { type: "error"; message: string };
 
 // --- API responses ---

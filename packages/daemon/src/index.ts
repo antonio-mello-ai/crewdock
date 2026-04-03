@@ -11,7 +11,11 @@ import { handleLogStreamConnection } from "./ws/log-stream.js";
 
 import agentRoutes from "./routes/agents.js";
 import jobRoutes from "./routes/jobs.js";
+import sessionRoutes from "./routes/sessions.js";
+import costRoutes from "./routes/costs.js";
+import hitlRoutes from "./routes/hitl.js";
 import healthRoutes from "./routes/health.js";
+import { subscribeToSession } from "./sessions/session-manager.js";
 
 const app = new Hono();
 
@@ -25,6 +29,9 @@ app.use("*", logger());
 // REST routes
 app.route("/api/agents", agentRoutes);
 app.route("/api/jobs", jobRoutes);
+app.route("/api/sessions", sessionRoutes);
+app.route("/api/costs", costRoutes);
+app.route("/api/hitl", hitlRoutes);
 app.route("/api/health", healthRoutes);
 
 // WebSocket route for log streaming
@@ -35,6 +42,30 @@ app.get(
     return {
       onOpen(_evt, ws) {
         handleLogStreamConnection(ws as any, jobId);
+      },
+    };
+  })
+);
+
+// WebSocket route for session streaming (interactive console)
+app.get(
+  "/ws/sessions/:id",
+  upgradeWebSocket((c) => {
+    const sessionId = c.req.param("id") ?? "";
+    return {
+      onOpen(_evt, ws) {
+        const unsub = subscribeToSession(sessionId, (msg) => {
+          try {
+            (ws as any).send(JSON.stringify(msg));
+          } catch {
+            // disconnected
+          }
+        });
+        if (!unsub) {
+          (ws as any).send(JSON.stringify({ type: "error", message: "Session not found" }));
+          (ws as any).close();
+        }
+        (ws as any).addEventListener?.("close", () => unsub?.());
       },
     };
   })

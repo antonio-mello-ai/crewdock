@@ -1,7 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, resolve, isAbsolute, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join, resolve, isAbsolute } from "node:path";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db/client.js";

@@ -51,6 +51,34 @@ export const schedules = sqliteTable("schedules", {
   nextRun: integer("next_run", { mode: "number" }),
 });
 
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(),
+  agentId: text("agent_id").notNull(),
+  title: text("title"),
+  workDir: text("work_dir").notNull(),
+  status: text("status", {
+    enum: ["active", "closed"],
+  }).notNull().default("active"),
+  totalCostUsd: real("total_cost_usd").notNull().default(0),
+  totalTokensIn: integer("total_tokens_in").notNull().default(0),
+  totalTokensOut: integer("total_tokens_out").notNull().default(0),
+  messageCount: integer("message_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  lastActiveAt: integer("last_active_at", { mode: "number" }).notNull(),
+});
+
+export const sessionMessages = sqliteTable("session_messages", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  role: text("role", { enum: ["user", "assistant"] }).notNull(),
+  content: text("content").notNull(),
+  costUsd: real("cost_usd").notNull().default(0),
+  tokensIn: integer("tokens_in").notNull().default(0),
+  tokensOut: integer("tokens_out").notNull().default(0),
+  durationMs: integer("duration_ms").notNull().default(0),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+});
+
 export const hitlRequests = sqliteTable("hitl_requests", {
   id: text("id").primaryKey(),
   jobId: text("job_id"),
