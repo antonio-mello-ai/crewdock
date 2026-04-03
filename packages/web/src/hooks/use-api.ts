@@ -8,7 +8,15 @@ import {
 import type {
   Agent,
   Job,
+  Session,
+  SessionMessage,
   CreateJobRequest,
+  CreateSessionRequest,
+  SendMessageRequest,
+  CostSummary,
+  CostByDay,
+  AgentHealth,
+  HitlRequest,
   ApiResponse,
   ApiListResponse,
 } from "@aios/shared";
@@ -108,6 +116,127 @@ export function useCancelJob() {
     mutationFn: (id) => api(`/api/jobs/${id}/cancel`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Sessions
+// ---------------------------------------------------------------------------
+
+export function useSessions(agentId?: string) {
+  const params = new URLSearchParams();
+  if (agentId) params.set("agentId", agentId);
+  const qs = params.toString();
+
+  return useQuery<ApiListResponse<Session>>({
+    queryKey: ["sessions", { agentId }],
+    queryFn: () => api(`/api/sessions${qs ? `?${qs}` : ""}`),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useSession(id?: string) {
+  return useQuery<ApiResponse<Session>>({
+    queryKey: ["sessions", id],
+    queryFn: () => api(`/api/sessions/${id}`),
+    enabled: !!id,
+    refetchInterval: 5_000,
+  });
+}
+
+export function useSessionMessages(sessionId?: string) {
+  return useQuery<ApiListResponse<SessionMessage>>({
+    queryKey: ["sessions", sessionId, "messages"],
+    queryFn: () => api(`/api/sessions/${sessionId}/messages`),
+    enabled: !!sessionId,
+  });
+}
+
+export function useCreateSession() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Session>, Error, CreateSessionRequest>({
+    mutationFn: (body) =>
+      api("/api/sessions", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
+export function useSendMessage(sessionId: string) {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<SessionMessage>, Error, SendMessageRequest>({
+    mutationFn: (body) =>
+      api(`/api/sessions/${sessionId}/messages`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sessions", sessionId, "messages"] });
+      qc.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Costs
+// ---------------------------------------------------------------------------
+
+export function useCostSummary(period: string) {
+  return useQuery<ApiResponse<CostSummary>>({
+    queryKey: ["costs", "summary", period],
+    queryFn: () => api(`/api/costs/summary?period=${period}`),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useCostByDay(period: string) {
+  return useQuery<ApiListResponse<CostByDay>>({
+    queryKey: ["costs", "by-day", period],
+    queryFn: () => api(`/api/costs/by-day?period=${period}`),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useCostHealth() {
+  return useQuery<ApiListResponse<AgentHealth>>({
+    queryKey: ["costs", "health"],
+    queryFn: () => api("/api/costs/health"),
+    refetchInterval: 30_000,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// HITL
+// ---------------------------------------------------------------------------
+
+export function useHitlRequests(status?: string) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  const qs = params.toString();
+
+  return useQuery<ApiListResponse<HitlRequest>>({
+    queryKey: ["hitl", { status }],
+    queryFn: () => api(`/api/hitl${qs ? `?${qs}` : ""}`),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useRespondHitl() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<HitlRequest>,
+    Error,
+    { id: string; response: string }
+  >({
+    mutationFn: ({ id, response }) =>
+      api(`/api/hitl/${id}/respond`, {
+        method: "POST",
+        body: JSON.stringify({ response }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hitl"] });
     },
   });
 }

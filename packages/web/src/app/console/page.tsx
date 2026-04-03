@@ -1,48 +1,60 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
-import { useAgents, useCreateJob, useJob } from "@/hooks/use-api";
-import { LogViewer } from "@/components/log-viewer";
-import { JobStatusBadge } from "@/components/job-status-badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { formatDuration, formatCost, WS_URL } from "@/lib/utils";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
-  Play,
+  useAgents,
+  useSessions,
+  useSessionMessages,
+  useCreateSession,
+  useSendMessage,
+} from "@/hooks/use-api";
+import { useSession as useSessionWs } from "@/hooks/use-session";
+import { ChatMessage } from "@/components/chat-message";
+import { MessageInput } from "@/components/message-input";
+import { AgentPanel } from "@/components/agent-panel";
+import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import {
   Bot,
-  Zap,
+  Plus,
+  MessageSquare,
   Loader2,
-  Terminal,
-  Clock,
-  DollarSign,
-  CheckCircle2,
-  XCircle,
+  PanelRightClose,
+  PanelRight,
 } from "lucide-react";
-
 
 export default function ConsolePage() {
   const { data: agentsData } = useAgents();
   const agents = agentsData?.data ?? [];
 
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
-  const [selectedMode, setSelectedMode] = useState<string>("");
-  const [objective, setObjective] = useState("");
-  const [activeJobId, setActiveJobId] = useState<string | undefined>();
+  const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
+  const [showPanel, setShowPanel] = useState(true);
 
-  const createJob = useCreateJob();
-  const { data: jobData } = useJob(activeJobId);
-  const activeJob = jobData?.data;
+  // Sessions for selected agent
+  const { data: sessionsData } = useSessions(selectedAgentId || undefined);
+  const sessions = sessionsData?.data ?? [];
+
+  // Messages for active session
+  const { data: messagesData } = useSessionMessages(activeSessionId);
+
+  // Session creation
+  const createSession = useCreateSession();
+
+  // Message sending
+  const sendMessage = useSendMessage(activeSessionId ?? "");
+
+  // WebSocket streaming
+  const ws = useSessionWs();
+
+  // Scroll ref
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Current agent
   const selectedAgent = useMemo(
     () => agents.find((a) => a.id === selectedAgentId),
     [agents, selectedAgentId]
   );
-
-  // Available modes for selected agent
-  const modes = selectedAgent?.modes ?? [];
 
   // Auto-select first agent
   useEffect(() => {
@@ -51,66 +63,89 @@ export default function ConsolePage() {
     }
   }, [agents, selectedAgentId]);
 
-  // Auto-select first mode when agent changes
-  useEffect(() => {
-    if (modes.length > 0) {
-      setSelectedMode(modes[0]);
-    } else {
-      setSelectedMode("");
-    }
-  }, [selectedAgentId, modes]);
+  // Merge API messages with streaming messages
+  const allMessages = useMemo(() => {
+    const apiMessages = messagesData?.data ?? [];
+    // Use ws.messages that aren't in apiMessages
+    const apiIds = new Set(apiMessages.map((m) => m.id));
+    const wsOnly = ws.messages.filter((m) => !apiIds.has(m.id));
+    return [...apiMessages, ...wsOnly];
+  }, [messagesData?.data, ws.messages]);
 
-  // Track elapsed time
-  const [elapsed, setElapsed] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
+  // Scroll to bottom on new messages
   useEffect(() => {
-    if (activeJob?.status === "running" && activeJob.startedAt) {
-      setElapsed(Date.now() - activeJob.startedAt);
-      timerRef.current = setInterval(() => {
-        setElapsed(Date.now() - activeJob.startedAt!);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (activeJob?.startedAt && activeJob?.finishedAt) {
-        setElapsed(activeJob.finishedAt - activeJob.startedAt);
-      }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [allMessages.length, ws.streamingContent]);
+
+  // Connect WS when session changes
+  useEffect(() => {
+    if (activeSessionId) {
+      ws.connect(activeSessionId);
     }
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      ws.disconnect();
     };
-  }, [activeJob?.status, activeJob?.startedAt, activeJob?.finishedAt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
-  const handleRun = () => {
-    if (!selectedAgentId || !objective.trim()) return;
-    createJob.mutate(
-      {
-        type: "agent",
-        agentId: selectedAgentId,
-        mode: selectedMode || undefined,
-        objective: objective.trim(),
-      },
+  // Load messages into WS state when session changes
+  useEffect(() => {
+    ws.setMessages([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
+
+  // Handlers
+  const handleNewSession = useCallback(() => {
+    if (!selectedAgentId) return;
+    createSession.mutate(
+      { agentId: selectedAgentId },
       {
         onSuccess: (res) => {
-          setActiveJobId(res.data.id);
+          setActiveSessionId(res.data.id);
         },
       }
     );
-  };
+  }, [selectedAgentId, createSession]);
 
-  const isRunning = activeJob?.status === "running" || activeJob?.status === "queued";
-  const isDone = activeJob?.status === "completed" || activeJob?.status === "failed" || activeJob?.status === "cancelled";
+  const handleSendMessage = useCallback(
+    (content: string) => {
+      if (!activeSessionId) return;
+      // Optimistic: add to ws state
+      ws.sendMessage(content);
+      // Actually send to API
+      sendMessage.mutate({ content });
+    },
+    [activeSessionId, ws, sendMessage]
+  );
+
+  const handleSelectSession = useCallback((sessionId: string) => {
+    setActiveSessionId(sessionId);
+  }, []);
+
+  // Session stats
+  const sessionStats = useMemo(() => {
+    const msgs = allMessages;
+    const cost = msgs.reduce((sum, m) => sum + (m.costUsd || 0), 0);
+    const firstMsg = msgs[0];
+    const lastMsg = msgs[msgs.length - 1];
+    const duration =
+      firstMsg && lastMsg ? lastMsg.createdAt - firstMsg.createdAt : 0;
+    return { messageCount: msgs.length, cost, duration };
+  }, [allMessages]);
 
   return (
     <div className="flex h-full flex-col">
-      {/* Top bar — controls */}
-      <div className="border-b border-border bg-neutral-950/30 px-6 py-4">
+      {/* Top bar */}
+      <div className="border-b border-border bg-neutral-950/30 px-4 py-3">
         <div className="flex items-center gap-3">
           {/* Agent selector */}
           <div className="w-52">
             <Select
               value={selectedAgentId}
-              onChange={(e) => setSelectedAgentId(e.target.value)}
+              onChange={(e) => {
+                setSelectedAgentId(e.target.value);
+                setActiveSessionId(undefined);
+              }}
               icon={<Bot className="h-3.5 w-3.5" />}
             >
               <option value="" disabled>
@@ -124,124 +159,166 @@ export default function ConsolePage() {
             </Select>
           </div>
 
-          {/* Mode selector */}
-          {modes.length > 0 && (
-            <div className="w-40">
-              <Select
-                value={selectedMode}
-                onChange={(e) => setSelectedMode(e.target.value)}
-                icon={<Zap className="h-3.5 w-3.5" />}
-              >
-                {modes.map((mode) => (
-                  <option key={mode} value={mode}>
-                    {mode}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          )}
-
-          {/* Objective */}
-          <div className="flex-1">
-            <Input
-              placeholder="Objective — what should the agent do?"
-              value={objective}
-              onChange={(e) => setObjective(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isRunning) handleRun();
-              }}
-              className="bg-neutral-900/50 border-neutral-800 font-mono text-sm"
-            />
+          {/* Session selector */}
+          <div className="w-56">
+            <Select
+              value={activeSessionId ?? ""}
+              onChange={(e) => setActiveSessionId(e.target.value)}
+              icon={<MessageSquare className="h-3.5 w-3.5" />}
+            >
+              <option value="" disabled>
+                Select session
+              </option>
+              {sessions.map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.title || `Session ${session.id.slice(0, 8)}`}
+                </option>
+              ))}
+            </Select>
           </div>
 
-          {/* Run button */}
+          {/* New Session */}
           <Button
-            onClick={handleRun}
-            disabled={!selectedAgentId || !objective.trim() || createJob.isPending || isRunning}
-            className="gap-2 px-5 font-medium"
+            onClick={handleNewSession}
+            disabled={!selectedAgentId || createSession.isPending}
+            size="sm"
+            className="gap-1.5"
           >
-            {createJob.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+            {createSession.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <Play className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
             )}
-            Run
+            New Session
+          </Button>
+
+          <div className="flex-1" />
+
+          {/* Toggle panel */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-neutral-500 hover:text-neutral-300 hidden lg:flex"
+            onClick={() => setShowPanel(!showPanel)}
+          >
+            {showPanel ? (
+              <PanelRightClose className="h-4 w-4" />
+            ) : (
+              <PanelRight className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
 
-      {/* Status bar */}
-      {activeJob && (
-        <div className="flex items-center gap-4 border-b border-border bg-neutral-950/20 px-6 py-2">
-          <JobStatusBadge status={activeJob.status} />
-
-          <span className="text-xs text-neutral-400 font-mono">
-            {selectedAgent?.name ?? activeJob.agentId}
-          </span>
-
-          <Separator orientation="vertical" className="h-4" />
-
-          <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-            <Clock className="h-3 w-3" />
-            <span className="font-mono">{formatDuration(elapsed)}</span>
-          </div>
-
-          {isDone && (
-            <>
-              <Separator orientation="vertical" className="h-4" />
-              <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-                <DollarSign className="h-3 w-3" />
-                <span className="font-mono">
-                  {formatCost(activeJob.totalCostUsd)}
-                </span>
-              </div>
-
-              <Separator orientation="vertical" className="h-4" />
-              <div className="flex items-center gap-1.5 text-xs">
-                {activeJob.status === "completed" ? (
-                  <>
-                    <CheckCircle2 className="h-3 w-3 text-green-500" />
-                    <span className="text-green-500">
-                      Exit {activeJob.exitCode ?? 0}
-                    </span>
-                  </>
+      {/* Main area */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Chat area */}
+        <div className="flex flex-1 flex-col min-w-0">
+          {/* Messages */}
+          <div className="flex-1 overflow-auto">
+            {activeSessionId ? (
+              <div className="py-4">
+                {allMessages.length === 0 && !ws.isStreaming ? (
+                  <div className="flex h-full min-h-[300px] items-center justify-center">
+                    <div className="text-center">
+                      <MessageSquare className="mx-auto h-8 w-8 text-neutral-700 mb-3" />
+                      <p className="text-sm text-neutral-500">
+                        Start a conversation with{" "}
+                        <span className="text-neutral-300 font-medium">
+                          {selectedAgent?.name ?? "the agent"}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-xs text-neutral-600">
+                        Type a message below
+                      </p>
+                    </div>
+                  </div>
                 ) : (
                   <>
-                    <XCircle className="h-3 w-3 text-red-500" />
-                    <span className="text-red-500">
-                      Exit {activeJob.exitCode ?? 1}
-                    </span>
+                    {allMessages.map((msg) => (
+                      <ChatMessage
+                        key={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        timestamp={msg.createdAt}
+                        costUsd={msg.costUsd}
+                        durationMs={msg.durationMs}
+                      />
+                    ))}
+
+                    {/* Streaming message */}
+                    {ws.isStreaming && ws.streamingContent && (
+                      <ChatMessage
+                        role="assistant"
+                        content={ws.streamingContent}
+                        isStreaming
+                      />
+                    )}
+
+                    {/* Streaming indicator without content yet */}
+                    {ws.isStreaming && !ws.streamingContent && (
+                      <div className="flex gap-3 px-4 py-3">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-700/50 bg-neutral-800/60">
+                          <Bot className="h-3.5 w-3.5 text-neutral-400" />
+                        </div>
+                        <div className="rounded-lg bg-neutral-900/60 border border-neutral-800/50 px-4 py-3">
+                          <span className="inline-flex gap-1">
+                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-500 animate-bounce [animation-delay:0ms]" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-500 animate-bounce [animation-delay:150ms]" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-neutral-500 animate-bounce [animation-delay:300ms]" />
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    <div ref={messagesEndRef} />
                   </>
                 )}
               </div>
-            </>
-          )}
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900/50">
+                    <MessageSquare className="h-6 w-6 text-neutral-600" />
+                  </div>
+                  <h2 className="text-base font-medium text-neutral-300">
+                    Interactive Console
+                  </h2>
+                  <p className="mt-1 text-sm text-neutral-600 max-w-xs">
+                    Select an agent and create a session to start chatting
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
 
-          {isRunning && (
-            <span className="ml-auto text-xs text-neutral-600 animate-pulse">
-              Streaming...
-            </span>
+          {/* Input */}
+          {activeSessionId && (
+            <MessageInput
+              onSend={handleSendMessage}
+              disabled={!activeSessionId}
+              isStreaming={ws.isStreaming}
+              placeholder={
+                selectedAgent
+                  ? `Message ${selectedAgent.name}...`
+                  : "Type a message..."
+              }
+            />
           )}
         </div>
-      )}
 
-      {/* Terminal area */}
-      <div className="flex-1 p-4 min-h-0">
-        {activeJobId ? (
-          <LogViewer
-            wsUrl={`${WS_URL}/ws/jobs/${activeJobId}/logs`}
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-neutral-800 bg-neutral-950/30">
-            <div className="text-center">
-              <Terminal className="mx-auto h-8 w-8 text-neutral-700 mb-3" />
-              <p className="text-sm text-neutral-600">
-                Select an agent and enter an objective to start
-              </p>
-              <p className="mt-1 text-xs text-neutral-700">
-                Output will stream here in real time
-              </p>
-            </div>
+        {/* Right panel */}
+        {showPanel && (
+          <div className="hidden lg:flex w-72 border-l border-border bg-neutral-950/30 flex-col">
+            <AgentPanel
+              agent={selectedAgent ?? null}
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              onSelectSession={handleSelectSession}
+              messageCount={sessionStats.messageCount}
+              sessionCost={sessionStats.cost}
+              sessionDuration={sessionStats.duration}
+            />
           </div>
         )}
       </div>
