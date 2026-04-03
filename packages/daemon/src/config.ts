@@ -2,21 +2,25 @@ import { resolve, dirname } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-// Load .env.dev if it exists (for local development)
+// Load env file: .env.prod (production) or .env.dev (local development)
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const envDevPath = resolve(rootDir, ".env.dev");
-if (existsSync(envDevPath)) {
-  const envContent = readFileSync(envDevPath, "utf-8");
-  for (const line of envContent.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx);
-    const val = trimmed.slice(eqIdx + 1);
-    if (!process.env[key]) {
-      process.env[key] = val;
+const envFiles = [".env.prod", ".env.dev"];
+for (const envFile of envFiles) {
+  const envPath = resolve(rootDir, envFile);
+  if (existsSync(envPath)) {
+    const envContent = readFileSync(envPath, "utf-8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx === -1) continue;
+      const key = trimmed.slice(0, eqIdx);
+      const val = trimmed.slice(eqIdx + 1);
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
     }
+    break; // Use first env file found
   }
 }
 
