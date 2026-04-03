@@ -40,3 +40,30 @@ export function loadFrenteMap(): Map<string, string> {
 
   return map;
 }
+
+/**
+ * Resolve frente for a project path.
+ * Matches by prefix: "marketplace_data_intelligence/pulsoonline-backend"
+ * matches "marketplace_data_intelligence" -> "PulsoOnline"
+ */
+export function resolveFrente(
+  frenteMap: Map<string, string>,
+  project: string | null
+): string {
+  if (!project) return "Global";
+
+  // Exact match first
+  if (frenteMap.has(project)) return frenteMap.get(project)!;
+
+  // Prefix match: try each path segment from left
+  const parts = project.split("/");
+  for (let i = parts.length - 1; i >= 1; i--) {
+    const prefix = parts.slice(0, i).join("/");
+    if (frenteMap.has(prefix)) return frenteMap.get(prefix)!;
+  }
+
+  // First directory segment match
+  if (frenteMap.has(parts[0]!)) return frenteMap.get(parts[0]!)!;
+
+  return "Other";
+}

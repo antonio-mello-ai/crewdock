@@ -1,4 +1,24 @@
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// Load .env.dev if it exists (for local development)
+const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const envDevPath = resolve(rootDir, ".env.dev");
+if (existsSync(envDevPath)) {
+  const envContent = readFileSync(envDevPath, "utf-8");
+  for (const line of envContent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx);
+    const val = trimmed.slice(eqIdx + 1);
+    if (!process.env[key]) {
+      process.env[key] = val;
+    }
+  }
+}
 
 function env(key: string, fallback: string): string {
   return process.env[key] ?? fallback;

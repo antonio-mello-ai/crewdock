@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { join, resolve, isAbsolute, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db/client.js";
@@ -121,7 +122,10 @@ function startJob(jobId: string, request: CreateJobRequest) {
     args = [projectPath, request.agentId ?? "", request.mode ?? "run", "--no-notify"];
   }
 
-  const child = spawn(cmd, args, {
+  // Resolve command path: if relative, resolve from CWD (monorepo root when running dev)
+  const resolvedCmd = isAbsolute(cmd) ? cmd : resolve(process.cwd(), cmd);
+
+  const child = spawn(resolvedCmd, args, {
     cwd: config.projectsDir,
     env: { ...process.env },
     stdio: ["ignore", "pipe", "pipe"],

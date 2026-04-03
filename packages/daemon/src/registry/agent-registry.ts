@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { agents } from "../db/schema.js";
 import { config } from "../config.js";
-import { loadFrenteMap } from "./frente-map.js";
+import { loadFrenteMap, resolveFrente } from "./frente-map.js";
 import type { Agent } from "@aios/shared";
 
 interface AgentFrontmatter {
@@ -20,14 +20,20 @@ function parseAgentFile(filePath: string): Omit<Agent, "frente"> | null {
     const content = readFileSync(filePath, "utf-8");
     const { data } = matter(content) as { data: AgentFrontmatter };
 
-    // Derive agent ID from filename (e.g., "orchestrator.md" -> "orchestrator")
-    const id = basename(filePath, ".md");
+    const baseName = basename(filePath, ".md");
 
     // Derive project from path relative to projects dir
+    // e.g., "marketplace_data_intelligence/pulsoonline-backend/.claude/agents/critico.md"
+    //   -> project = "marketplace_data_intelligence/pulsoonline-backend"
     const relPath = relative(config.projectsDir, filePath);
-    const firstDir = relPath.split("/")[0] ?? null;
-    // If agent is in root .claude/, it's global (no project)
-    const projectDir = firstDir === ".claude" ? null : firstDir;
+    const parts = relPath.split("/");
+    const dotClaudeIdx = parts.indexOf(".claude");
+    const projectDir = dotClaudeIdx <= 0 ? null : parts.slice(0, dotClaudeIdx).join("/");
+
+    // Make ID unique: global agents use basename, project agents use "project--basename"
+    const id = projectDir
+      ? `${projectDir.replace(/\//g, "--")}--${baseName}`
+      : baseName;
 
     // Extract modes from content headings (## Mode: patrol, ## patrol, etc.)
     const modes = data.modes ?? extractModesFromContent(content);
@@ -107,28 +113,24 @@ export async function scanAgents(): Promise<Agent[]> {
   // Scan root projects dir
   await scanDir(config.projectsDir);
 
-  // Scan each subdirectory (one level deep for project dirs)
-  try {
-    const topLevel = await readdir(config.projectsDir, { withFileTypes: true });
-    for (const entry of topLevel) {
-      if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") {
-        await scanDir(join(config.projectsDir, entry.name));
-        // Also scan nested project dirs (e.g., spadavida/site, petcare/denboard)
-        try {
-          const nested = await readdir(join(config.projectsDir, entry.name), { withFileTypes: true });
-          for (const sub of nested) {
-            if (sub.isDirectory() && !sub.name.startsWith(".") && sub.name !== "node_modules") {
-              await scanDir(join(config.projectsDir, entry.name, sub.name));
-            }
-          }
-        } catch {
-          // Not a directory or no access
+  // Recursively scan subdirectories up to 4 levels deep
+  async function scanRecursive(dir: string, depth: number) {
+    if (depth > 4) return;
+    try {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+          const subDir = join(dir, entry.name);
+          await scanDir(subDir);
+          await scanRecursive(subDir, depth + 1);
         }
       }
+    } catch {
+      // Can't read directory
     }
-  } catch {
-    // Can't read projects dir
   }
+
+  await scanRecursive(config.projectsDir, 0);
 
   const discovered: Agent[] = [];
 
@@ -136,7 +138,7 @@ export async function scanAgents(): Promise<Agent[]> {
     const parsed = parseAgentFile(filePath);
     if (!parsed) continue;
 
-    const frente = frenteMap.get(parsed.project ?? "") ?? null;
+    const frente = resolveFrente(frenteMap, parsed.project);
 
     const agent: Agent = { ...parsed, frente };
     discovered.push(agent);
