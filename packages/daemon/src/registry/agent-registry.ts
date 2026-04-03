@@ -25,7 +25,9 @@ function parseAgentFile(filePath: string): Omit<Agent, "frente"> | null {
 
     // Derive project from path relative to projects dir
     const relPath = relative(config.projectsDir, filePath);
-    const projectDir = relPath.split("/")[0] ?? null;
+    const firstDir = relPath.split("/")[0] ?? null;
+    // If agent is in root .claude/, it's global (no project)
+    const projectDir = firstDir === ".claude" ? null : firstDir;
 
     // Extract modes from content headings (## Mode: patrol, ## patrol, etc.)
     const modes = data.modes ?? extractModesFromContent(content);
@@ -48,15 +50,13 @@ function parseAgentFile(filePath: string): Omit<Agent, "frente"> | null {
 }
 
 function extractModesFromContent(content: string): string[] {
-  const modePattern = /^##\s+(?:Mode:\s*)?(\w+)/gm;
+  // Only extract modes from explicit "## Mode: xyz" patterns
+  // Generic ## headings are NOT modes
+  const modePattern = /^##\s+Mode:\s*(\w+)/gim;
   const modes: string[] = [];
   let match;
   while ((match = modePattern.exec(content)) !== null) {
-    const mode = match[1]!.toLowerCase();
-    // Skip common non-mode headings
-    if (!["context", "principles", "rules", "identity", "domain", "ref", "reporting"].includes(mode)) {
-      modes.push(mode);
-    }
+    modes.push(match[1]!.toLowerCase());
   }
   return modes;
 }
@@ -83,13 +83,51 @@ export async function scanAgents(): Promise<Agent[]> {
   const db = getDb();
   const frenteMap = loadFrenteMap();
 
-  // Use Node.js built-in glob
-  const { glob } = await import("node:fs/promises");
+  // Scan for agent files
+  // Node.js glob doesn't match dotfiles (like .claude/) with ** by default
+  // So we scan known patterns: root .claude/agents/ + project subdirs
+  const { readdir } = await import("node:fs/promises");
+  const { join, resolve: resolvePath } = await import("node:path");
   const files: string[] = [];
-  for await (const entry of glob(config.projectsDir + "/" + config.agentGlob)) {
-    if (!entry.includes("node_modules")) {
-      files.push(entry);
+
+  async function scanDir(dir: string) {
+    const agentsDir = join(dir, ".claude", "agents");
+    try {
+      const entries = await readdir(agentsDir);
+      for (const entry of entries) {
+        if (entry.endsWith(".md")) {
+          files.push(resolvePath(agentsDir, entry));
+        }
+      }
+    } catch {
+      // No .claude/agents in this directory
     }
+  }
+
+  // Scan root projects dir
+  await scanDir(config.projectsDir);
+
+  // Scan each subdirectory (one level deep for project dirs)
+  try {
+    const topLevel = await readdir(config.projectsDir, { withFileTypes: true });
+    for (const entry of topLevel) {
+      if (entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules") {
+        await scanDir(join(config.projectsDir, entry.name));
+        // Also scan nested project dirs (e.g., spadavida/site, petcare/denboard)
+        try {
+          const nested = await readdir(join(config.projectsDir, entry.name), { withFileTypes: true });
+          for (const sub of nested) {
+            if (sub.isDirectory() && !sub.name.startsWith(".") && sub.name !== "node_modules") {
+              await scanDir(join(config.projectsDir, entry.name, sub.name));
+            }
+          }
+        } catch {
+          // Not a directory or no access
+        }
+      }
+    }
+  } catch {
+    // Can't read projects dir
   }
 
   const discovered: Agent[] = [];
