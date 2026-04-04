@@ -152,6 +152,7 @@ export interface SessionMessage {
 export interface CreateSessionRequest {
   workspaceId: string;
   title?: string;
+  permissionMode?: PermissionMode;
 }
 
 export interface SendMessageRequest {
@@ -181,7 +182,20 @@ export type WsMessage =
 export type SessionWsMessage =
   | { type: "chunk"; content: string }
   | { type: "done"; messageId: string; costUsd: number; durationMs: number }
+  | { type: "error"; message: string }
+  | { type: "status"; isProcessing: boolean };
+
+// --- Terminal WebSocket messages ---
+
+export type TerminalWsMessage =
+  | { type: "output"; data: string }
+  | { type: "input"; data: string }
+  | { type: "resize"; cols: number; rows: number }
   | { type: "error"; message: string };
+
+// --- Permission Mode ---
+
+export type PermissionMode = "plan" | "acceptEdits" | "full";
 
 // --- API responses ---
 

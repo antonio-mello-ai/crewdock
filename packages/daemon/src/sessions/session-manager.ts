@@ -6,6 +6,8 @@ import { sessions, sessionMessages } from "../db/schema.js";
 import { parseCostFromLog } from "../jobs/cost-parser.js";
 import { getWorkspace } from "../registry/workspaces.js";
 
+import type { PermissionMode } from "@aios/shared";
+
 export interface Session {
   id: string;
   workspaceId: string;
@@ -13,6 +15,7 @@ export interface Session {
   title: string | null;
   workDir: string;
   status: "active" | "closed";
+  permissionMode: PermissionMode;
   totalCostUsd: number;
   totalTokensIn: number;
   totalTokensOut: number;
@@ -36,16 +39,22 @@ export interface SessionMessage {
 interface ActiveSession {
   process: ChildProcess | null;
   subscribers: Set<(msg: SessionStreamMessage) => void>;
+  permissionMode: PermissionMode;
 }
 
 export type SessionStreamMessage =
   | { type: "chunk"; content: string }
   | { type: "done"; messageId: string; costUsd: number; durationMs: number }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "status"; isProcessing: boolean };
 
 const activeSessions = new Map<string, ActiveSession>();
 
-export function createSession(workspaceId: string, title?: string): Session {
+export function createSession(
+  workspaceId: string,
+  title?: string,
+  permissionMode: PermissionMode = "plan"
+): Session {
   const db = getDb();
   const workspace = getWorkspace(workspaceId);
   if (!workspace) throw new Error(`Workspace "${workspaceId}" not found`);
@@ -72,16 +81,25 @@ export function createSession(workspaceId: string, title?: string): Session {
   };
 
   db.insert(sessions).values(row).run();
-  activeSessions.set(id, { process: null, subscribers: new Set() });
+  activeSessions.set(id, {
+    process: null,
+    subscribers: new Set(),
+    permissionMode,
+  });
 
-  return { ...row, workspaceId };
+  return { ...row, workspaceId, permissionMode };
 }
 
 export function getSession(id: string): Session | undefined {
   const db = getDb();
   const row = db.select().from(sessions).where(eq(sessions.id, id)).get();
   if (!row) return undefined;
-  return { ...row, workspaceId: row.agentId } as Session;
+  const active = activeSessions.get(id);
+  return {
+    ...row,
+    workspaceId: row.agentId,
+    permissionMode: active?.permissionMode ?? "plan",
+  } as Session;
 }
 
 export function listSessions(workspaceId?: string, limit = 20): Session[] {
@@ -97,7 +115,14 @@ export function listSessions(workspaceId?: string, limit = 20): Session[] {
     rows = rows.filter((r) => r.agentId === workspaceId);
   }
 
-  return rows.map((r) => ({ ...r, workspaceId: r.agentId })) as Session[];
+  return rows.map((r) => {
+    const active = activeSessions.get(r.id);
+    return {
+      ...r,
+      workspaceId: r.agentId,
+      permissionMode: active?.permissionMode ?? "plan",
+    };
+  }) as Session[];
 }
 
 export function getSessionMessages(sessionId: string): SessionMessage[] {
@@ -115,10 +140,20 @@ export function subscribeToSession(
 ): (() => void) | null {
   let active = activeSessions.get(sessionId);
   if (!active) {
-    active = { process: null, subscribers: new Set() };
+    active = { process: null, subscribers: new Set(), permissionMode: "plan" };
     activeSessions.set(sessionId, active);
   }
   active.subscribers.add(callback);
+
+  // Notify new subscriber if session is currently processing
+  if (active.process) {
+    try {
+      callback({ type: "status", isProcessing: true });
+    } catch {
+      // subscriber already disconnected
+    }
+  }
+
   return () => {
     active!.subscribers.delete(callback);
   };
@@ -148,6 +183,7 @@ export async function sendMessage(
   const active = activeSessions.get(sessionId) ?? {
     process: null,
     subscribers: new Set(),
+    permissionMode: session.permissionMode ?? ("plan" as PermissionMode),
   };
   if (!activeSessions.has(sessionId)) {
     activeSessions.set(sessionId, active);
@@ -179,13 +215,22 @@ export async function sendMessage(
 
   // Build claude command — run directly in workspace path
   // This is equivalent to: cd <workspace> && claude -p "message"
+  const permMode = session.permissionMode ?? "plan";
+  const cliPermMode =
+    permMode === "full"
+      ? "bypassPermissions"
+      : permMode === "acceptEdits"
+        ? "acceptEdits"
+        : "plan";
+
   const args: string[] = [
     "-p",
     content,
     "--verbose",
     "--output-format",
     "stream-json",
-    "--dangerously-skip-permissions",
+    "--permission-mode",
+    cliPermMode,
   ];
 
   if (!isFirstMessage) {

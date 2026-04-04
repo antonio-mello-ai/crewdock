@@ -47,7 +47,12 @@ export function useSession(): UseSessionReturn {
         try {
           const msg: SessionWsMessage = JSON.parse(event.data);
 
-          if (msg.type === "chunk") {
+          if (msg.type === "status") {
+            setIsStreaming(msg.isProcessing);
+            if (!msg.isProcessing) {
+              setStreamingContent("");
+            }
+          } else if (msg.type === "chunk") {
             setIsStreaming(true);
             setStreamingContent((prev) => prev + msg.content);
           } else if (msg.type === "done") {

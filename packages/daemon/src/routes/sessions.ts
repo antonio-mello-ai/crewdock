@@ -13,11 +13,19 @@ const app = new Hono();
 // Create a new session
 app.post("/", async (c) => {
   try {
-    const body = await c.req.json<{ workspaceId: string; title?: string }>();
+    const body = await c.req.json<{
+      workspaceId: string;
+      title?: string;
+      permissionMode?: "plan" | "acceptEdits" | "full";
+    }>();
     if (!body.workspaceId) {
       return c.json({ error: "bad_request", message: "workspaceId is required" }, 400);
     }
-    const session = createSession(body.workspaceId, body.title);
+    const session = createSession(
+      body.workspaceId,
+      body.title,
+      body.permissionMode ?? "plan"
+    );
     return c.json({ data: session }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

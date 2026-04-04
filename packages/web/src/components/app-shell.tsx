@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  Terminal,
+  MessageSquare,
+  SquareTerminal,
   ListTodo,
   Clock,
   DollarSign,
@@ -22,7 +23,8 @@ import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/console", label: "Console", icon: Terminal },
+  { href: "/console", label: "Console", icon: MessageSquare },
+  { href: "/terminal", label: "Terminal", icon: SquareTerminal },
   { href: "/jobs", label: "Jobs", icon: ListTodo },
   { href: "/schedules", label: "Schedules", icon: Clock },
   { href: "/costs", label: "Costs", icon: DollarSign },

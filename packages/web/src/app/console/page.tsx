@@ -23,7 +23,17 @@ import {
   DollarSign,
   Clock,
   Hash,
+  Shield,
+  ShieldAlert,
+  ShieldOff,
 } from "lucide-react";
+import type { PermissionMode } from "@aios/shared";
+
+const PERMISSION_LABELS: Record<PermissionMode, { label: string; icon: typeof Shield; color: string }> = {
+  plan: { label: "Read Only", icon: Shield, color: "text-green-500" },
+  acceptEdits: { label: "Accept Edits", icon: ShieldAlert, color: "text-yellow-500" },
+  full: { label: "Full Access", icon: ShieldOff, color: "text-red-500" },
+};
 
 export default function ConsolePage() {
   const { data: workspacesData } = useWorkspaces();
@@ -31,6 +41,7 @@ export default function ConsolePage() {
 
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>("");
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("plan");
 
   // Sessions for selected workspace
   const { data: sessionsData } = useSessions(selectedWorkspaceId || undefined);
@@ -96,14 +107,14 @@ export default function ConsolePage() {
   const handleNewSession = useCallback(() => {
     if (!selectedWorkspaceId) return;
     createSession.mutate(
-      { workspaceId: selectedWorkspaceId },
+      { workspaceId: selectedWorkspaceId, permissionMode },
       {
         onSuccess: (res) => {
           setActiveSessionId(res.data.id);
         },
       }
     );
-  }, [selectedWorkspaceId, createSession]);
+  }, [selectedWorkspaceId, createSession, permissionMode]);
 
   const handleSendMessage = useCallback(
     (content: string) => {
@@ -185,6 +196,30 @@ export default function ConsolePage() {
               </Select>
             </div>
           )}
+
+          {/* Permission Mode */}
+          <div className="w-40">
+            <Select
+              value={permissionMode}
+              onChange={(e) =>
+                setPermissionMode(e.target.value as PermissionMode)
+              }
+              icon={
+                (() => {
+                  const Icon = PERMISSION_LABELS[permissionMode].icon;
+                  return (
+                    <Icon
+                      className={`h-3.5 w-3.5 ${PERMISSION_LABELS[permissionMode].color}`}
+                    />
+                  );
+                })()
+              }
+            >
+              <option value="plan">Read Only</option>
+              <option value="acceptEdits">Accept Edits</option>
+              <option value="full">Full Access</option>
+            </Select>
+          </div>
 
           {/* New Session */}
           <Button

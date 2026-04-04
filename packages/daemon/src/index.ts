@@ -16,7 +16,15 @@ import sessionRoutes from "./routes/sessions.js";
 import costRoutes from "./routes/costs.js";
 import hitlRoutes from "./routes/hitl.js";
 import healthRoutes from "./routes/health.js";
+import terminalRoutes from "./routes/terminal.js";
 import { subscribeToSession } from "./sessions/session-manager.js";
+import {
+  subscribeToTerminal,
+  writeToTerminal,
+  resizeTerminal,
+  listTerminals,
+  closeTerminal,
+} from "./terminal/terminal-manager.js";
 
 const app = new Hono();
 
@@ -35,6 +43,7 @@ app.route("/api/sessions", sessionRoutes);
 app.route("/api/costs", costRoutes);
 app.route("/api/hitl", hitlRoutes);
 app.route("/api/health", healthRoutes);
+app.route("/api/terminal", terminalRoutes);
 
 // WebSocket route for log streaming
 app.get(
@@ -73,6 +82,51 @@ app.get(
   })
 );
 
+// WebSocket route for terminal I/O
+app.get(
+  "/ws/terminal/:id",
+  upgradeWebSocket((c) => {
+    const terminalId = c.req.param("id") ?? "";
+    return {
+      onOpen(_evt, ws) {
+        const unsub = subscribeToTerminal(terminalId, (data) => {
+          try {
+            (ws as any).send(JSON.stringify({ type: "output", data }));
+          } catch {
+            // disconnected
+          }
+        });
+        if (!unsub) {
+          (ws as any).send(
+            JSON.stringify({ type: "error", message: "Terminal not found" })
+          );
+          (ws as any).close();
+          return;
+        }
+        (ws as any).addEventListener?.("close", () => unsub?.());
+        (ws as any).addEventListener?.("message", (event: MessageEvent) => {
+          try {
+            const msg = JSON.parse(
+              typeof event.data === "string" ? event.data : ""
+            );
+            if (msg.type === "input" && typeof msg.data === "string") {
+              writeToTerminal(terminalId, msg.data);
+            } else if (
+              msg.type === "resize" &&
+              typeof msg.cols === "number" &&
+              typeof msg.rows === "number"
+            ) {
+              resizeTerminal(terminalId, msg.cols, msg.rows);
+            }
+          } catch {
+            // ignore parse errors
+          }
+        });
+      },
+    };
+  })
+);
+
 // Initialize
 async function start() {
   // Initialize database
@@ -100,6 +154,9 @@ async function start() {
   // Graceful shutdown
   const shutdown = () => {
     console.log("\n[aios] Shutting down...");
+    for (const t of listTerminals()) {
+      closeTerminal(t.id);
+    }
     server.close();
     process.exit(0);
   };
