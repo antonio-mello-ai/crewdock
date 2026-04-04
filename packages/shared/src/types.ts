@@ -108,12 +108,24 @@ export interface HitlRequest {
   respondedAt: number | null;
 }
 
+// --- Workspace ---
+
+export interface Workspace {
+  id: string;
+  name: string;
+  path: string;
+  description: string | null;
+  icon: string | null;
+  group: string | null;
+}
+
 // --- Session ---
 
 export type SessionStatus = "active" | "closed";
 
 export interface Session {
   id: string;
+  workspaceId: string;
   agentId: string;
   title: string | null;
   status: SessionStatus;
@@ -138,7 +150,7 @@ export interface SessionMessage {
 }
 
 export interface CreateSessionRequest {
-  agentId: string;
+  workspaceId: string;
   title?: string;
 }
 

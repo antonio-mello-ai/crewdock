@@ -10,6 +10,7 @@ import { scanAgents } from "./registry/agent-registry.js";
 import { handleLogStreamConnection } from "./ws/log-stream.js";
 
 import agentRoutes from "./routes/agents.js";
+import workspaceRoutes from "./routes/workspaces.js";
 import jobRoutes from "./routes/jobs.js";
 import sessionRoutes from "./routes/sessions.js";
 import costRoutes from "./routes/costs.js";
@@ -28,6 +29,7 @@ app.use("*", logger());
 
 // REST routes
 app.route("/api/agents", agentRoutes);
+app.route("/api/workspaces", workspaceRoutes);
 app.route("/api/jobs", jobRoutes);
 app.route("/api/sessions", sessionRoutes);
 app.route("/api/costs", costRoutes);

@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import type {
   Agent,
+  Workspace,
   Job,
   Session,
   SessionMessage,
@@ -121,16 +122,27 @@ export function useCancelJob() {
 }
 
 // ---------------------------------------------------------------------------
+// Workspaces
+// ---------------------------------------------------------------------------
+
+export function useWorkspaces() {
+  return useQuery<ApiListResponse<Workspace>>({
+    queryKey: ["workspaces"],
+    queryFn: () => api("/api/workspaces"),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
 
-export function useSessions(agentId?: string) {
+export function useSessions(workspaceId?: string) {
   const params = new URLSearchParams();
-  if (agentId) params.set("agentId", agentId);
+  if (workspaceId) params.set("workspaceId", workspaceId);
   const qs = params.toString();
 
   return useQuery<ApiListResponse<Session>>({
-    queryKey: ["sessions", { agentId }],
+    queryKey: ["sessions", { workspaceId }],
     queryFn: () => api(`/api/sessions${qs ? `?${qs}` : ""}`),
     refetchInterval: 10_000,
   });

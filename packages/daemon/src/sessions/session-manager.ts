@@ -1,15 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
-import { join, isAbsolute, resolve } from "node:path";
 import { eq, desc } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { getDb } from "../db/client.js";
 import { sessions, sessionMessages } from "../db/schema.js";
-import { config } from "../config.js";
 import { parseCostFromLog } from "../jobs/cost-parser.js";
+import { getWorkspace } from "../registry/workspaces.js";
 
 export interface Session {
   id: string;
+  workspaceId: string;
   agentId: string;
   title: string | null;
   workDir: string;
@@ -46,24 +45,21 @@ export type SessionStreamMessage =
 
 const activeSessions = new Map<string, ActiveSession>();
 
-// Session working directories (each session gets its own dir so --continue works)
-const SESSION_DIR_BASE = join(config.logDir, "sessions");
-
-function getSessionWorkDir(sessionId: string): string {
-  const dir = join(SESSION_DIR_BASE, sessionId);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
-export function createSession(agentId: string, title?: string): Session {
+export function createSession(workspaceId: string, title?: string): Session {
   const db = getDb();
+  const workspace = getWorkspace(workspaceId);
+  if (!workspace) throw new Error(`Workspace "${workspaceId}" not found`);
+
   const id = nanoid(12);
   const now = Date.now();
-  const workDir = getSessionWorkDir(id);
+
+  // Session runs in the workspace path (like cd <workspace> && claude)
+  const workDir = workspace.path;
 
   const row = {
     id,
-    agentId,
+    // Store workspaceId in agentId column (reusing existing schema)
+    agentId: workspaceId,
     title: title ?? null,
     workDir,
     status: "active" as const,
@@ -76,19 +72,19 @@ export function createSession(agentId: string, title?: string): Session {
   };
 
   db.insert(sessions).values(row).run();
-
   activeSessions.set(id, { process: null, subscribers: new Set() });
 
-  return row;
+  return { ...row, workspaceId };
 }
 
 export function getSession(id: string): Session | undefined {
   const db = getDb();
   const row = db.select().from(sessions).where(eq(sessions.id, id)).get();
-  return row as Session | undefined;
+  if (!row) return undefined;
+  return { ...row, workspaceId: row.agentId } as Session;
 }
 
-export function listSessions(agentId?: string, limit = 20): Session[] {
+export function listSessions(workspaceId?: string, limit = 20): Session[] {
   const db = getDb();
   let rows = db
     .select()
@@ -97,11 +93,11 @@ export function listSessions(agentId?: string, limit = 20): Session[] {
     .limit(limit)
     .all();
 
-  if (agentId) {
-    rows = rows.filter((r) => r.agentId === agentId);
+  if (workspaceId) {
+    rows = rows.filter((r) => r.agentId === workspaceId);
   }
 
-  return rows as Session[];
+  return rows.map((r) => ({ ...r, workspaceId: r.agentId })) as Session[];
 }
 
 export function getSessionMessages(sessionId: string): SessionMessage[] {
@@ -157,7 +153,6 @@ export async function sendMessage(
     activeSessions.set(sessionId, active);
   }
 
-  // Check if a message is already being processed
   if (active.process) {
     throw new Error("Session is busy processing a message");
   }
@@ -180,39 +175,30 @@ export async function sendMessage(
     })
     .run();
 
-  // Determine if this is a continuation or first message
   const isFirstMessage = session.messageCount === 0;
 
-  // Build claude command
-  const claudeCmd = resolveCmd(config.runAgentCmd);
-  const args: string[] = [];
+  // Build claude command — run directly in workspace path
+  // This is equivalent to: cd <workspace> && claude -p "message"
+  const args: string[] = [
+    "-p",
+    content,
+    "--verbose",
+    "--output-format",
+    "stream-json",
+    "--dangerously-skip-permissions",
+  ];
 
-  // For dev mode (mock), use mock script
-  if (claudeCmd.includes("mock")) {
-    args.push("", session.agentId, "chat", "--no-notify");
-  } else {
-    // Production: use claude CLI directly for interactive sessions
-    args.push(
-      "-p",
-      content,
-      "--verbose",
-      "--output-format",
-      "stream-json",
-      "--dangerously-skip-permissions"
-    );
-    if (!isFirstMessage) {
-      args.push("--continue");
-    }
+  if (!isFirstMessage) {
+    args.push("--continue");
   }
 
+  // Use workspace path as CWD — Claude reads CLAUDE.md from this directory
   const workDir = session.workDir;
   const startTime = Date.now();
   const responseChunks: string[] = [];
   const fullOutput: string[] = [];
 
-  // Spawn claude process
-  const cmd = claudeCmd.includes("mock") ? claudeCmd : "claude";
-  const child = spawn(cmd, args, {
+  const child = spawn("claude", args, {
     cwd: workDir,
     env: { ...process.env },
     stdio: ["ignore", "pipe", "pipe"],
@@ -225,13 +211,11 @@ export async function sendMessage(
     const text = data.toString();
     fullOutput.push(text);
 
-    // Try to parse stream-json events
     const lines = text.split("\n").filter((l) => l.trim());
     for (const line of lines) {
       try {
         const event = JSON.parse(line);
         if (event.type === "assistant" && event.message?.content) {
-          // Extract text from content blocks
           for (const block of event.message.content) {
             if (block.type === "text") {
               responseChunks.push(block.text);
@@ -243,10 +227,10 @@ export async function sendMessage(
           broadcast(sessionId, { type: "chunk", content: event.delta.text });
         }
       } catch {
-        // Not JSON — treat as plain text output (mock mode)
+        // Not JSON — plain text output
         responseChunks.push(text);
         broadcast(sessionId, { type: "chunk", content: text });
-        break; // Don't process line by line for plain text
+        break;
       }
     }
   });
@@ -259,10 +243,8 @@ export async function sendMessage(
     const durationMs = Date.now() - startTime;
     const fullText = fullOutput.join("");
     const cost = parseCostFromLog(fullText);
-    const responseText =
-      responseChunks.join("").trim() || fullText.trim();
+    const responseText = responseChunks.join("").trim() || fullText.trim();
 
-    // Store assistant message
     db.insert(sessionMessages)
       .values({
         id: assistantMsgId,
@@ -277,13 +259,12 @@ export async function sendMessage(
       })
       .run();
 
-    // Update session stats
     db.update(sessions)
       .set({
         totalCostUsd: session.totalCostUsd + cost.costUsd,
         totalTokensIn: session.totalTokensIn + cost.tokensIn,
         totalTokensOut: session.totalTokensOut + cost.tokensOut,
-        messageCount: session.messageCount + 2, // user + assistant
+        messageCount: session.messageCount + 2,
         lastActiveAt: Date.now(),
         title:
           session.title ??
@@ -327,9 +308,4 @@ export function closeSession(sessionId: string): boolean {
 
   activeSessions.delete(sessionId);
   return true;
-}
-
-function resolveCmd(cmd: string): string {
-  if (isAbsolute(cmd)) return cmd;
-  return resolve(process.cwd(), cmd);
 }

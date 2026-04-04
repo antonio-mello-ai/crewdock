@@ -13,11 +13,11 @@ const app = new Hono();
 // Create a new session
 app.post("/", async (c) => {
   try {
-    const body = await c.req.json<{ agentId: string; title?: string }>();
-    if (!body.agentId) {
-      return c.json({ error: "bad_request", message: "agentId is required" }, 400);
+    const body = await c.req.json<{ workspaceId: string; title?: string }>();
+    if (!body.workspaceId) {
+      return c.json({ error: "bad_request", message: "workspaceId is required" }, 400);
     }
-    const session = createSession(body.agentId, body.title);
+    const session = createSession(body.workspaceId, body.title);
     return c.json({ data: session }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -27,9 +27,9 @@ app.post("/", async (c) => {
 
 // List sessions
 app.get("/", (c) => {
-  const agentId = c.req.query("agentId") ?? undefined;
+  const workspaceId = c.req.query("workspaceId") ?? c.req.query("agentId") ?? undefined;
   const limit = Number(c.req.query("limit")) || 20;
-  const data = listSessions(agentId, limit);
+  const data = listSessions(workspaceId, limit);
   return c.json({ data, total: data.length });
 });
 
