@@ -95,23 +95,10 @@ export function useSession(): UseSessionReturn {
   }, [streamingContent]);
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (_content: string) => {
       if (!sessionIdRef.current) return;
-
-      // Add user message to local state immediately
-      const userMsg: SessionMessage = {
-        id: `temp-${Date.now()}`,
-        sessionId: sessionIdRef.current,
-        role: "user",
-        content,
-        costUsd: 0,
-        tokensIn: 0,
-        tokensOut: 0,
-        durationMs: 0,
-        createdAt: Date.now(),
-      };
-
-      setMessages((prev) => [...prev, userMsg]);
+      // Don't add user message optimistically — let the API refetch show it
+      // This prevents duplicate messages
       setIsStreaming(true);
       setStreamingContent("");
     },

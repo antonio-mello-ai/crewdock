@@ -162,6 +162,7 @@ export function useSessionMessages(sessionId?: string) {
     queryKey: ["sessions", sessionId, "messages"],
     queryFn: () => api(`/api/sessions/${sessionId}/messages`),
     enabled: !!sessionId,
+    refetchInterval: 2_000,
   });
 }
 
