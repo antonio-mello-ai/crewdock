@@ -112,10 +112,11 @@ export default function SettingsPage() {
 
   const isLoading = loadingDiscovered || loadingConfig;
 
-  // Group discovered workspaces
+  // Group by ORIGINAL group (from discovery), not the edited override
+  // This prevents re-grouping on every keystroke when editing group field
   const grouped = new Map<string, Workspace[]>();
   for (const ws of discovered) {
-    const group = getOverride(ws.id).group ?? ws.group ?? "Other";
+    const group = ws.group ?? "Other";
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group)!.push(ws);
   }
