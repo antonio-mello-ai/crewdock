@@ -7,7 +7,7 @@
 
 ## Infra (impacta funcionalidade)
 
-- [ ] **MCP servers no CT165** — Claude no Console/Terminal nao tem MCP servers configurados (Airflow, ClickHouse, Redis, QMD, etc.). Causa: `~/.claude.json` do user `claude` no CT165 nao tem `mcpServers`. Efeito: agente tenta acessar VMs via SSH direto e falha. Solucao: instalar e configurar MCPs relevantes no CT165
+- [ ] **MCP servers no CT165** — Claude no Console/Terminal nao tem MCP servers configurados (`~/.claude.json` do user `claude` sem `mcpServers`). Para agentes como `agente-badhu` que usam SSH direto nao e bloqueante (SSH funciona via LAN 192.168.20.x). Mas para agentes que dependem de MCPs (QMD, Airflow, ClickHouse), e necessario configurar. Prioridade: media
 
 ## Funcional (impacta uso diario)
 
