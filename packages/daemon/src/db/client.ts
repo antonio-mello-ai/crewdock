@@ -99,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_hitl_status ON hitl_requests(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_agent_id ON sessions(agent_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id);
+
 `;
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;
@@ -109,6 +110,14 @@ export function getDb() {
     sqlite.pragma("journal_mode = WAL");
     sqlite.pragma("foreign_keys = ON");
     sqlite.exec(MIGRATIONS_SQL);
+
+    // Incremental migrations (safe to re-run)
+    const cols = sqlite.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
+    const colNames = new Set(cols.map((c) => c.name));
+    if (!colNames.has("permission_mode")) {
+      sqlite.exec("ALTER TABLE sessions ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'plan'");
+    }
+
     dbInstance = drizzle(sqlite, { schema });
   }
   return dbInstance;

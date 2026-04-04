@@ -39,7 +39,6 @@ export interface SessionMessage {
 interface ActiveSession {
   process: ChildProcess | null;
   subscribers: Set<(msg: SessionStreamMessage) => void>;
-  permissionMode: PermissionMode;
 }
 
 export type SessionStreamMessage =
@@ -72,6 +71,7 @@ export function createSession(
     title: title ?? null,
     workDir,
     status: "active" as const,
+    permissionMode,
     totalCostUsd: 0,
     totalTokensIn: 0,
     totalTokensOut: 0,
@@ -81,11 +81,7 @@ export function createSession(
   };
 
   db.insert(sessions).values(row).run();
-  activeSessions.set(id, {
-    process: null,
-    subscribers: new Set(),
-    permissionMode,
-  });
+  activeSessions.set(id, { process: null, subscribers: new Set() });
 
   return { ...row, workspaceId, permissionMode };
 }
@@ -94,11 +90,10 @@ export function getSession(id: string): Session | undefined {
   const db = getDb();
   const row = db.select().from(sessions).where(eq(sessions.id, id)).get();
   if (!row) return undefined;
-  const active = activeSessions.get(id);
   return {
     ...row,
     workspaceId: row.agentId,
-    permissionMode: active?.permissionMode ?? "plan",
+    permissionMode: (row.permissionMode as PermissionMode) ?? "plan",
   } as Session;
 }
 
@@ -115,14 +110,11 @@ export function listSessions(workspaceId?: string, limit = 20): Session[] {
     rows = rows.filter((r) => r.agentId === workspaceId);
   }
 
-  return rows.map((r) => {
-    const active = activeSessions.get(r.id);
-    return {
-      ...r,
-      workspaceId: r.agentId,
-      permissionMode: active?.permissionMode ?? "plan",
-    };
-  }) as Session[];
+  return rows.map((r) => ({
+    ...r,
+    workspaceId: r.agentId,
+    permissionMode: (r.permissionMode as PermissionMode) ?? "plan",
+  })) as Session[];
 }
 
 export function getSessionMessages(sessionId: string): SessionMessage[] {
@@ -140,7 +132,7 @@ export function subscribeToSession(
 ): (() => void) | null {
   let active = activeSessions.get(sessionId);
   if (!active) {
-    active = { process: null, subscribers: new Set(), permissionMode: "plan" };
+    active = { process: null, subscribers: new Set() };
     activeSessions.set(sessionId, active);
   }
   active.subscribers.add(callback);
@@ -183,7 +175,6 @@ export async function sendMessage(
   const active = activeSessions.get(sessionId) ?? {
     process: null,
     subscribers: new Set(),
-    permissionMode: session.permissionMode ?? ("plan" as PermissionMode),
   };
   if (!activeSessions.has(sessionId)) {
     activeSessions.set(sessionId, active);
