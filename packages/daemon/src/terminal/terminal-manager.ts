@@ -6,6 +6,7 @@ interface ActiveTerminal {
   pty: pty.IPty;
   workspaceId: string;
   subscribers: Set<(data: string) => void>;
+  outputBuffer: string[];
   createdAt: number;
 }
 
@@ -18,6 +19,7 @@ export function createTerminal(workspaceId: string): string {
   const id = nanoid(12);
   const shell = process.env.SHELL || "/bin/bash";
 
+  console.log(`[terminal] spawning shell=${shell} cwd=${workspace.path}`);
   const term = pty.spawn(shell, [], {
     name: "xterm-256color",
     cols: 120,
@@ -25,25 +27,34 @@ export function createTerminal(workspaceId: string): string {
     cwd: workspace.path,
     env: { ...process.env } as Record<string, string>,
   });
+  console.log(`[terminal] spawned pid=${term.pid}`);
 
   const active: ActiveTerminal = {
     pty: term,
     workspaceId,
     subscribers: new Set(),
+    outputBuffer: [],
     createdAt: Date.now(),
   };
 
   term.onData((data) => {
-    for (const cb of active.subscribers) {
-      try {
-        cb(data);
-      } catch {
-        // subscriber disconnected
+    console.log(`[terminal ${id}] onData: subs=${active.subscribers.size} buf=${active.outputBuffer.length} data=${JSON.stringify(data).slice(0, 40)}`);
+    if (active.subscribers.size === 0) {
+      // Buffer output until first subscriber connects
+      active.outputBuffer.push(data);
+    } else {
+      for (const cb of active.subscribers) {
+        try {
+          cb(data);
+        } catch (err) {
+          console.log(`[terminal ${id}] subscriber error:`, err);
+        }
       }
     }
   });
 
-  term.onExit(() => {
+  term.onExit((e) => {
+    console.log(`[terminal ${id}] exited code=${e.exitCode} signal=${e.signal}`);
     terminals.delete(id);
   });
 
@@ -69,7 +80,20 @@ export function subscribeToTerminal(
 ): (() => void) | null {
   const term = terminals.get(id);
   if (!term) return null;
+  console.log(`[terminal ${id}] subscribe: buf=${term.outputBuffer.length}`);
   term.subscribers.add(callback);
+
+  // Flush buffered output to new subscriber
+  if (term.outputBuffer.length > 0) {
+    const buffered = term.outputBuffer.join("");
+    term.outputBuffer.length = 0;
+    try {
+      callback(buffered);
+    } catch {
+      // subscriber disconnected
+    }
+  }
+
   return () => {
     term.subscribers.delete(callback);
   };
