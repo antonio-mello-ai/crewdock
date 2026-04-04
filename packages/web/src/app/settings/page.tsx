@@ -122,7 +122,8 @@ export default function SettingsPage() {
   // Group using committed overrides (updated on blur) or original discovery group
   const grouped = new Map<string, Workspace[]>();
   for (const ws of discovered) {
-    const group = committedGroups[ws.id] ?? getOverride(ws.id).group ?? ws.group ?? "Other";
+    // Use committedGroups (set on blur) for visual grouping, NOT localConfig (changes on keystroke)
+    const group = committedGroups[ws.id] ?? ws.group ?? "Other";
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group)!.push(ws);
   }
