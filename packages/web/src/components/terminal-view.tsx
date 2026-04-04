@@ -108,7 +108,7 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
     // Intercept Shift+Enter to send proper escape sequence
     // Claude Code uses CSI u encoding for modified keys
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === "keydown" && e.key === "Enter" && e.shiftKey) {
+      if (e.type === "keydown" && e.key === "Enter" && (e.shiftKey || e.metaKey)) {
         if (ws.readyState === WebSocket.OPEN) {
           // CSI 13;2u = Shift+Enter in kitty/xterm modified key protocol
           ws.send(JSON.stringify({ type: "input", data: "\x1b[13;2u" }));
