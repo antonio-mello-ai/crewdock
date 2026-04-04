@@ -1,7 +1,5 @@
 # CrewDock — Backlog
 
-**Atualizado**: 3 Abr 2026
-
 ## Funcional (impacta uso diario)
 
 - [ ] **Schedule Manager** — pagina placeholder hoje. Implementar: ler systemd timers do CT165, visualizar crons, enable/disable, trigger manual
@@ -24,5 +22,5 @@
 
 ## Criterio de Sucesso
 
-Antonio usar ai.felhen.ai diariamente por 30 dias (inicio: 3/Abr/2026).
+Antonio usar ai.felhen.ai diariamente por 30 dias consecutivos.
 Se sim → continuar evoluindo. Se nao → arquivar.
