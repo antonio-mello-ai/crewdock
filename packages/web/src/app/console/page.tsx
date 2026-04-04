@@ -66,6 +66,22 @@ export default function ConsolePage() {
     [workspaces, selectedWorkspaceId]
   );
 
+  // Handle deep-link query params (?workspace=X&session=Y) — runs once on mount
+  const [deepLinkApplied, setDeepLinkApplied] = useState(false);
+  useEffect(() => {
+    if (deepLinkApplied || typeof window === "undefined" || workspaces.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const wsParam = params.get("workspace");
+    const sessionParam = params.get("session");
+    if (wsParam && workspaces.some((w) => w.id === wsParam)) {
+      setSelectedWorkspaceId(wsParam);
+    }
+    if (sessionParam) {
+      setActiveSessionId(sessionParam);
+    }
+    setDeepLinkApplied(true);
+  }, [workspaces, deepLinkApplied]);
+
   // Auto-select first workspace
   useEffect(() => {
     if (workspaces.length > 0 && !selectedWorkspaceId) {

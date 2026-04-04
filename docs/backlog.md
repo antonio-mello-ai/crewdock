@@ -13,14 +13,14 @@
 
 - [ ] **Schedule Manager** — pagina placeholder hoje. Implementar: ler systemd timers do CT165, visualizar crons, enable/disable, trigger manual
 - [ ] **Morning briefing inteligente** — atualmente e lista simples de jobs recentes. Evoluir para exec summary formatado: o que mudou, o que precisa atencao, o que foi resolvido
-- [ ] **Persistencia de contexto entre mensagens** — sessoes usam `--continue` mas cada mensagem spawna processo novo. Validar se contexto persiste em conversas longas
+- [x] **Persistencia de contexto entre mensagens** — corrigido: usa `--resume <claude_session_id>` em vez de `--continue`. Captura session_id do evento `init` do stream-json, persiste em `sessions.claude_session_id`. Sessoes no mesmo workspace nao colidem. Validado E2E
 
 ## Qualidade / Polish
 
 - [x] **Favicon** — SVG com logo "A" do AIOS
 - [x] **Persistir permissionMode no DB** — coluna `permission_mode` adicionada ao schema, migration-safe
-- [ ] **Overview adaptar para Workspaces** — pagina ainda referencia agentes/frentes do registry antigo, precisa alinhar com modelo de workspaces
-- [ ] **Log viewer em Job Detail** — mostra vazio para jobs completados, precisa carregar conteudo do arquivo de log
+- [x] **Overview adaptar para Workspaces** — pagina refatorada: WorkspaceCard agrupado por `group`, Morning Briefing combina sessions + jobs, Recent Sessions primeiro e Recent Jobs (background) como secao separada. Deep-link `/console?workspace=X&session=Y`
+- [x] **Log viewer em Job Detail** — endpoint `GET /api/jobs/:id/logs` le logPath do disco, frontend carrega via `useJobLogs` para jobs completados
 - [ ] **Cost tracking real** — validar se Claude CLI via OAuth (plano Max) reporta tokens/custo da mesma forma que API
 
 ## Futuro

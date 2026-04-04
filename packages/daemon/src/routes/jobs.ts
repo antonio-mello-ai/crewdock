@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { readFileSync, existsSync } from "node:fs";
 import { createJob, getJob, listJobs, cancelJob } from "../jobs/job-manager.js";
 import type { CreateJobRequest, JobStatus } from "@aios/shared";
 
@@ -37,6 +38,22 @@ app.get("/:id", (c) => {
   const job = getJob(c.req.param("id"));
   if (!job) return c.json({ error: "not_found", message: "Job not found" }, 404);
   return c.json({ data: job });
+});
+
+app.get("/:id/logs", (c) => {
+  const job = getJob(c.req.param("id"));
+  if (!job) return c.json({ error: "not_found", message: "Job not found" }, 404);
+  if (!job.logPath || !existsSync(job.logPath)) {
+    return c.json({ data: { lines: [] } });
+  }
+  try {
+    const content = readFileSync(job.logPath, "utf-8");
+    const lines = content.split("\n");
+    return c.json({ data: { lines } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "read_failed", message }, 500);
+  }
 });
 
 app.post("/:id/cancel", (c) => {

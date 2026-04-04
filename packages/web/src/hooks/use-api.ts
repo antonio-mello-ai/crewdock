@@ -111,6 +111,14 @@ export function useCreateJob() {
   });
 }
 
+export function useJobLogs(id: string | undefined, enabled: boolean) {
+  return useQuery<ApiResponse<{ lines: string[] }>>({
+    queryKey: ["jobs", id, "logs"],
+    queryFn: () => api(`/api/jobs/${id}/logs`),
+    enabled: !!id && enabled,
+  });
+}
+
 export function useCancelJob() {
   const qc = useQueryClient();
   return useMutation<ApiResponse<Job>, Error, string>({

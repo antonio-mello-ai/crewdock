@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { useJob, useAgents } from "@/hooks/use-api";
+import { useJob, useAgents, useJobLogs } from "@/hooks/use-api";
 import { LogViewer } from "@/components/log-viewer";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { formatDuration, formatCost, WS_URL } from "@/lib/utils";
@@ -37,6 +37,8 @@ function JobDetailContent() {
   }, [job?.startedAt, job?.finishedAt]);
 
   const isStreaming = job?.status === "running" || job?.status === "queued";
+  const { data: logsData } = useJobLogs(id, !isStreaming && !!job);
+  const logLines = logsData?.data?.lines ?? [];
 
   if (!id) {
     return (
@@ -146,7 +148,7 @@ function JobDetailContent() {
         {isStreaming ? (
           <LogViewer wsUrl={`${WS_URL}/ws/jobs/${job.id}/logs`} />
         ) : (
-          <LogViewer lines={[]} />
+          <LogViewer lines={logLines} />
         )}
       </div>
     </div>
