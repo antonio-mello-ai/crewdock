@@ -22,10 +22,24 @@ Control plane web para gerenciar agentes AI. Substitui 6 terminais + Telegram po
 
 ```
 packages/
-  daemon/    — API server Hono, agent registry, job manager, session manager, workspaces
+  daemon/    — API server Hono, agent registry, job manager, session manager, terminal manager, workspaces
   web/       — Next.js frontend (output: export para CF Pages)
   shared/    — Types e constants compartilhados
 ```
+
+## Console vs Terminal
+
+| Feature | Console (`/console`) | Terminal (`/terminal`) |
+|---------|---------------------|----------------------|
+| Modo | Chat (claude -p) | Shell interativo (PTY) |
+| Permissoes | Configuravel: Read Only / Dangerously Accept Edits | Interativo (respeita settings.json) |
+| Multiline | Shift+Enter | Shift+Enter ou Cmd+Enter |
+| Stop | Botao Stop (SIGTERM) | Ctrl+C |
+| Use case | Queries rapidas, monitoramento | Controle total, sessoes interativas |
+
+## Daemon
+
+Roda como usuario `claude` (UID 33) com sudo NOPASSWD no CT165. Service: `aios-daemon.service`.
 
 ## Comandos
 
@@ -39,7 +53,7 @@ npx tsx packages/daemon/src/index.ts   # rodar daemon local
 
 ```bash
 # Daemon (CT165)
-ssh claude-monitor "cd /home/claude/aios-runtime && git pull && npx turbo build --filter=@aios/daemon --force"
+ssh proxmox "pct exec 165 -- bash -c 'cd /home/claude/aios-runtime && git pull && npx turbo build --filter=@aios/daemon --force'"
 ssh proxmox "pct exec 165 -- systemctl restart aios-daemon"
 
 # Frontend (CF Pages)

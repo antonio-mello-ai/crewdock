@@ -8,12 +8,13 @@
 ## Funcional (impacta uso diario)
 
 - [ ] **Schedule Manager** — pagina placeholder hoje. Implementar: ler systemd timers do CT165, visualizar crons, enable/disable, trigger manual
-- [ ] **Morning briefing inteligente** — hoje e lista simples de jobs recentes. Evoluir para exec summary formatado: o que mudou, o que precisa atencao, o que foi resolvido
+- [ ] **Morning briefing inteligente** — atualmente e lista simples de jobs recentes. Evoluir para exec summary formatado: o que mudou, o que precisa atencao, o que foi resolvido
 - [ ] **Persistencia de contexto entre mensagens** — sessoes usam `--continue` mas cada mensagem spawna processo novo. Validar se contexto persiste em conversas longas
 
 ## Qualidade / Polish
 
-- [ ] **Favicon** — 404 no browser, criar e adicionar
+- [x] **Favicon** — SVG com logo "A" do AIOS
+- [ ] **Persistir permissionMode no DB** — hoje fica em memoria, perde no restart do daemon. Adicionar coluna ao schema
 - [ ] **Overview adaptar para Workspaces** — pagina ainda referencia agentes/frentes do registry antigo, precisa alinhar com modelo de workspaces
 - [ ] **Log viewer em Job Detail** — mostra vazio para jobs completados, precisa carregar conteudo do arquivo de log
 - [ ] **Cost tracking real** — validar se Claude CLI via OAuth (plano Max) reporta tokens/custo da mesma forma que API
