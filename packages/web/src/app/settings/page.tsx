@@ -112,14 +112,31 @@ export default function SettingsPage() {
 
   const isLoading = loadingDiscovered || loadingConfig;
 
-  // Group by ORIGINAL group (from discovery), not the edited override
-  // This prevents re-grouping on every keystroke when editing group field
+  // Committed groups — only updates on blur, not on every keystroke
+  const [committedGroups, setCommittedGroups] = useState<Record<string, string>>({});
+
+  const commitGroup = useCallback((id: string, group: string) => {
+    setCommittedGroups((prev) => ({ ...prev, [id]: group }));
+  }, []);
+
+  // Group using committed overrides (updated on blur) or original discovery group
   const grouped = new Map<string, Workspace[]>();
   for (const ws of discovered) {
-    const group = ws.group ?? "Other";
+    const group = committedGroups[ws.id] ?? getOverride(ws.id).group ?? ws.group ?? "Other";
     if (!grouped.has(group)) grouped.set(group, []);
     grouped.get(group)!.push(ws);
   }
+
+  // Sync committed groups when config loads
+  useEffect(() => {
+    if (configData?.data) {
+      const groups: Record<string, string> = {};
+      for (const [id, ov] of Object.entries(configData.data)) {
+        if (ov.group) groups[id] = ov.group;
+      }
+      setCommittedGroups(groups);
+    }
+  }, [configData]);
 
   const visibleCount = discovered.filter(
     (ws) => !getOverride(ws.id).hidden
@@ -217,12 +234,18 @@ export default function SettingsPage() {
                         className="h-7 w-48 bg-transparent border-none px-1 text-sm font-medium text-neutral-200 focus:bg-neutral-800/50"
                       />
 
-                      {/* Group input */}
+                      {/* Group input — regroups on blur/enter, not on keystroke */}
                       <Input
                         value={ov.group ?? ws.group ?? ""}
                         onChange={(e) =>
                           updateOverride(ws.id, { group: e.target.value })
                         }
+                        onBlur={(e) => commitGroup(ws.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === "Tab") {
+                            commitGroup(ws.id, (e.target as HTMLInputElement).value);
+                          }
+                        }}
                         placeholder="Group"
                         className="h-7 w-28 bg-transparent border-none px-1 text-xs text-neutral-500 focus:bg-neutral-800/50"
                       />
