@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, basename, relative } from "node:path";
 import { config } from "../config.js";
 import type { Workspace } from "@aios/shared";
@@ -10,32 +10,108 @@ const IGNORE_DIRS = new Set([
   ".claude", "docs", "scripts", "public", "assets", "__pycache__",
 ]);
 
-let workspacesCache: Workspace[] | null = null;
+const CONFIG_FILE = join(
+  existsSync(BASE_DIR) ? BASE_DIR : config.projectsDir,
+  "workspaces.json"
+);
+
+export interface WorkspaceOverride {
+  name?: string;
+  group?: string;
+  hidden?: boolean;
+  order?: number;
+}
+
+let discoveredCache: Workspace[] | null = null;
+let configCache: Record<string, WorkspaceOverride> | null = null;
 
 /**
- * Auto-discover workspaces by scanning for directories with CLAUDE.md files.
- * A directory with a CLAUDE.md is a valid workspace.
+ * Get all discovered workspaces (unfiltered, for settings page)
+ */
+export function getDiscoveredWorkspaces(): Workspace[] {
+  if (!discoveredCache) {
+    discoveredCache = discoverWorkspaces();
+  }
+  return discoveredCache;
+}
+
+/**
+ * Get active workspaces (filtered + overridden by config)
  */
 export function getWorkspaces(): Workspace[] {
-  if (workspacesCache) return workspacesCache;
+  const all = getDiscoveredWorkspaces();
+  const overrides = getWorkspaceConfig();
 
-  // Try loading from config file first (manual override)
-  const configPath = join(config.projectsDir, "..", "workspaces.json");
-  if (existsSync(configPath)) {
-    try {
-      const content = readFileSync(configPath, "utf-8");
-      workspacesCache = JSON.parse(content) as Workspace[];
-      return workspacesCache;
-    } catch {
-      // Fall through to auto-discovery
+  return all
+    .filter((ws) => !overrides[ws.id]?.hidden)
+    .map((ws) => {
+      const ov = overrides[ws.id];
+      if (!ov) return ws;
+      return {
+        ...ws,
+        name: ov.name ?? ws.name,
+        group: ov.group ?? ws.group,
+      };
+    })
+    .sort((a, b) => {
+      const oa = overrides[a.id]?.order ?? 999;
+      const ob = overrides[b.id]?.order ?? 999;
+      if (oa !== ob) return oa - ob;
+      // Group order: Principal first
+      if (a.group === "Principal" && b.group !== "Principal") return -1;
+      if (b.group === "Principal" && a.group !== "Principal") return 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+export function getWorkspace(id: string): Workspace | undefined {
+  return getWorkspaces().find((w) => w.id === id);
+}
+
+export function getWorkspaceConfig(): Record<string, WorkspaceOverride> {
+  if (configCache) return configCache;
+  try {
+    if (existsSync(CONFIG_FILE)) {
+      const content = readFileSync(CONFIG_FILE, "utf-8");
+      configCache = JSON.parse(content) as Record<string, WorkspaceOverride>;
+      return configCache;
     }
+  } catch {
+    // Invalid config
   }
+  configCache = {};
+  return configCache;
+}
 
-  // Auto-discover: scan for directories with CLAUDE.md
+export function saveWorkspaceConfig(overrides: Record<string, WorkspaceOverride>): void {
+  writeFileSync(CONFIG_FILE, JSON.stringify(overrides, null, 2), "utf-8");
+  configCache = overrides;
+}
+
+export function refreshWorkspaces(): Workspace[] {
+  discoveredCache = null;
+  configCache = null;
+  return getWorkspaces();
+}
+
+// --- Discovery logic ---
+
+function discoverWorkspaces(): Workspace[] {
   const discovered: Workspace[] = [];
   const baseDir = existsSync(BASE_DIR) ? BASE_DIR : config.projectsDir;
 
   scanForClaudeMd(baseDir, 0, discovered, baseDir);
+
+  // Assign groups based on path depth
+  for (const ws of discovered) {
+    const rel = relative(baseDir, ws.path);
+    const parts = rel.split("/");
+    if (parts.length <= 1) {
+      ws.group = "Principal";
+    } else {
+      ws.group = humanize(parts[0]!);
+    }
+  }
 
   // Sort: top-level first, then alphabetically
   discovered.sort((a, b) => {
@@ -45,19 +121,6 @@ export function getWorkspaces(): Workspace[] {
     return a.name.localeCompare(b.name);
   });
 
-  // Assign groups based on path depth relative to base
-  for (const ws of discovered) {
-    const rel = relative(baseDir, ws.path);
-    const parts = rel.split("/");
-    if (parts.length <= 1) {
-      ws.group = "Principal";
-    } else {
-      // Use first directory as group name
-      ws.group = humanize(parts[0]!);
-    }
-  }
-
-  workspacesCache = discovered;
   return discovered;
 }
 
@@ -75,20 +138,16 @@ function scanForClaudeMd(
     const rel = relative(baseDir, dir);
     const id = rel.replace(/\//g, "--") || dirName;
 
-    // Try to extract description from CLAUDE.md first line after heading
-    const description = extractDescription(claudeMdPath);
-
     results.push({
       id,
       name: humanize(dirName),
       path: dir,
-      description,
+      description: extractDescription(claudeMdPath),
       icon: null,
       group: null,
     });
   }
 
-  // Scan subdirectories
   try {
     const entries = readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
@@ -135,19 +194,7 @@ function extractDescription(claudeMdPath: string): string | null {
 }
 
 function humanize(dirName: string): string {
-  // Convert directory names to human-readable format
   return dirName
     .replace(/[-_]/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
-    .replace(/^Mnt Felhencloud /, "")
-    .replace(/^Projetos /, "");
-}
-
-export function getWorkspace(id: string): Workspace | undefined {
-  return getWorkspaces().find((w) => w.id === id);
-}
-
-export function refreshWorkspaces(): Workspace[] {
-  workspacesCache = null;
-  return getWorkspaces();
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }

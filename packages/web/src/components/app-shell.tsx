@@ -11,6 +11,7 @@ import {
   Clock,
   DollarSign,
   Inbox,
+  Settings,
   PanelLeftClose,
   PanelLeft,
   Menu,
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/schedules", label: "Schedules", icon: Clock },
   { href: "/costs", label: "Costs", icon: DollarSign },
   { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
