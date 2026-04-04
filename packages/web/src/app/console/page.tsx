@@ -7,6 +7,7 @@ import {
   useSessionMessages,
   useCreateSession,
   useSendMessage,
+  useCancelSession,
 } from "@/hooks/use-api";
 import { useSession as useSessionWs } from "@/hooks/use-session";
 import { ChatMessage } from "@/components/chat-message";
@@ -53,6 +54,7 @@ export default function ConsolePage() {
   // Session creation + message sending
   const createSession = useCreateSession();
   const sendMessage = useSendMessage(activeSessionId ?? "");
+  const cancelSession = useCancelSession(activeSessionId ?? "");
 
   // WebSocket streaming
   const ws = useSessionWs();
@@ -330,7 +332,9 @@ export default function ConsolePage() {
       {activeSessionId && (
         <MessageInput
           onSend={handleSendMessage}
-          disabled={ws.isStreaming || sendMessage.isPending}
+          onStop={() => cancelSession.mutate()}
+          isStreaming={ws.isStreaming}
+          disabled={sendMessage.isPending}
           placeholder={`Message ${selectedWorkspace?.name ?? "workspace"}...`}
         />
       )}

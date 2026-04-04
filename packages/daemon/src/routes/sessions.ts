@@ -5,6 +5,7 @@ import {
   listSessions,
   getSessionMessages,
   sendMessage,
+  cancelProcessing,
   closeSession,
 } from "../sessions/session-manager.js";
 
@@ -67,6 +68,13 @@ app.post("/:id/messages", async (c) => {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "send_failed", message }, 400);
   }
+});
+
+// Cancel processing in a session
+app.post("/:id/cancel", (c) => {
+  const cancelled = cancelProcessing(c.req.param("id") ?? "");
+  if (!cancelled) return c.json({ error: "not_processing", message: "Session is not processing" }, 400);
+  return c.json({ data: { cancelled: true } });
 });
 
 // Close a session

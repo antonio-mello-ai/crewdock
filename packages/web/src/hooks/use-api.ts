@@ -177,6 +177,13 @@ export function useCreateSession() {
   });
 }
 
+export function useCancelSession(sessionId: string) {
+  return useMutation<ApiResponse<{ cancelled: boolean }>, Error, void>({
+    mutationFn: () =>
+      api(`/api/sessions/${sessionId}/cancel`, { method: "POST" }),
+  });
+}
+
 export function useSendMessage(sessionId: string) {
   const qc = useQueryClient();
   return useMutation<ApiResponse<SessionMessage>, Error, SendMessageRequest>({

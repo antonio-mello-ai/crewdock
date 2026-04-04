@@ -336,6 +336,13 @@ export async function sendMessage(
   return { messageId: userMsgId };
 }
 
+export function cancelProcessing(sessionId: string): boolean {
+  const active = activeSessions.get(sessionId);
+  if (!active?.process) return false;
+  active.process.kill("SIGTERM");
+  return true;
+}
+
 export function closeSession(sessionId: string): boolean {
   const db = getDb();
   const session = getSession(sessionId);

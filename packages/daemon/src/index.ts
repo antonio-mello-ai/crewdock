@@ -63,9 +63,10 @@ app.get(
   "/ws/sessions/:id",
   upgradeWebSocket((c) => {
     const sessionId = c.req.param("id") ?? "";
+    let unsub: (() => void) | null = null;
     return {
       onOpen(_evt, ws) {
-        const unsub = subscribeToSession(sessionId, (msg) => {
+        unsub = subscribeToSession(sessionId, (msg) => {
           try {
             (ws as any).send(JSON.stringify(msg));
           } catch {
@@ -76,7 +77,9 @@ app.get(
           (ws as any).send(JSON.stringify({ type: "error", message: "Session not found" }));
           (ws as any).close();
         }
-        (ws as any).addEventListener?.("close", () => unsub?.());
+      },
+      onClose() {
+        unsub?.();
       },
     };
   })
@@ -87,9 +90,10 @@ app.get(
   "/ws/terminal/:id",
   upgradeWebSocket((c) => {
     const terminalId = c.req.param("id") ?? "";
+    let unsub: (() => void) | null = null;
     return {
       onOpen(_evt, ws) {
-        const unsub = subscribeToTerminal(terminalId, (data) => {
+        unsub = subscribeToTerminal(terminalId, (data) => {
           try {
             (ws as any).send(JSON.stringify({ type: "output", data }));
           } catch {
@@ -101,27 +105,27 @@ app.get(
             JSON.stringify({ type: "error", message: "Terminal not found" })
           );
           (ws as any).close();
-          return;
         }
-        (ws as any).addEventListener?.("close", () => unsub?.());
-        (ws as any).addEventListener?.("message", (event: MessageEvent) => {
-          try {
-            const msg = JSON.parse(
-              typeof event.data === "string" ? event.data : ""
-            );
-            if (msg.type === "input" && typeof msg.data === "string") {
-              writeToTerminal(terminalId, msg.data);
-            } else if (
-              msg.type === "resize" &&
-              typeof msg.cols === "number" &&
-              typeof msg.rows === "number"
-            ) {
-              resizeTerminal(terminalId, msg.cols, msg.rows);
-            }
-          } catch {
-            // ignore parse errors
+      },
+      onMessage(event, _ws) {
+        try {
+          const raw = typeof event.data === "string" ? event.data : event.data?.toString?.() ?? "";
+          const msg = JSON.parse(raw);
+          if (msg.type === "input" && typeof msg.data === "string") {
+            writeToTerminal(terminalId, msg.data);
+          } else if (
+            msg.type === "resize" &&
+            typeof msg.cols === "number" &&
+            typeof msg.rows === "number"
+          ) {
+            resizeTerminal(terminalId, msg.cols, msg.rows);
           }
-        });
+        } catch {
+          // ignore parse errors
+        }
+      },
+      onClose() {
+        unsub?.();
       },
     };
   })

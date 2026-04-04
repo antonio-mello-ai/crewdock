@@ -67,6 +67,7 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
     term.open(containerRef.current);
 
     fitAddon.fit();
+    term.focus();
     termRef.current = term;
     fitRef.current = fitAddon;
 
@@ -138,6 +139,7 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
       ref={containerRef}
       className="h-full w-full"
       style={{ padding: "4px 8px" }}
+      onClick={() => termRef.current?.focus()}
     />
   );
 }

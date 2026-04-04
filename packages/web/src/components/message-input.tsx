@@ -2,10 +2,11 @@
 
 import { useRef, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Square } from "lucide-react";
 
 interface MessageInputProps {
   onSend: (content: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
   placeholder?: string;
@@ -13,6 +14,7 @@ interface MessageInputProps {
 
 export function MessageInput({
   onSend,
+  onStop,
   disabled,
   isStreaming,
   placeholder = "Type a message...",
@@ -66,18 +68,26 @@ export function MessageInput({
             className="w-full resize-none rounded-lg border border-neutral-800 bg-neutral-900/70 px-4 py-2.5 text-sm text-neutral-200 placeholder:text-neutral-600 focus:border-neutral-700 focus:outline-none focus:ring-1 focus:ring-neutral-700/50 disabled:opacity-50 transition-colors"
           />
         </div>
-        <Button
-          onClick={handleSend}
-          disabled={!value.trim() || disabled || isStreaming}
-          size="icon"
-          className="h-10 w-10 shrink-0 rounded-lg"
-        >
-          {isStreaming ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
+        {isStreaming && onStop ? (
+          <Button
+            onClick={onStop}
+            size="icon"
+            variant="destructive"
+            className="h-10 w-10 shrink-0 rounded-lg"
+            title="Stop generation"
+          >
+            <Square className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSend}
+            disabled={!value.trim() || disabled || isStreaming}
+            size="icon"
+            className="h-10 w-10 shrink-0 rounded-lg"
+          >
             <Send className="h-4 w-4" />
-          )}
-        </Button>
+          </Button>
+        )}
       </div>
       <p className="text-center text-[11px] text-neutral-700 mt-1.5">
         Enter to send, Shift+Enter for newline
