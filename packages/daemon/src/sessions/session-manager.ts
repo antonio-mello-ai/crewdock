@@ -16,6 +16,7 @@ export interface Session {
   workDir: string;
   status: "active" | "closed";
   permissionMode: PermissionMode;
+  claudeSessionId: string | null;
   totalCostUsd: number;
   totalTokensIn: number;
   totalTokensOut: number;
@@ -72,6 +73,7 @@ export function createSession(
     workDir,
     status: "active" as const,
     permissionMode,
+    claudeSessionId: null,
     totalCostUsd: 0,
     totalTokensIn: 0,
     totalTokensOut: 0,
@@ -202,8 +204,6 @@ export async function sendMessage(
     })
     .run();
 
-  const isFirstMessage = session.messageCount === 0;
-
   // Build claude command — run directly in workspace path
   // This is equivalent to: cd <workspace> && claude -p "message"
   const permMode = session.permissionMode ?? "plan";
@@ -224,8 +224,10 @@ export async function sendMessage(
     cliPermMode,
   ];
 
-  if (!isFirstMessage) {
-    args.push("--continue");
+  // Use --resume with the Claude session ID if we have one (preserves context
+  // per AIOS session, not per workspace like --continue would)
+  if (session.claudeSessionId) {
+    args.push("--resume", session.claudeSessionId);
   }
 
   // Use workspace path as CWD — Claude reads CLAUDE.md from this directory
@@ -251,7 +253,16 @@ export async function sendMessage(
     for (const line of lines) {
       try {
         const event = JSON.parse(line);
-        if (event.type === "assistant" && event.message?.content) {
+        if (event.type === "system" && event.subtype === "init" && event.session_id) {
+          // Capture Claude's session ID on first message so we can --resume it later
+          if (!session.claudeSessionId) {
+            db.update(sessions)
+              .set({ claudeSessionId: event.session_id })
+              .where(eq(sessions.id, sessionId))
+              .run();
+            session.claudeSessionId = event.session_id;
+          }
+        } else if (event.type === "assistant" && event.message?.content) {
           for (const block of event.message.content) {
             if (block.type === "text") {
               responseChunks.push(block.text);

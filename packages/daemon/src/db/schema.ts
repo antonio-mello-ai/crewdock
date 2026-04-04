@@ -62,6 +62,7 @@ export const sessions = sqliteTable("sessions", {
   permissionMode: text("permission_mode", {
     enum: ["plan", "acceptEdits", "full"],
   }).notNull().default("plan"),
+  claudeSessionId: text("claude_session_id"),
   totalCostUsd: real("total_cost_usd").notNull().default(0),
   totalTokensIn: integer("total_tokens_in").notNull().default(0),
   totalTokensOut: integer("total_tokens_out").notNull().default(0),

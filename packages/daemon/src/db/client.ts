@@ -117,6 +117,9 @@ export function getDb() {
     if (!colNames.has("permission_mode")) {
       sqlite.exec("ALTER TABLE sessions ADD COLUMN permission_mode TEXT NOT NULL DEFAULT 'plan'");
     }
+    if (!colNames.has("claude_session_id")) {
+      sqlite.exec("ALTER TABLE sessions ADD COLUMN claude_session_id TEXT");
+    }
 
     dbInstance = drizzle(sqlite, { schema });
   }
