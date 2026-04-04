@@ -16,6 +16,8 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
   const termRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const onDisconnectRef = useRef(onDisconnect);
+  onDisconnectRef.current = onDisconnect;
 
   const cleanup = useCallback(() => {
     wsRef.current?.close();
@@ -90,7 +92,7 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
           term.write(msg.data);
         } else if (msg.type === "error") {
           term.write(`\r\n\x1b[31mError: ${msg.message}\x1b[0m\r\n`);
-          onDisconnect?.();
+          onDisconnectRef.current?.();
         }
       } catch {
         // ignore parse errors
@@ -99,7 +101,7 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
 
     ws.onclose = () => {
       term.write("\r\n\x1b[90m[disconnected]\x1b[0m\r\n");
-      onDisconnect?.();
+      onDisconnectRef.current?.();
     };
 
     // Terminal input → WebSocket
@@ -128,7 +130,8 @@ export function TerminalView({ terminalId, onDisconnect }: TerminalViewProps) {
       resizeObserver.disconnect();
       cleanup();
     };
-  }, [terminalId, cleanup, onDisconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [terminalId]);
 
   return (
     <div
