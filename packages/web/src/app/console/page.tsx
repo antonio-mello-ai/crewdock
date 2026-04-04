@@ -25,15 +25,13 @@ import {
   Clock,
   Hash,
   Shield,
-  ShieldAlert,
   ShieldOff,
 } from "lucide-react";
 import type { PermissionMode } from "@aios/shared";
 
-const PERMISSION_LABELS: Record<PermissionMode, { label: string; icon: typeof Shield; color: string }> = {
-  plan: { label: "Read Only", icon: Shield, color: "text-green-500" },
-  acceptEdits: { label: "Accept Edits", icon: ShieldAlert, color: "text-yellow-500" },
-  full: { label: "Full Access", icon: ShieldOff, color: "text-red-500" },
+const PERMISSION_LABELS: Record<string, { icon: typeof Shield; color: string }> = {
+  plan: { icon: Shield, color: "text-green-500" },
+  full: { icon: ShieldOff, color: "text-red-500" },
 };
 
 export default function ConsolePage() {
@@ -208,18 +206,18 @@ export default function ConsolePage() {
               }
               icon={
                 (() => {
-                  const Icon = PERMISSION_LABELS[permissionMode].icon;
+                  const perm = PERMISSION_LABELS[permissionMode] ?? PERMISSION_LABELS.plan;
+                  const Icon = perm.icon;
                   return (
                     <Icon
-                      className={`h-3.5 w-3.5 ${PERMISSION_LABELS[permissionMode].color}`}
+                      className={`h-3.5 w-3.5 ${perm.color}`}
                     />
                   );
                 })()
               }
             >
               <option value="plan">Read Only</option>
-              <option value="acceptEdits">Accept Edits</option>
-              <option value="full">Full Access</option>
+              <option value="full">Dangerously Accept Edits</option>
             </Select>
           </div>
 
