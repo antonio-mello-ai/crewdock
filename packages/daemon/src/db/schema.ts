@@ -83,6 +83,15 @@ export const sessionMessages = sqliteTable("session_messages", {
   createdAt: integer("created_at", { mode: "number" }).notNull(),
 });
 
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+});
+
 export const hitlRequests = sqliteTable("hitl_requests", {
   id: text("id").primaryKey(),
   jobId: text("job_id"),

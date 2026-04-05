@@ -21,46 +21,99 @@ import { useNotificationToggle } from "@/hooks/use-notifications";
 import type { Workspace, ApiListResponse } from "@aios/shared";
 
 function NotificationsSection() {
-  const { permission, request } = useNotificationToggle();
+  const {
+    permission,
+    pushSubscribed,
+    pushBusy,
+    request,
+    enablePush,
+    disablePush,
+  } = useNotificationToggle();
 
-  const label =
+  const permLabel =
     permission === "granted"
-      ? "Enabled"
+      ? "Granted"
       : permission === "denied"
         ? "Blocked (enable in browser settings)"
         : permission === "unsupported"
-          ? "Not supported by this browser"
-          : "Not enabled";
+          ? "Not supported"
+          : "Not requested";
 
-  const Icon = permission === "granted" ? Bell : BellOff;
-  const iconColor =
-    permission === "granted" ? "text-green-500" : "text-neutral-500";
+  const Icon = pushSubscribed ? Bell : BellOff;
+  const iconColor = pushSubscribed
+    ? "text-green-500"
+    : permission === "granted"
+      ? "text-yellow-500"
+      : "text-neutral-500";
 
   return (
-    <div className="mb-8 rounded-lg border border-neutral-800/50 bg-neutral-900/30 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Icon className={`h-5 w-5 ${iconColor}`} />
-          <div>
-            <h2 className="text-sm font-medium text-neutral-200">
-              Browser notifications
-            </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">
-              Get notified of failed jobs and pending HITL requests. Tab title
-              also shows a badge with pending count.
-            </p>
-            <p className="text-xs text-neutral-600 mt-1 font-mono">
-              Status: {label}
-            </p>
+    <div className="mb-8 rounded-lg border border-neutral-800/50 bg-neutral-900/30 p-4 space-y-4">
+      <div className="flex items-start gap-3">
+        <Icon className={`h-5 w-5 mt-0.5 ${iconColor}`} />
+        <div className="flex-1">
+          <h2 className="text-sm font-medium text-neutral-200">
+            Notifications
+          </h2>
+          <p className="text-xs text-neutral-500 mt-0.5">
+            Get notified of failed jobs and HITL requests. Tab title also shows
+            a badge with pending count.
+          </p>
+        </div>
+      </div>
+
+      {/* Level 1: in-tab notifications (Notification API) */}
+      <div className="flex items-center justify-between border-t border-neutral-800/40 pt-3">
+        <div>
+          <div className="text-xs font-medium text-neutral-300">
+            In-tab notifications
           </div>
+          <p className="text-[11px] text-neutral-600 mt-0.5">
+            Works only when this tab is open. Status:{" "}
+            <span className="font-mono">{permLabel}</span>
+          </p>
         </div>
         {permission !== "granted" && permission !== "unsupported" && (
           <Button
             size="sm"
+            variant="outline"
             onClick={() => request()}
             disabled={permission === "denied"}
           >
             Enable
+          </Button>
+        )}
+      </div>
+
+      {/* Level 2: Web Push (service worker) */}
+      <div className="flex items-center justify-between border-t border-neutral-800/40 pt-3">
+        <div>
+          <div className="text-xs font-medium text-neutral-300">
+            Push notifications (all devices)
+          </div>
+          <p className="text-[11px] text-neutral-600 mt-0.5">
+            Works even with the tab closed. On iOS, requires installing as a
+            PWA (Share → Add to Home Screen). Status:{" "}
+            <span className="font-mono">
+              {pushSubscribed ? "Subscribed" : "Not subscribed"}
+            </span>
+          </p>
+        </div>
+        {pushSubscribed ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => disablePush()}
+            disabled={pushBusy}
+          >
+            {pushBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Disable"}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            onClick={() => enablePush()}
+            disabled={pushBusy || permission === "unsupported"}
+          >
+            {pushBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Enable"}
           </Button>
         )}
       </div>

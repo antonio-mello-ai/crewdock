@@ -1,0 +1,13 @@
+# Service worker and manifest should not be cached aggressively so updates
+# propagate on every reload.
+
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+  Service-Worker-Allowed: /
+
+/manifest.json
+  Cache-Control: no-cache
+
+# Icons can be cached for a long time since they're hashed by content
+/icons/*
+  Cache-Control: public, max-age=604800

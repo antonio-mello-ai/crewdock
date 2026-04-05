@@ -19,10 +19,12 @@
     "gray-matter": "^4.0.3",
     "hono": "^4.7.0",
     "nanoid": "^5.1.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12",
+    "@types/web-push": "^3.6.4",
     "drizzle-kit": "^0.30.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0"

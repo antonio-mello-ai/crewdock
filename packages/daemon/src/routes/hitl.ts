@@ -1,9 +1,59 @@
 import { Hono } from "hono";
 import { eq, desc } from "drizzle-orm";
+import { nanoid } from "nanoid";
 import { getDb } from "../db/client.js";
 import { hitlRequests } from "../db/schema.js";
+import { sendPushAsync } from "../push/push-sender.js";
 
 const app = new Hono();
+
+// Create HITL request (and dispatch push notification)
+app.post("/", async (c) => {
+  try {
+    const body = await c.req.json<{
+      question: string;
+      jobId?: string;
+      agentId?: string;
+      context?: Record<string, unknown>;
+    }>();
+    if (!body.question?.trim()) {
+      return c.json(
+        { error: "bad_request", message: "question is required" },
+        400
+      );
+    }
+
+    const db = getDb();
+    const id = nanoid(12);
+    const now = Date.now();
+
+    db.insert(hitlRequests)
+      .values({
+        id,
+        jobId: body.jobId ?? null,
+        agentId: body.agentId ?? null,
+        question: body.question.trim(),
+        context: body.context ?? null,
+        status: "pending",
+        response: null,
+        createdAt: now,
+        respondedAt: null,
+      })
+      .run();
+
+    sendPushAsync({
+      title: "HITL request",
+      body: body.question.trim(),
+      url: `/inbox`,
+      tag: `hitl-${id}`,
+    });
+
+    return c.json({ data: { id, status: "pending" } }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
 
 // List HITL requests
 app.get("/", (c) => {

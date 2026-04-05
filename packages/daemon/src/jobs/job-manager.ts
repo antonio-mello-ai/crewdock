@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import { MAX_CONCURRENT_JOBS, LOG_BUFFER_LINES } from "@aios/shared";
 import type { Job, CreateJobRequest, JobStatus, WsMessage } from "@aios/shared";
 import { parseCostFromLog } from "./cost-parser.js";
+import { sendPushAsync } from "../push/push-sender.js";
 
 interface ActiveJob {
   process: ChildProcess;
@@ -158,6 +159,9 @@ function startJob(jobId: string, request: CreateJobRequest) {
   child.stdout?.on("data", handleData("stdout"));
   child.stderr?.on("data", handleData("stderr"));
 
+  // Look up the full job record for push notifications (agentId, objective)
+  const jobRecord = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
+
   child.on("close", (code) => {
     const finishedAt = Date.now();
     const status: JobStatus = code === 0 ? "completed" : "failed";
@@ -194,6 +198,16 @@ function startJob(jobId: string, request: CreateJobRequest) {
       costUsd: cost.costUsd,
     });
 
+    // Push notification for failed jobs
+    if (status === "failed" && jobRecord) {
+      sendPushAsync({
+        title: `Job failed: ${jobRecord.agentId ?? "unknown"}`,
+        body: jobRecord.objective ?? "A background job has failed",
+        url: `/jobs/detail?id=${jobId}`,
+        tag: `job-${jobId}`,
+      });
+    }
+
     activeJobs.delete(jobId);
   });
 
@@ -204,6 +218,16 @@ function startJob(jobId: string, request: CreateJobRequest) {
       .run();
 
     broadcast(jobId, { type: "error", message: err.message });
+
+    if (jobRecord) {
+      sendPushAsync({
+        title: `Job failed: ${jobRecord.agentId ?? "unknown"}`,
+        body: err.message,
+        url: `/jobs/detail?id=${jobId}`,
+        tag: `job-${jobId}`,
+      });
+    }
+
     activeJobs.delete(jobId);
   });
 }

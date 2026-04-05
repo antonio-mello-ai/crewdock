@@ -50,4 +50,9 @@ export const config = {
 
   // Frentes config
   frentesConfigPath: env("AIOS_FRENTES_CONFIG", ""),
+
+  // Web Push VAPID keys (generated via `npx web-push generate-vapid-keys`)
+  vapidPublicKey: env("VAPID_PUBLIC_KEY", ""),
+  vapidPrivateKey: env("VAPID_PRIVATE_KEY", ""),
+  vapidSubject: env("VAPID_SUBJECT", "mailto:antonio.mello@felhen.com.br"),
 } as const;
