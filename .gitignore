@@ -8,3 +8,6 @@ out/
 .env
 .env.local
 .env.*.local
+.env.prod
+.env.*.prod
+!.env.prod.example

@@ -159,8 +159,14 @@ function startJob(jobId: string, request: CreateJobRequest) {
   child.stdout?.on("data", handleData("stdout"));
   child.stderr?.on("data", handleData("stderr"));
 
-  // Look up the full job record for push notifications (agentId, objective)
+  // Look up the full job record for push notifications (agentId, objective).
+  // Captured once at spawn time; this is a snapshot — don't rely on fields
+  // that may change during execution (none today, but worth noting).
   const jobRecord = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
+
+  // Dedup flag: child.on("error") and child.on("close") can BOTH fire for the
+  // same failure (e.g. ENOENT). Ensure we only send one push per terminal state.
+  let terminalPushSent = false;
 
   child.on("close", (code) => {
     const finishedAt = Date.now();
@@ -198,8 +204,9 @@ function startJob(jobId: string, request: CreateJobRequest) {
       costUsd: cost.costUsd,
     });
 
-    // Push notification for failed jobs
-    if (status === "failed" && jobRecord) {
+    // Push notification for failed jobs (only if not already sent by error handler)
+    if (status === "failed" && jobRecord && !terminalPushSent) {
+      terminalPushSent = true;
       sendPushAsync({
         title: `Job failed: ${jobRecord.agentId ?? "unknown"}`,
         body: jobRecord.objective ?? "A background job has failed",
@@ -219,7 +226,8 @@ function startJob(jobId: string, request: CreateJobRequest) {
 
     broadcast(jobId, { type: "error", message: err.message });
 
-    if (jobRecord) {
+    if (jobRecord && !terminalPushSent) {
+      terminalPushSent = true;
       sendPushAsync({
         title: `Job failed: ${jobRecord.agentId ?? "unknown"}`,
         body: err.message,

@@ -8,6 +8,8 @@
 /manifest.json
   Cache-Control: no-cache
 
-# Icons can be cached for a long time since they're hashed by content
+# Icons cached for 1 day. Names are NOT content-hashed (icon-192.png is fixed),
+# so a logo change + deploy takes up to 24h to propagate to existing clients.
+# Reduce if faster rollout is needed.
 /icons/*
-  Cache-Control: public, max-age=604800
+  Cache-Control: public, max-age=86400

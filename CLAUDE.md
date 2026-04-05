@@ -68,7 +68,12 @@ ssh proxmox "pct exec 165 -- bash -c 'cd /home/claude/aios-runtime && git pull &
 ssh proxmox "pct exec 165 -- systemctl restart aios-daemon"
 
 # Frontend (CF Pages)
-NEXT_PUBLIC_DAEMON_URL=https://api.crewdock.ai npx turbo build --filter=@aios/web --force
+# IMPORTANT: NEXT_PUBLIC_VAPID_PUBLIC_KEY must match the VAPID_PUBLIC_KEY in
+# CT165's /home/claude/aios-runtime/.env.prod. Without it, push subscribe fails
+# silently ("VAPID public key not configured").
+NEXT_PUBLIC_DAEMON_URL=https://api.crewdock.ai \
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=BPahNRySxey_9EuT5K_LeZruOMqI_esUhvR9W2QOrwfhVi05qoqz9uOurCfV8rsaKh59mVYWggW3G6EP6KN1_c0 \
+npx turbo build --filter=@aios/web --force
 source ~/.env && CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN wrangler pages deploy packages/web/out --project-name crewdock --branch main --commit-dirty=true
 ```
 
