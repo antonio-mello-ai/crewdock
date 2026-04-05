@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useAppNotifications } from "@/hooks/use-notifications";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -36,6 +37,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Watch for failed jobs and pending HITL, fire browser notifications,
+  // and update tab title badge. Silent if permission not granted.
+  useAppNotifications();
 
   // Close mobile nav on route change
   useEffect(() => {

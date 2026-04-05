@@ -13,9 +13,60 @@ import {
   FolderOpen,
   Loader2,
   Check,
+  Bell,
+  BellOff,
 } from "lucide-react";
 import { DAEMON_URL } from "@/lib/utils";
+import { useNotificationToggle } from "@/hooks/use-notifications";
 import type { Workspace, ApiListResponse } from "@aios/shared";
+
+function NotificationsSection() {
+  const { permission, request } = useNotificationToggle();
+
+  const label =
+    permission === "granted"
+      ? "Enabled"
+      : permission === "denied"
+        ? "Blocked (enable in browser settings)"
+        : permission === "unsupported"
+          ? "Not supported by this browser"
+          : "Not enabled";
+
+  const Icon = permission === "granted" ? Bell : BellOff;
+  const iconColor =
+    permission === "granted" ? "text-green-500" : "text-neutral-500";
+
+  return (
+    <div className="mb-8 rounded-lg border border-neutral-800/50 bg-neutral-900/30 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Icon className={`h-5 w-5 ${iconColor}`} />
+          <div>
+            <h2 className="text-sm font-medium text-neutral-200">
+              Browser notifications
+            </h2>
+            <p className="text-xs text-neutral-500 mt-0.5">
+              Get notified of failed jobs and pending HITL requests. Tab title
+              also shows a badge with pending count.
+            </p>
+            <p className="text-xs text-neutral-600 mt-1 font-mono">
+              Status: {label}
+            </p>
+          </div>
+        </div>
+        {permission !== "granted" && permission !== "unsupported" && (
+          <Button
+            size="sm"
+            onClick={() => request()}
+            disabled={permission === "denied"}
+          >
+            Enable
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface WorkspaceOverride {
   name?: string;
@@ -184,6 +235,8 @@ export default function SettingsPage() {
           </Button>
         </div>
       </div>
+
+      <NotificationsSection />
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
