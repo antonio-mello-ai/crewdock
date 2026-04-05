@@ -11,6 +11,7 @@ import type {
   Job,
   Session,
   SessionMessage,
+  Schedule,
   CreateJobRequest,
   CreateSessionRequest,
   SendMessageRequest,
@@ -204,6 +205,43 @@ export function useSendMessage(sessionId: string) {
       qc.invalidateQueries({ queryKey: ["sessions", sessionId, "messages"] });
       qc.invalidateQueries({ queryKey: ["sessions"] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Schedules
+// ---------------------------------------------------------------------------
+
+export function useSchedules() {
+  return useQuery<ApiListResponse<Schedule>>({
+    queryKey: ["schedules"],
+    queryFn: () => api("/api/schedules"),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useRunSchedule() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<{ triggered: boolean }>, Error, string>({
+    mutationFn: (name) =>
+      api(`/api/schedules/${encodeURIComponent(name)}/run`, { method: "POST" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
+  });
+}
+
+export function useToggleSchedule() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<{ enabled: boolean }>,
+    Error,
+    { name: string; enabled: boolean }
+  >({
+    mutationFn: ({ name, enabled }) =>
+      api(
+        `/api/schedules/${encodeURIComponent(name)}/${enabled ? "enable" : "disable"}`,
+        { method: "POST" }
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
   });
 }
 

@@ -17,6 +17,7 @@ import costRoutes from "./routes/costs.js";
 import hitlRoutes from "./routes/hitl.js";
 import healthRoutes from "./routes/health.js";
 import terminalRoutes from "./routes/terminal.js";
+import schedulesRoutes from "./routes/schedules.js";
 import { subscribeToSession } from "./sessions/session-manager.js";
 import {
   subscribeToTerminal,
@@ -44,6 +45,7 @@ app.route("/api/costs", costRoutes);
 app.route("/api/hitl", hitlRoutes);
 app.route("/api/health", healthRoutes);
 app.route("/api/terminal", terminalRoutes);
+app.route("/api/schedules", schedulesRoutes);
 
 // WebSocket route for log streaming
 app.get(

@@ -83,13 +83,15 @@ export interface CostByDay {
 // --- Schedule ---
 
 export interface Schedule {
-  id: string;
-  description: string | null;
-  onCalendar: string;
-  command: string;
+  name: string;
+  service: string;
+  description: string;
   enabled: boolean;
-  lastRun: number | null;
+  active: boolean;
   nextRun: number | null;
+  lastRun: number | null;
+  onCalendar: string | null;
+  execStart: string | null;
 }
 
 // --- HITL ---
