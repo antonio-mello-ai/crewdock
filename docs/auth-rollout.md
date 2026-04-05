@@ -68,4 +68,3 @@ API continua ativa, mas sem CF Access → sem JWT injetado → daemon rejeita tu
 
 - `AIOS_AUTH_DISABLED` flag: remover quando CI de staging existir
 - Service token em `~/.env` plaintext: migrar para macOS keychain em iteração futura
-- `api.crewdock.ai` ainda resolve para o tunnel (rota ingress preservada para evitar quebrar integrações externas que ainda apontem para lá). Remover quando confirmado que ninguém usa.
