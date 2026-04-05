@@ -1,0 +1,32 @@
+services:
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aios-runtime:latest
+    container_name: aios-daemon
+    restart: unless-stopped
+    ports:
+      - "3101:3101"
+    volumes:
+      # Persistent data: SQLite DB, logs
+      - aios-data:/data
+      # Projects directory (mount your workspaces here)
+      - ${AIOS_PROJECTS_DIR:-./projects}:/projects:ro
+      # Claude Code auth state (OAuth tokens)
+      - ~/.claude:/home/aios/.claude
+    environment:
+      - AIOS_PROJECTS_DIR=/projects
+      - AIOS_DB_PATH=/data/aios.db
+      - AIOS_LOG_DIR=/data/logs
+      - HOST=0.0.0.0
+      - PORT=3101
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3101/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  aios-data:
+    driver: local

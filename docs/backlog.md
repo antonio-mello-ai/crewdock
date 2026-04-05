@@ -28,8 +28,8 @@
 
 - [x] **MCP Server** — package `@aios/mcp-server` com 8 tools (get_briefing, list_workspaces, list_sessions, get_session_messages, list_schedules, run_schedule, list_jobs, get_job_logs). Registrado via `claude mcp add aios -s user -- node dist/index.js`. Validado E2E (tools/list e tools/call)
 - [ ] **Push notifications** — substituir Telegram por web push para HITL e alertas
-- [ ] **Docker Compose** — para rodar fora do CT165
-- [ ] **Open source prep** — README com onboarding, LICENSE MIT, CONTRIBUTING.md
+- [x] **Docker Compose** — `Dockerfile` multi-stage (builder + runtime non-root aios user), `docker-compose.yml` com volumes para DB/logs/projetos/.claude. Build validado + container rodou health endpoint OK
+- [x] **Open source prep** — `README.md` com quickstart Docker e dev, `LICENSE` MIT, `CONTRIBUTING.md` com estilo de commit e setup de dev
 
 ## Criterio de Sucesso
 
