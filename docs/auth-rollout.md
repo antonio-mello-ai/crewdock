@@ -2,21 +2,22 @@
 
 ## Arquitetura
 
-- `api.crewdock.ai` atrás de CF Access self-hosted application
-- Duas policies: (a) email allow para users interativos, (b) service token allow para MCP server
-- Daemon valida `Cf-Access-Jwt-Assertion` injetado pela CF edge (via `jose.createRemoteJWKSet`)
+- `ai.felhen.ai` (frontend) e `api.felhen.ai` (daemon) sob a **mesma** CF Access self-hosted application (`CrewDock`, `self_hosted_domains: ["ai.felhen.ai","api.felhen.ai"]`)
+- Mesmo apex `.felhen.ai` → CF Access emite cookie apex-scoped, então sessão em ai.felhen.ai é automaticamente reconhecida em api.felhen.ai sem redirect cross-origin
+- Três policies: (a) email allow Felhen team, (b) service token allow para MCP server, (c) bypass app separado cobrindo `api.felhen.ai/api/health`
+- Daemon valida `Cf-Access-Jwt-Assertion` injetado pela CF edge (via `jose.createRemoteJWKSet`) — iss + aud + RS256 + clockTolerance 30s
 - `/api/health` sempre público (retorna apenas `{ status: "ok" }` sem JWT; inclui detalhes se autenticado)
-- Loopback (`127.0.0.1`/`::1`) bypassa para debug local no CT165
+- Loopback (`127.0.0.1`/`::1`) bypassa para debug local no CT165, MAS requisições do cloudflared são detectadas via headers `CF-*` e passam pelo middleware normalmente
 - `OPTIONS` preflight sempre passa (CORS)
 - `AIOS_AUTH_DISABLED=true` bypassa tudo **apenas** em dev; daemon recusa iniciar em `NODE_ENV=production`
-- `CF_ACCESS_SOFT_MODE=true` loga rejeições mas não bloqueia — usar nas primeiras 24h pós-deploy
+- `CF_ACCESS_SOFT_MODE` existe como kill switch de emergência — loga rejeições sem bloquear. Rollout inicial foi com a flag ligada, desligada após validação E2E
 
 ## Envs do daemon (`.env.prod`)
 
 ```
 CF_ACCESS_TEAM_DOMAIN=felhen.cloudflareaccess.com
-CF_ACCESS_AUD=<aud tag do application>
-CF_ACCESS_SOFT_MODE=true     # remover após validação E2E
+CF_ACCESS_AUD=<aud tag da CrewDock Access app>
+CF_ACCESS_SOFT_MODE=false    # true apenas em incidente/rollout
 ```
 
 ## Envs do MCP (em ~/.env, lidas via shell expansion no `claude mcp add`)
@@ -51,9 +52,9 @@ API continua ativa, mas sem CF Access → sem JWT injetado → daemon rejeita tu
 
 ## Smoke test checklist pós-deploy
 
-- [ ] `curl https://api.crewdock.ai/api/health` → 200 `{ status: "ok" }`
-- [ ] `curl https://api.crewdock.ai/api/briefing` → 401 (sem auth, após SOFT_MODE=false)
-- [ ] `curl -H "CF-Access-Client-Id: $CID" -H "CF-Access-Client-Secret: $CSECRET" https://api.crewdock.ai/api/briefing` → 200
+- [ ] `curl https://api.felhen.ai/api/health` → 200 `{ status: "ok" }`
+- [ ] `curl https://api.felhen.ai/api/briefing` → 401 (sem auth, após SOFT_MODE=false)
+- [ ] `curl -H "CF-Access-Client-Id: $CID" -H "CF-Access-Client-Secret: $CSECRET" https://api.felhen.ai/api/briefing` → 200
 - [ ] Browser `ai.felhen.ai` → GET /api/briefing via frontend → 200 (cookie CF)
 - [ ] Browser `ai.felhen.ai` → WebSocket `/ws/sessions/:id` conecta e recebe evento
 - [ ] Browser sem cookie CF (janela anônima pós-logout) → `new WebSocket(/ws/...)` **falha no handshake** (não dispara `open`)
@@ -66,5 +67,5 @@ API continua ativa, mas sem CF Access → sem JWT injetado → daemon rejeita tu
 ## Tech debt pendente
 
 - `AIOS_AUTH_DISABLED` flag: remover quando CI de staging existir
-- `CF_ACCESS_SOFT_MODE`: remover após validação E2E limpa (24h de observação)
 - Service token em `~/.env` plaintext: migrar para macOS keychain em iteração futura
+- `api.crewdock.ai` ainda resolve para o tunnel (rota ingress preservada para evitar quebrar integrações externas que ainda apontem para lá). Remover quando confirmado que ninguém usa.

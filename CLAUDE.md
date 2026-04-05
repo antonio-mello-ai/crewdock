@@ -15,8 +15,8 @@ Control plane web para gerenciar agentes AI. Substitui 6 terminais + Telegram po
 | Monorepo | Turborepo + npm workspaces |
 | Deploy frontend | Cloudflare Pages (crewdock.ai, ai.felhen.ai) |
 | Deploy daemon | CT165 systemd service (aios-daemon.service) |
-| API tunnel | Cloudflare Tunnel (api.crewdock.ai -> CT165:3101) |
-| Auth | Cloudflare Access (ai.felhen.ai + api.crewdock.ai, JWT validation no daemon) |
+| API tunnel | Cloudflare Tunnel (api.felhen.ai -> CT165:3101) |
+| Auth | Cloudflare Access (ai.felhen.ai + api.felhen.ai, JWT validation no daemon) |
 
 ## Estrutura
 
@@ -34,7 +34,7 @@ O daemon pode ser consumido via MCP server do Claude Code. Registrar uma vez:
 
 ```bash
 claude mcp add aios -s user \
-  --env AIOS_DAEMON_URL=https://api.crewdock.ai \
+  --env AIOS_DAEMON_URL=https://api.felhen.ai \
   --env CF_ACCESS_CLIENT_ID=$CF_ACCESS_CLIENT_ID \
   --env CF_ACCESS_CLIENT_SECRET=$CF_ACCESS_CLIENT_SECRET \
   -- node <path>/packages/mcp-server/dist/index.js
@@ -106,7 +106,7 @@ ssh proxmox "pct exec 165 -- systemctl restart aios-daemon"
 # silently ("VAPID public key not configured").
 # NEXT_PUBLIC_VAPID_PUBLIC_KEY: ler de CT165 com:
 # ssh proxmox "pct exec 165 -- grep VAPID_PUBLIC_KEY /home/claude/aios-runtime/.env.prod"
-NEXT_PUBLIC_DAEMON_URL=https://api.crewdock.ai \
+NEXT_PUBLIC_DAEMON_URL=https://api.felhen.ai \
 NEXT_PUBLIC_VAPID_PUBLIC_KEY=<valor de VAPID_PUBLIC_KEY em CT165/.env.prod> \
 npx turbo build --filter=@aios/web --force
 source ~/.env && CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN wrangler pages deploy packages/web/out --project-name crewdock --branch main --commit-dirty=true
@@ -116,7 +116,7 @@ source ~/.env && CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN wrangler pages deplo
 
 - https://ai.felhen.ai — app protegido (CF Access)
 - https://crewdock.ai — app publico
-- https://api.crewdock.ai — daemon API (CF Tunnel -> CT165:3101)
+- https://api.felhen.ai — daemon API (CF Tunnel -> CT165:3101)
 
 ## Workspaces
 

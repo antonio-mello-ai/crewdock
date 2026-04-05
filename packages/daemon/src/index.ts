@@ -21,7 +21,6 @@ import terminalRoutes from "./routes/terminal.js";
 import schedulesRoutes from "./routes/schedules.js";
 import briefingRoutes from "./routes/briefing.js";
 import pushRoutes from "./routes/push.js";
-import pingRoutes from "./routes/ping.js";
 import { subscribeToSession } from "./sessions/session-manager.js";
 import {
   subscribeToTerminal,
@@ -67,7 +66,6 @@ app.route("/api/terminal", terminalRoutes);
 app.route("/api/schedules", schedulesRoutes);
 app.route("/api/briefing", briefingRoutes);
 app.route("/api/push", pushRoutes);
-app.route("/api/ping", pingRoutes);
 
 // WebSocket route for log streaming
 app.get(
