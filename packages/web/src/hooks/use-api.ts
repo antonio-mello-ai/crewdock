@@ -258,6 +258,43 @@ export function useToggleSchedule() {
   });
 }
 
+export interface CreateScheduleInput {
+  name: string;
+  description: string;
+  command: string;
+  onCalendar: string;
+}
+
+export function useCreateSchedule() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Schedule>, Error, CreateScheduleInput>({
+    mutationFn: (input) =>
+      api("/api/schedules", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
+  });
+}
+
+export function useDeleteSchedule() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<{ deleted: boolean }>, Error, string>({
+    mutationFn: (name) =>
+      api(`/api/schedules/${encodeURIComponent(name)}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
+  });
+}
+
+export function useScheduleLogs(name: string | undefined, enabled: boolean) {
+  return useQuery<ApiResponse<{ lines: string[] }>>({
+    queryKey: ["schedules", name, "logs"],
+    queryFn: () =>
+      api(`/api/schedules/${encodeURIComponent(name!)}/logs?lines=200`),
+    enabled: !!name && enabled,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Costs
 // ---------------------------------------------------------------------------
