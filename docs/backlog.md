@@ -7,7 +7,7 @@
 
 ## Infra (impacta funcionalidade)
 
-- [ ] **MCP servers no CT165** — Claude no Console/Terminal nao tem MCP servers configurados (`~/.claude.json` do user `claude` sem `mcpServers`). Para agentes como `agente-badhu` que usam SSH direto nao e bloqueante (SSH funciona via LAN 192.168.20.x). Mas para agentes que dependem de MCPs (QMD, Airflow, ClickHouse), e necessario configurar. Prioridade: media
+- [x] **MCP servers no CT165** — instalados `qmd` (4 tools) e `felhen_memory` (7 tools) no user `claude`. Index qmd copiado do Mac (619 docs). Symlink `/Users/antoniomello/felhencloud` -> `/mnt/felhencloud` para paths baterem. Validado via Console (7+4 tools visiveis)
 
 ## Funcional (impacta uso diario)
 
