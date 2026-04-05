@@ -22,10 +22,21 @@ Control plane web para gerenciar agentes AI. Substitui 6 terminais + Telegram po
 
 ```
 packages/
-  daemon/    — API server Hono, agent registry, job manager, session manager, terminal manager, workspaces
-  web/       — Next.js frontend (output: export para CF Pages)
-  shared/    — Types e constants compartilhados
+  daemon/      — API server Hono, agent registry, job manager, session manager, terminal manager, schedules, briefing, workspaces
+  web/         — Next.js frontend (output: export para CF Pages)
+  shared/      — Types e constants compartilhados
+  mcp-server/  — MCP server stdio que expoe a API do daemon para Claude Code
 ```
+
+## MCP Server (Claude Code integration)
+
+O daemon pode ser consumido via MCP server do Claude Code. Registrar uma vez:
+
+```bash
+claude mcp add aios -s user --env AIOS_DAEMON_URL=https://api.crewdock.ai -- node <path>/packages/mcp-server/dist/index.js
+```
+
+Tools expostas: `get_briefing`, `list_workspaces`, `list_sessions`, `get_session_messages`, `list_schedules`, `run_schedule`, `list_jobs`, `get_job_logs`.
 
 ## Console vs Terminal
 

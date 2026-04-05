@@ -26,7 +26,7 @@
 
 ## Futuro
 
-- [ ] **MCP Server** — expor daemon como MCP server (stdio) para Claude Code/App conectar programaticamente
+- [x] **MCP Server** — package `@aios/mcp-server` com 8 tools (get_briefing, list_workspaces, list_sessions, get_session_messages, list_schedules, run_schedule, list_jobs, get_job_logs). Registrado via `claude mcp add aios -s user -- node dist/index.js`. Validado E2E (tools/list e tools/call)
 - [ ] **Push notifications** — substituir Telegram por web push para HITL e alertas
 - [ ] **Docker Compose** — para rodar fora do CT165
 - [ ] **Open source prep** — README com onboarding, LICENSE MIT, CONTRIBUTING.md
