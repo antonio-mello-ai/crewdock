@@ -49,6 +49,7 @@ export async function subscribeToPush(): Promise<PushSubscription | null> {
   const json = sub.toJSON();
   const res = await fetch(`${DAEMON_URL}/api/push/subscribe`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       endpoint: json.endpoint,
@@ -76,6 +77,7 @@ export async function unsubscribeFromPush(): Promise<void> {
   // Tell the daemon to drop the record
   await fetch(`${DAEMON_URL}/api/push/subscribe`, {
     method: "DELETE",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ endpoint }),
   }).catch(() => {});

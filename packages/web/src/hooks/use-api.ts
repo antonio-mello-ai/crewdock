@@ -30,11 +30,24 @@ import { DAEMON_URL } from "@/lib/utils";
 // ---------------------------------------------------------------------------
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  // credentials: "include" is required so the browser sends CF Access
+  // `CF_Authorization` cookie cross-origin (ai.felhen.ai → api.crewdock.ai).
+  // The daemon's CORS config allows credentials only from the whitelisted
+  // origins — wildcard + credentials is rejected by the browser.
   const res = await fetch(`${DAEMON_URL}${path}`, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...init,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      // CF Access session expired or missing — force re-auth by reloading;
+      // CF Access will intercept and redirect to the login flow.
+      if (typeof window !== "undefined") {
+        window.location.reload();
+      }
+      throw new Error("unauthorized — reloading to re-authenticate");
+    }
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message ?? `API error ${res.status}`);
   }

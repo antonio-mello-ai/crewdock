@@ -55,4 +55,60 @@ export const config = {
   vapidPublicKey: env("VAPID_PUBLIC_KEY", ""),
   vapidPrivateKey: env("VAPID_PRIVATE_KEY", ""),
   vapidSubject: env("VAPID_SUBJECT", "mailto:antonio.mello@felhen.com.br"),
+
+  // Cloudflare Access JWT auth
+  // See docs/auth-rollout.md for full architecture + rollback procedure.
+  cfAccess: {
+    teamDomain: env("CF_ACCESS_TEAM_DOMAIN", ""),
+    audience: env("CF_ACCESS_AUD", ""),
+    softMode: env("CF_ACCESS_SOFT_MODE", "false") === "true",
+    disabled: env("AIOS_AUTH_DISABLED", "false") === "true",
+  },
+
+  // Allowed CORS origins for browser app (credentials: true, so no wildcard)
+  corsOrigins: env(
+    "AIOS_CORS_ORIGINS",
+    "https://ai.felhen.ai,https://crewdock.ai,http://localhost:3000"
+  )
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+
+  nodeEnv: env("NODE_ENV", "development"),
 } as const;
+
+// Fail-fast validation: refuse to boot with unsafe config in production.
+export function validateConfig(): void {
+  const errors: string[] = [];
+
+  if (config.nodeEnv === "production") {
+    if (config.cfAccess.disabled) {
+      errors.push(
+        "AIOS_AUTH_DISABLED=true is forbidden in production (NODE_ENV=production)"
+      );
+    }
+    if (!config.cfAccess.teamDomain) {
+      errors.push("CF_ACCESS_TEAM_DOMAIN is required in production");
+    }
+    if (!config.cfAccess.audience) {
+      errors.push("CF_ACCESS_AUD is required in production");
+    }
+  }
+
+  if (config.cfAccess.softMode) {
+    console.warn(
+      "[config] CF_ACCESS_SOFT_MODE=true — auth rejections are logged but allowed through. This is tech debt; remove after validation."
+    );
+  }
+  if (config.cfAccess.disabled) {
+    console.warn(
+      "[config] AIOS_AUTH_DISABLED=true — all auth bypassed. Dev mode only."
+    );
+  }
+
+  if (errors.length > 0) {
+    console.error("[config] invalid configuration:");
+    for (const e of errors) console.error(`  - ${e}`);
+    process.exit(1);
+  }
+}

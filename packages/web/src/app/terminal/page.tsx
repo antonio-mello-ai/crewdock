@@ -52,6 +52,7 @@ export default function TerminalPage() {
     try {
       const res = await fetch(`${DAEMON_URL}/api/terminal`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
       });
@@ -81,6 +82,7 @@ export default function TerminalPage() {
       // Close on server
       fetch(`${DAEMON_URL}/api/terminal/${term.id}/close`, {
         method: "POST",
+        credentials: "include",
       }).catch(() => {});
       setTerminals((prev) => prev.filter((_, i) => i !== idx));
       if (activeTerminalIdx >= idx) {

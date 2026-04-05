@@ -132,6 +132,7 @@ type ConfigMap = Record<string, WorkspaceOverride>;
 
 function api(path: string, opts?: RequestInit) {
   return fetch(`${DAEMON_URL}${path}`, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...opts,
   }).then((r) => r.json());

@@ -4,10 +4,11 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { createNodeWebSocket } from "@hono/node-ws";
 
-import { config } from "./config.js";
+import { config, validateConfig } from "./config.js";
 import { getDb } from "./db/client.js";
 import { scanAgents } from "./registry/agent-registry.js";
 import { handleLogStreamConnection } from "./ws/log-stream.js";
+import { cfAccessMiddleware } from "./middleware/cf-access.js";
 
 import agentRoutes from "./routes/agents.js";
 import workspaceRoutes from "./routes/workspaces.js";
@@ -20,6 +21,7 @@ import terminalRoutes from "./routes/terminal.js";
 import schedulesRoutes from "./routes/schedules.js";
 import briefingRoutes from "./routes/briefing.js";
 import pushRoutes from "./routes/push.js";
+import pingRoutes from "./routes/ping.js";
 import { subscribeToSession } from "./sessions/session-manager.js";
 import {
   subscribeToTerminal,
@@ -34,9 +36,24 @@ const app = new Hono();
 // WebSocket setup
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
 
-// Middleware
-app.use("*", cors());
+// Middleware — order matters:
+// 1. CORS first (preflight OPTIONS must respond before auth runs)
+// 2. Logger second (captures all requests, including 401s)
+// 3. CF Access auth third (rejects before route handlers run)
+app.use(
+  "*",
+  cors({
+    origin: (origin) => {
+      if (!origin) return origin; // non-browser requests (curl, MCP)
+      return config.corsOrigins.includes(origin) ? origin : null;
+    },
+    credentials: true,
+    allowHeaders: ["Content-Type", "Authorization", "Cf-Access-Jwt-Assertion"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  })
+);
 app.use("*", logger());
+app.use("*", cfAccessMiddleware);
 
 // REST routes
 app.route("/api/agents", agentRoutes);
@@ -50,6 +67,7 @@ app.route("/api/terminal", terminalRoutes);
 app.route("/api/schedules", schedulesRoutes);
 app.route("/api/briefing", briefingRoutes);
 app.route("/api/push", pushRoutes);
+app.route("/api/ping", pingRoutes);
 
 // WebSocket route for log streaming
 app.get(
@@ -139,6 +157,9 @@ app.get(
 
 // Initialize
 async function start() {
+  // Validate config first — fail fast if production config is unsafe
+  validateConfig();
+
   // Initialize database
   getDb();
   console.log(`[aios] Database initialized at ${config.dbPath}`);

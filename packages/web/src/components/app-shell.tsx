@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppNotifications } from "@/hooks/use-notifications";
+import { AuthWarmup } from "@/components/auth-warmup";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -173,6 +174,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* CF Access cookie warmup on first mount (remote daemon only) */}
+      <AuthWarmup />
       {/* Mobile hamburger — fixed top-left */}
       <div className="fixed top-0 left-0 z-50 flex h-14 items-center px-3 lg:hidden">
         <Button

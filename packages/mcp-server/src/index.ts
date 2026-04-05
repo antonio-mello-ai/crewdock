@@ -17,14 +17,39 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const DAEMON_URL = process.env.AIOS_DAEMON_URL ?? "http://localhost:3101";
+const CF_CLIENT_ID = process.env.CF_ACCESS_CLIENT_ID ?? "";
+const CF_CLIENT_SECRET = process.env.CF_ACCESS_CLIENT_SECRET ?? "";
+
+// When talking to api.crewdock.ai (CF Access protected), inject the service
+// token headers so the CF edge authorizes the call via the service-token
+// policy and forwards a valid JWT to the daemon. For localhost/dev, no
+// headers are needed — the daemon's loopback bypass handles it.
+function buildAuthHeaders(): Record<string, string> {
+  const needsAuth = /^https?:\/\/(?!localhost|127\.|0\.0\.0\.0)/.test(DAEMON_URL);
+  if (!needsAuth) return {};
+  if (!CF_CLIENT_ID || !CF_CLIENT_SECRET) {
+    console.error(
+      "[aios-mcp] WARNING: remote daemon URL without CF_ACCESS_CLIENT_ID / CF_ACCESS_CLIENT_SECRET — requests will fail with 401"
+    );
+    return {};
+  }
+  return {
+    "CF-Access-Client-Id": CF_CLIENT_ID,
+    "CF-Access-Client-Secret": CF_CLIENT_SECRET,
+  };
+}
 
 async function daemonFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
   const res = await fetch(`${DAEMON_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...buildAuthHeaders(),
+      ...(init?.headers as Record<string, string> | undefined),
+    },
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as {
