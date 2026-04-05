@@ -12,7 +12,8 @@
 ## Funcional (impacta uso diario)
 
 - [x] **Schedule Manager** — pagina funcional: lista timers AIOS-owned (filtra por `User=claude` ou `ExecStart` em `/home/claude/`), mostra next/last run, schedule, status, ações Run (--no-block) e Enable/Disable. Endpoints REST em `/api/schedules`
-- [ ] **Morning briefing inteligente** — atualmente e lista simples de jobs recentes. Evoluir para exec summary formatado: o que mudou, o que precisa atencao, o que foi resolvido
+- [x] **Morning briefing inteligente** — endpoint `GET /api/briefing?hours=N` retorna secoes estruturadas (Needs attention / In progress / Resolved / Recent conversations). Frontend renderiza `BriefingPanel` com icones e links. Deterministico, refresh a cada 30s
+- [x] **Fix: DB path em producao** — daemon usava `/tmp/aios-dev.db` (volatil) por falta de `.env.prod`. Criado `.env.prod` com paths persistentes em `/home/claude/.aios/` e `.env.prod.example` no repo
 - [x] **Persistencia de contexto entre mensagens** — corrigido: usa `--resume <claude_session_id>` em vez de `--continue`. Captura session_id do evento `init` do stream-json, persiste em `sessions.claude_session_id`. Sessoes no mesmo workspace nao colidem. Validado E2E
 
 ## Qualidade / Polish
