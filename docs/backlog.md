@@ -11,7 +11,7 @@
 
 ## Funcional (impacta uso diario)
 
-- [ ] **Schedule Manager** — pagina placeholder hoje. Implementar: ler systemd timers do CT165, visualizar crons, enable/disable, trigger manual
+- [x] **Schedule Manager** — pagina funcional: lista timers AIOS-owned (filtra por `User=claude` ou `ExecStart` em `/home/claude/`), mostra next/last run, schedule, status, ações Run (--no-block) e Enable/Disable. Endpoints REST em `/api/schedules`
 - [ ] **Morning briefing inteligente** — atualmente e lista simples de jobs recentes. Evoluir para exec summary formatado: o que mudou, o que precisa atencao, o que foi resolvido
 - [x] **Persistencia de contexto entre mensagens** — corrigido: usa `--resume <claude_session_id>` em vez de `--continue`. Captura session_id do evento `init` do stream-json, persiste em `sessions.claude_session_id`. Sessoes no mesmo workspace nao colidem. Validado E2E
 

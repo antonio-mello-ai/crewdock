@@ -12,6 +12,7 @@ import type {
   Session,
   SessionMessage,
   Schedule,
+  Briefing,
   CreateJobRequest,
   CreateSessionRequest,
   SendMessageRequest,
@@ -205,6 +206,18 @@ export function useSendMessage(sessionId: string) {
       qc.invalidateQueries({ queryKey: ["sessions", sessionId, "messages"] });
       qc.invalidateQueries({ queryKey: ["sessions"] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Briefing
+// ---------------------------------------------------------------------------
+
+export function useBriefing(hours: number = 12) {
+  return useQuery<ApiResponse<Briefing>>({
+    queryKey: ["briefing", hours],
+    queryFn: () => api(`/api/briefing?hours=${hours}`),
+    refetchInterval: 30_000,
   });
 }
 

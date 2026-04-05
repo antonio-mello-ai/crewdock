@@ -187,6 +187,38 @@ export type SessionWsMessage =
   | { type: "error"; message: string }
   | { type: "status"; isProcessing: boolean };
 
+// --- Briefing ---
+
+export interface BriefingHighlight {
+  kind: "failure" | "success" | "active" | "info";
+  workspace: string | null;
+  workspaceName: string | null;
+  title: string;
+  detail: string | null;
+  timestamp: number;
+  costUsd: number;
+  link: { type: "session" | "job"; id: string };
+}
+
+export interface BriefingSection {
+  title: string;
+  icon: "alert" | "check" | "activity" | "info";
+  items: BriefingHighlight[];
+}
+
+export interface Briefing {
+  periodHours: number;
+  generatedAt: number;
+  stats: {
+    sessionsCount: number;
+    activeSessionsCount: number;
+    jobsCount: number;
+    failedJobsCount: number;
+    totalCostUsd: number;
+  };
+  sections: BriefingSection[];
+}
+
 // --- Terminal WebSocket messages ---
 
 export type TerminalWsMessage =

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { useWorkspaces, useSessions, useJobs } from "@/hooks/use-api";
+import { useWorkspaces, useSessions, useJobs, useBriefing } from "@/hooks/use-api";
 import { WorkspaceCard } from "@/components/workspace-card";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { formatTimeAgo, formatCost } from "@/lib/utils";
@@ -15,9 +15,122 @@ import {
   DollarSign,
   ArrowRight,
   MessageSquare,
+  Info,
 } from "lucide-react";
-import type { Session, Workspace } from "@aios/shared";
+import type { Session, Workspace, Briefing, BriefingSection, BriefingHighlight } from "@aios/shared";
 import Link from "next/link";
+
+const SECTION_ICONS = {
+  alert: AlertTriangle,
+  check: CheckCircle2,
+  activity: Loader2,
+  info: Info,
+} as const;
+
+const SECTION_COLORS = {
+  alert: "text-red-400",
+  check: "text-green-500/70",
+  activity: "text-blue-400",
+  info: "text-neutral-500",
+} as const;
+
+function highlightHref(h: BriefingHighlight): string {
+  if (h.link.type === "session") {
+    return `/console?workspace=${h.workspace ?? ""}&session=${h.link.id}`;
+  }
+  return `/jobs/detail?id=${h.link.id}`;
+}
+
+function BriefingPanel({ briefing }: { briefing: Briefing }) {
+  return (
+    <div className="mb-8 rounded-lg border border-neutral-800/60 bg-neutral-900/30 overflow-hidden">
+      <div className="px-5 py-4 border-b border-neutral-800/40">
+        <div className="flex items-center gap-2.5">
+          <Sun className="h-4 w-4 text-amber-400/80" />
+          <h2 className="text-sm font-semibold text-neutral-200">
+            {getGreeting()}
+          </h2>
+        </div>
+        <p className="mt-1 text-xs text-neutral-500">
+          Last {briefing.periodHours}h:{" "}
+          {briefing.stats.sessionsCount} session
+          {briefing.stats.sessionsCount !== 1 ? "s" : ""}
+          {briefing.stats.activeSessionsCount > 0 &&
+            ` (${briefing.stats.activeSessionsCount} active)`}
+          {briefing.stats.jobsCount > 0 &&
+            `, ${briefing.stats.jobsCount} job${briefing.stats.jobsCount !== 1 ? "s" : ""}`}
+          {briefing.stats.failedJobsCount > 0 &&
+            ` — ${briefing.stats.failedJobsCount} need${briefing.stats.failedJobsCount === 1 ? "s" : ""} attention`}
+          .
+        </p>
+      </div>
+
+      {briefing.sections.map((section: BriefingSection) => {
+        const Icon = SECTION_ICONS[section.icon];
+        const color = SECTION_COLORS[section.icon];
+        return (
+          <div
+            key={section.title}
+            className="border-t border-neutral-800/30"
+          >
+            <div className="px-5 py-2 bg-neutral-950/20 flex items-center gap-2">
+              <Icon
+                className={`h-3 w-3 ${color} ${section.icon === "activity" ? "animate-spin" : ""}`}
+              />
+              <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-500">
+                {section.title}
+              </span>
+              <span className="text-[11px] text-neutral-600 font-mono">
+                {section.items.length}
+              </span>
+            </div>
+            <div className="divide-y divide-neutral-800/30">
+              {section.items.map((h, idx) => {
+                const ItemIcon = SECTION_ICONS[section.icon];
+                return (
+                  <Link
+                    key={`${section.title}-${idx}-${h.link.id}`}
+                    href={highlightHref(h)}
+                    className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
+                  >
+                    <ItemIcon
+                      className={`h-4 w-4 mt-0.5 shrink-0 ${color} ${section.icon === "activity" ? "animate-spin" : ""}`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-neutral-200 truncate">
+                        <span className="font-medium">
+                          {h.workspaceName ?? h.title}
+                        </span>
+                        {h.detail && (
+                          <span className="text-neutral-500">
+                            {" "}— {h.detail}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-neutral-600 mt-0.5">
+                        {formatTimeAgo(h.timestamp)}
+                        {h.costUsd > 0 && ` · ${formatCost(h.costUsd)}`}
+                      </p>
+                    </div>
+                    <ArrowRight className="h-3.5 w-3.5 text-neutral-700 mt-1 shrink-0" />
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="px-5 py-3 border-t border-neutral-800/40 flex items-center gap-2 text-xs text-neutral-600">
+        <DollarSign className="h-3 w-3" />
+        <span>
+          Total cost ({briefing.periodHours}h):{" "}
+          {formatCost(briefing.stats.totalCostUsd)}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -30,46 +143,12 @@ export default function OverviewPage() {
   const { data: workspacesData, isLoading: workspacesLoading } = useWorkspaces();
   const { data: sessionsData, isLoading: sessionsLoading } = useSessions();
   const { data: jobsData, isLoading: jobsLoading } = useJobs({ limit: 20 });
+  const { data: briefingData } = useBriefing(12);
 
   const workspaces = workspacesData?.data ?? [];
   const sessions = sessionsData?.data ?? [];
   const recentJobs = jobsData?.data ?? [];
-
-  // Morning briefing: sessions + jobs from last 12 hours
-  const briefing = useMemo(() => {
-    const twelveHoursAgo = Date.now() - 12 * 60 * 60 * 1000;
-    const recentSessions = sessions.filter(
-      (s) => s.lastActiveAt >= twelveHoursAgo
-    );
-    const overnightJobs = recentJobs.filter(
-      (j) => j.createdAt >= twelveHoursAgo
-    );
-
-    const failed = overnightJobs.filter((j) => j.status === "failed");
-    const completed = overnightJobs.filter((j) => j.status === "completed");
-    const running = overnightJobs.filter(
-      (j) => j.status === "running" || j.status === "queued"
-    );
-    const activeSessions = recentSessions.filter((s) => s.status === "active");
-
-    const sessionCost = recentSessions.reduce(
-      (sum, s) => sum + s.totalCostUsd,
-      0
-    );
-    const jobCost = overnightJobs.reduce((sum, j) => sum + j.totalCostUsd, 0);
-    const totalCost = sessionCost + jobCost;
-
-    return {
-      recentSessions,
-      overnightJobs,
-      failed,
-      completed,
-      running,
-      activeSessions,
-      totalCost,
-      hasActivity: recentSessions.length > 0 || overnightJobs.length > 0,
-    };
-  }, [sessions, recentJobs]);
+  const briefing = briefingData?.data;
 
   // Group sessions by workspace, then group workspaces by their group field
   const workspaceGroups = useMemo(() => {
@@ -131,144 +210,8 @@ export default function OverviewPage() {
       ) : (
         <>
           {/* Morning Briefing */}
-          {briefing.hasActivity && (
-            <div className="mb-8 rounded-lg border border-neutral-800/60 bg-neutral-900/30 overflow-hidden">
-              <div className="px-5 py-4 border-b border-neutral-800/40">
-                <div className="flex items-center gap-2.5">
-                  <Sun className="h-4 w-4 text-amber-400/80" />
-                  <h2 className="text-sm font-semibold text-neutral-200">
-                    {getGreeting()}
-                  </h2>
-                </div>
-                <p className="mt-1 text-xs text-neutral-500">
-                  {briefing.recentSessions.length} session
-                  {briefing.recentSessions.length !== 1 ? "s" : ""}
-                  {briefing.activeSessions.length > 0 &&
-                    ` (${briefing.activeSessions.length} active)`}
-                  {briefing.overnightJobs.length > 0 &&
-                    `, ${briefing.overnightJobs.length} job${briefing.overnightJobs.length !== 1 ? "s" : ""}`}
-                  {" "}in the last 12 hours
-                  {briefing.failed.length > 0 &&
-                    ` — ${briefing.failed.length} need${briefing.failed.length === 1 ? "s" : ""} attention`}
-                  .
-                </p>
-              </div>
-
-              <div className="divide-y divide-neutral-800/30">
-                {/* Failed jobs first */}
-                {briefing.failed.map((job) => (
-                  <Link
-                    key={job.id}
-                    href={`/jobs/detail?id=${job.id}`}
-                    className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
-                  >
-                    <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-neutral-200">
-                        <span className="font-medium">{job.agentId}</span>{" "}
-                        <span className="text-red-400/80">failed</span>
-                        {job.objective && (
-                          <span className="text-neutral-500">
-                            {" "}- {job.objective}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-neutral-600 mt-0.5">
-                        {formatTimeAgo(job.createdAt)}
-                      </p>
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-neutral-700 mt-1 shrink-0" />
-                  </Link>
-                ))}
-
-                {/* Active sessions */}
-                {briefing.activeSessions.slice(0, 5).map((s) => {
-                  const ws = workspaces.find((w) => w.id === s.workspaceId);
-                  return (
-                    <Link
-                      key={s.id}
-                      href={`/console?workspace=${s.workspaceId}&session=${s.id}`}
-                      className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
-                    >
-                      <span className="inline-block h-2 w-2 rounded-full bg-blue-400 animate-pulse mt-2 shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-neutral-200 truncate">
-                          <span className="font-medium">
-                            {ws?.name ?? s.workspaceId}
-                          </span>
-                          <span className="text-neutral-500">
-                            {" "}
-                            — {s.title || `Session ${s.id.slice(0, 6)}`}
-                          </span>
-                        </p>
-                        <p className="text-xs text-neutral-600 mt-0.5">
-                          {formatTimeAgo(s.lastActiveAt)} · {formatCost(s.totalCostUsd)}
-                        </p>
-                      </div>
-                      <ArrowRight className="h-3.5 w-3.5 text-neutral-700 mt-1 shrink-0" />
-                    </Link>
-                  );
-                })}
-
-                {/* Completed jobs */}
-                {briefing.completed.slice(0, 3).map((job) => (
-                  <Link
-                    key={job.id}
-                    href={`/jobs/detail?id=${job.id}`}
-                    className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
-                  >
-                    <CheckCircle2 className="h-4 w-4 text-green-500/70 mt-0.5 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-neutral-300">
-                        <span className="font-medium text-neutral-200">
-                          {job.agentId}
-                        </span>{" "}
-                        completed
-                        {job.objective && (
-                          <span className="text-neutral-500">
-                            {" "}- {job.objective}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-neutral-600 mt-0.5">
-                        {formatTimeAgo(job.createdAt)}
-                      </p>
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-neutral-700 mt-1 shrink-0" />
-                  </Link>
-                ))}
-
-                {/* Running jobs */}
-                {briefing.running.map((job) => (
-                  <Link
-                    key={job.id}
-                    href={`/jobs/detail?id=${job.id}`}
-                    className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-800/20 transition-colors"
-                  >
-                    <Loader2 className="h-4 w-4 text-blue-400 mt-0.5 shrink-0 animate-spin" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-neutral-300">
-                        <span className="font-medium text-neutral-200">
-                          {job.agentId}
-                        </span>{" "}
-                        running
-                        {job.objective && (
-                          <span className="text-neutral-500">
-                            {" "}- {job.objective}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <ArrowRight className="h-3.5 w-3.5 text-neutral-700 mt-1 shrink-0" />
-                  </Link>
-                ))}
-              </div>
-
-              <div className="px-5 py-3 border-t border-neutral-800/40 flex items-center gap-2 text-xs text-neutral-600">
-                <DollarSign className="h-3 w-3" />
-                <span>Total cost (12h): {formatCost(briefing.totalCost)}</span>
-              </div>
-            </div>
+          {briefing && briefing.sections.length > 0 && (
+            <BriefingPanel briefing={briefing} />
           )}
 
           {/* Workspaces by group */}
