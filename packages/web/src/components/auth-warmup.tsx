@@ -55,13 +55,12 @@ export function AuthWarmup() {
       // ignore storage failures
     }
 
+    // Hard ceiling: if the iframe never fires `onLoad` within 5s (CF down,
+    // DNS slow, etc.), give up on the warmup and let the app continue.
+    // Intentionally do NOT mark warmed — next mount should retry. Only
+    // `handleLoad` marks success.
     const timeout = window.setTimeout(() => {
       setDone(true);
-      try {
-        sessionStorage.setItem("aios_auth_warmed", "1");
-      } catch {
-        // ignore
-      }
     }, 5000);
 
     return () => window.clearTimeout(timeout);

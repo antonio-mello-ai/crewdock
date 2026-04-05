@@ -41,15 +41,35 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     if (res.status === 401) {
-      // CF Access session expired or missing — force re-auth by reloading;
-      // CF Access will intercept and redirect to the login flow.
+      // CF Access session expired or missing — force re-auth by reloading.
+      // Circuit breaker: only reload once per session to avoid an infinite
+      // loop if CF Access persistently rejects (clock skew, bad policy,
+      // corrupted cookie). After one reload, surface the error.
       if (typeof window !== "undefined") {
-        window.location.reload();
+        try {
+          const tried = sessionStorage.getItem("aios_reload_on_401") === "1";
+          if (!tried) {
+            sessionStorage.setItem("aios_reload_on_401", "1");
+            window.location.reload();
+            throw new Error("unauthorized — reloading to re-authenticate");
+          }
+        } catch {
+          // sessionStorage unavailable — fail closed, no reload
+        }
       }
-      throw new Error("unauthorized — reloading to re-authenticate");
+      throw new Error("unauthorized — CF Access session invalid");
     }
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message ?? `API error ${res.status}`);
+  }
+  // Clear the reload breaker on any successful response so the next 401
+  // gets a fresh chance to recover.
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.removeItem("aios_reload_on_401");
+    } catch {
+      // ignore
+    }
   }
   return res.json();
 }

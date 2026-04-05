@@ -28,18 +28,19 @@ CF_ACCESS_CLIENT_SECRET=<service token client secret>
 
 ## Rollback (< 60s)
 
-### Opção A — desativar auth no daemon
-```bash
-ssh proxmox "pct exec 165 -- bash -c 'echo AIOS_AUTH_DISABLED=true >> /home/claude/aios-runtime/.env.prod && systemctl restart aios-daemon'"
-```
-Nota: só funciona se `NODE_ENV !== production`. Como roda em prod, primeiro precisa mudar `NODE_ENV` ou usar opção B.
-
-### Opção B — voltar para SOFT_MODE (loga mas não bloqueia)
+### Opção A (PRIMÁRIA em produção) — voltar para SOFT_MODE (loga mas não bloqueia)
 ```bash
 ssh proxmox "pct exec 165 -- bash -c 'sed -i s/CF_ACCESS_SOFT_MODE=false/CF_ACCESS_SOFT_MODE=true/ /home/claude/aios-runtime/.env.prod && systemctl restart aios-daemon'"
 ```
+Esta é a rota recomendada em incidente: preserva observabilidade (rejeições continuam logadas) mas não quebra o app.
 
-### Opção C — deletar CF Access application (volta estado anterior)
+### Opção B (dev apenas) — desativar auth completamente
+```bash
+ssh proxmox "pct exec 165 -- bash -c 'echo AIOS_AUTH_DISABLED=true >> /home/claude/aios-runtime/.env.prod && systemctl restart aios-daemon'"
+```
+**Não funciona em produção**: `validateConfig()` recusa bootar com `NODE_ENV=production` + `AIOS_AUTH_DISABLED=true`. Só serve para dev local.
+
+### Opção C (último recurso) — deletar CF Access application (volta estado anterior)
 ```bash
 source ~/.env
 curl -X DELETE \
@@ -51,18 +52,19 @@ API continua ativa, mas sem CF Access → sem JWT injetado → daemon rejeita tu
 ## Smoke test checklist pós-deploy
 
 - [ ] `curl https://api.crewdock.ai/api/health` → 200 `{ status: "ok" }`
-- [ ] `curl https://api.crewdock.ai/api/briefing` → 401 (sem auth)
+- [ ] `curl https://api.crewdock.ai/api/briefing` → 401 (sem auth, após SOFT_MODE=false)
 - [ ] `curl -H "CF-Access-Client-Id: $CID" -H "CF-Access-Client-Secret: $CSECRET" https://api.crewdock.ai/api/briefing` → 200
 - [ ] Browser `ai.felhen.ai` → GET /api/briefing via frontend → 200 (cookie CF)
 - [ ] Browser `ai.felhen.ai` → WebSocket `/ws/sessions/:id` conecta e recebe evento
+- [ ] Browser sem cookie CF (janela anônima pós-logout) → `new WebSocket(/ws/...)` **falha no handshake** (não dispara `open`)
 - [ ] Browser `ai.felhen.ai` → Terminal `/ws/terminal/:id` bidirecional funciona
 - [ ] Browser `ai.felhen.ai` → Push subscribe via Service Worker → 200
 - [ ] MCP tool call pelo Claude Code (`list_workspaces`) → 200
 - [ ] Logs do daemon mostram `email=antonio.mello@felhen.com.br` em requests browser
-- [ ] Logs do daemon mostram `service_token=aios-mcp-server` em requests MCP
+- [ ] Logs do daemon mostram `identity=<service-token-client-id>` em requests MCP
 
-## Tech debt criado
+## Tech debt pendente
 
 - `AIOS_AUTH_DISABLED` flag: remover quando CI de staging existir
-- `CF_ACCESS_SOFT_MODE`: remover após 24h de observação limpa
+- `CF_ACCESS_SOFT_MODE`: remover após validação E2E limpa (24h de observação)
 - Service token em `~/.env` plaintext: migrar para macOS keychain em iteração futura

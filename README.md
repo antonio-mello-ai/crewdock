@@ -67,9 +67,14 @@ packages/
 Registre o MCP do AIOS no Claude Code para controlar a runtime via chat:
 
 ```bash
-claude mcp add aios -s user --env AIOS_DAEMON_URL=https://your-daemon.example.com \
+claude mcp add aios -s user \
+  --env AIOS_DAEMON_URL=https://your-daemon.example.com \
+  --env CF_ACCESS_CLIENT_ID=<service-token-client-id> \
+  --env CF_ACCESS_CLIENT_SECRET=<service-token-client-secret> \
   -- node /path/to/crewdock/packages/mcp-server/dist/index.js
 ```
+
+`CF_ACCESS_CLIENT_ID` e `CF_ACCESS_CLIENT_SECRET` são o service token do Cloudflare Access criado para o daemon. Necessário apenas quando o daemon está atrás de CF Access (deploy em produção).
 
 Tools disponíveis: `get_briefing`, `list_workspaces`, `list_sessions`, `get_session_messages`, `list_schedules`, `run_schedule`, `list_jobs`, `get_job_logs`.
 
@@ -84,6 +89,10 @@ Variáveis de ambiente (via `.env.prod`):
 | `AIOS_PROJECTS_DIR` | Raiz onde procurar `CLAUDE.md` para workspaces | `./projects` |
 | `PORT` | Porta do daemon | `3101` |
 | `HOST` | Bind do daemon | `0.0.0.0` |
+| `CF_ACCESS_TEAM_DOMAIN` | Team domain do CF Access (ex: `org.cloudflareaccess.com`) | — |
+| `CF_ACCESS_AUD` | AUD tag do CF Access application | — |
+| `CF_ACCESS_SOFT_MODE` | `true` loga rejeições sem bloquear (rollout inicial) | `false` |
+| `AIOS_CORS_ORIGINS` | Origins permitidas pelo CORS | — |
 
 ## Deploy em produção
 

@@ -16,7 +16,7 @@ Control plane web para gerenciar agentes AI. Substitui 6 terminais + Telegram po
 | Deploy frontend | Cloudflare Pages (crewdock.ai, ai.felhen.ai) |
 | Deploy daemon | CT165 systemd service (aios-daemon.service) |
 | API tunnel | Cloudflare Tunnel (api.crewdock.ai -> CT165:3101) |
-| Auth | Cloudflare Access (ai.felhen.ai, OAuth email) |
+| Auth | Cloudflare Access (ai.felhen.ai + api.crewdock.ai, JWT validation no daemon) |
 
 ## Estrutura
 
@@ -33,7 +33,16 @@ packages/
 O daemon pode ser consumido via MCP server do Claude Code. Registrar uma vez:
 
 ```bash
-claude mcp add aios -s user --env AIOS_DAEMON_URL=https://api.crewdock.ai -- node <path>/packages/mcp-server/dist/index.js
+claude mcp add aios -s user \
+  --env AIOS_DAEMON_URL=https://api.crewdock.ai \
+  --env CF_ACCESS_CLIENT_ID=$CF_ACCESS_CLIENT_ID \
+  --env CF_ACCESS_CLIENT_SECRET=$CF_ACCESS_CLIENT_SECRET \
+  -- node <path>/packages/mcp-server/dist/index.js
+```
+
+`CF_ACCESS_CLIENT_ID` e `CF_ACCESS_CLIENT_SECRET` ficam em `~/.env` (service token do CF Access). Ler valores em CT165:
+```bash
+ssh proxmox "pct exec 165 -- grep CF_ACCESS /home/claude/aios-runtime/.env.prod"
 ```
 
 Tools expostas: `get_briefing`, `list_workspaces`, `list_sessions`, `get_session_messages`, `list_schedules`, `run_schedule`, `list_jobs`, `get_job_logs`.
@@ -63,6 +72,18 @@ Quando Web Push ativo, detector in-tab desliga automaticamente para evitar dupli
 ## Daemon
 
 Roda como usuario `claude` (UID 33) com sudo NOPASSWD no CT165. Service: `aios-daemon.service`. DB persistente em `/home/claude/.aios/aios.db` (config em `.env.prod`). Membro do grupo `systemd-journal` para ler logs proprios.
+
+Env vars obrigatórias em `.env.prod` (além de DB_PATH, LOG_DIR, etc.):
+
+| Variável | Descrição |
+|----------|-----------|
+| `CF_ACCESS_TEAM_DOMAIN` | Ex: `felhen.cloudflareaccess.com` |
+| `CF_ACCESS_AUD` | AUD tag do CF Access application — ler via CF dashboard ou API |
+| `CF_ACCESS_SOFT_MODE` | `true` para logar rejeições sem bloquear (usar em rollout inicial) |
+| `NODE_ENV` | `production` em CT165 (impede `AIOS_AUTH_DISABLED` de funcionar) |
+| `AIOS_CORS_ORIGINS` | Origins permitidas pelo CORS (ex: `https://ai.felhen.ai,https://crewdock.ai`) |
+
+Ver `docs/auth-rollout.md` para arquitetura auth, rollback e smoke test checklist.
 
 ## Comandos
 
