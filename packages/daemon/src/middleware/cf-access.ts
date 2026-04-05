@@ -66,12 +66,30 @@ function isLoopback(c: Context): boolean {
   const remote: string | undefined =
     incoming?.socket?.remoteAddress ?? incoming?.connection?.remoteAddress;
   if (!remote) return false;
-  return (
+  const isLocal =
     remote === "127.0.0.1" ||
     remote === "::1" ||
     remote === "::ffff:127.0.0.1" ||
-    remote.startsWith("127.")
-  );
+    remote.startsWith("127.");
+  if (!isLocal) return false;
+  // IMPORTANT: cloudflared runs on the same host as the daemon, so every
+  // tunneled request arrives from 127.0.0.1 too. Distinguish real local
+  // debug (curl from inside the CT) from tunneled traffic by checking for
+  // any Cloudflare-injected header. If any CF header is present, this is
+  // NOT a loopback debug call — it's proxied from CF and must be
+  // authenticated.
+  const cfHeaders = [
+    "cf-ray",
+    "cf-connecting-ip",
+    "cf-ipcountry",
+    "cf-visitor",
+    "cf-access-jwt-assertion",
+    "cf-access-authenticated-user-email",
+  ];
+  for (const h of cfHeaders) {
+    if (c.req.header(h)) return false;
+  }
+  return true;
 }
 
 function extractJwt(c: Context): string | null {
