@@ -94,8 +94,6 @@ Exemplo real em produção (CT165 + Cloudflare):
 - **API tunnel**: Cloudflare Tunnel (`api.example.ai` → CT165:3101)
 - **Auth**: Cloudflare Access (OAuth por email)
 
-Ver `deploy/` (coming soon) para scripts e configs.
-
 ## Contribuindo
 
 Ver [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -48,9 +48,21 @@ Tools expostas: `get_briefing`, `list_workspaces`, `list_sessions`, `get_session
 | Stop | Botao Stop (SIGTERM) | Ctrl+C |
 | Use case | Queries rapidas, monitoramento | Controle total, sessoes interativas |
 
+## Schedule Manager (`/schedules`)
+
+CRUD completo de systemd timers AIOS-owned (filtrados por `User=claude` ou `ExecStart` em `/home/claude/`). Suporta create/delete/run/enable/disable + log viewer inline via `journalctl`. Seguranca: validacao de nome (regex), comando (absolute path whitelist), OnCalendar (charset restrito), sem shell metacharacters.
+
+## Notificacoes
+
+Dois niveis:
+1. **In-tab (Notification API)** — funciona com browser aberto, observa failed jobs + HITL via polling
+2. **Web Push + PWA** — funciona com browser/app fechado, requires VAPID keys no `.env.prod`, iOS 16.4+ precisa "Add to Home Screen"
+
+Quando Web Push ativo, detector in-tab desliga automaticamente para evitar duplicacao. Cloudflare Access tem bypass para `/sw.js`, `/manifest.json`, `/icons`.
+
 ## Daemon
 
-Roda como usuario `claude` (UID 33) com sudo NOPASSWD no CT165. Service: `aios-daemon.service`.
+Roda como usuario `claude` (UID 33) com sudo NOPASSWD no CT165. Service: `aios-daemon.service`. DB persistente em `/home/claude/.aios/aios.db` (config em `.env.prod`). Membro do grupo `systemd-journal` para ler logs proprios.
 
 ## Comandos
 
@@ -71,8 +83,10 @@ ssh proxmox "pct exec 165 -- systemctl restart aios-daemon"
 # IMPORTANT: NEXT_PUBLIC_VAPID_PUBLIC_KEY must match the VAPID_PUBLIC_KEY in
 # CT165's /home/claude/aios-runtime/.env.prod. Without it, push subscribe fails
 # silently ("VAPID public key not configured").
+# NEXT_PUBLIC_VAPID_PUBLIC_KEY: ler de CT165 com:
+# ssh proxmox "pct exec 165 -- grep VAPID_PUBLIC_KEY /home/claude/aios-runtime/.env.prod"
 NEXT_PUBLIC_DAEMON_URL=https://api.crewdock.ai \
-NEXT_PUBLIC_VAPID_PUBLIC_KEY=BPahNRySxey_9EuT5K_LeZruOMqI_esUhvR9W2QOrwfhVi05qoqz9uOurCfV8rsaKh59mVYWggW3G6EP6KN1_c0 \
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=<valor de VAPID_PUBLIC_KEY em CT165/.env.prod> \
 npx turbo build --filter=@aios/web --force
 source ~/.env && CLOUDFLARE_API_TOKEN=$CLOUDFLARE_API_TOKEN wrangler pages deploy packages/web/out --project-name crewdock --branch main --commit-dirty=true
 ```

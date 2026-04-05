@@ -33,6 +33,11 @@
 - [x] **Docker Compose** — `Dockerfile` multi-stage (builder + runtime non-root aios user), `docker-compose.yml` com volumes para DB/logs/projetos/.claude. Build validado + container rodou health endpoint OK
 - [x] **Open source prep** — `README.md` com quickstart Docker e dev, `LICENSE` MIT, `CONTRIBUTING.md` com estilo de commit e setup de dev
 
+## Validacao pendente (requer interacao humana)
+
+- [ ] **PWA install + push no iPhone** — testar Safari → "Add to Home Screen", abrir app instalado, aceitar push permission, disparar `POST /api/push/test` e verificar chegada com app fechado (iOS 16.4+ obrigatorio)
+- [ ] **PWA install no desktop (Mac Chrome)** — install prompt + notificacao persistente com tab fechada
+
 ## Criterio de Sucesso
 
 Antonio usar ai.felhen.ai diariamente por 30 dias consecutivos.
