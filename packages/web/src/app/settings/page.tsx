@@ -335,6 +335,7 @@ export default function SettingsPage() {
 
                       {/* Name input */}
                       <Input
+                        name={`workspace-name-${ws.id}`}
                         value={displayName}
                         onChange={(e) =>
                           updateOverride(ws.id, { name: e.target.value })
@@ -344,6 +345,7 @@ export default function SettingsPage() {
 
                       {/* Group input — regroups on blur/enter, not on keystroke */}
                       <Input
+                        name={`workspace-group-${ws.id}`}
                         value={ov.group ?? ws.group ?? ""}
                         onChange={(e) =>
                           updateOverride(ws.id, { group: e.target.value })

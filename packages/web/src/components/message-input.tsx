@@ -56,6 +56,7 @@ export function MessageInput({
         <div className="flex-1 relative">
           <textarea
             ref={textareaRef}
+            name="message"
             value={value}
             onChange={(e) => {
               setValue(e.target.value);

@@ -161,6 +161,7 @@ export function HitlCard({
               {showCustom && (
                 <div className="flex gap-2">
                   <textarea
+                    name="hitl-custom-response"
                     value={customResponse}
                     onChange={(e) => setCustomResponse(e.target.value)}
                     placeholder="Type a custom response..."

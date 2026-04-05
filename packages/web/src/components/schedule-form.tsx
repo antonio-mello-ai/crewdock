@@ -66,6 +66,7 @@ export function ScheduleForm({ onClose, onCreated }: ScheduleFormProps) {
               Name (lowercase, hyphens allowed)
             </label>
             <Input
+              name="schedule-name"
               value={name}
               onChange={(e) => setName(e.target.value.toLowerCase())}
               placeholder="my-backup-job"
@@ -84,6 +85,7 @@ export function ScheduleForm({ onClose, onCreated }: ScheduleFormProps) {
               Description
             </label>
             <Input
+              name="schedule-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Daily database backup"
@@ -96,6 +98,7 @@ export function ScheduleForm({ onClose, onCreated }: ScheduleFormProps) {
               Command (absolute path)
             </label>
             <Input
+              name="schedule-command"
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               placeholder="/home/claude/scripts/backup.sh"
@@ -113,6 +116,7 @@ export function ScheduleForm({ onClose, onCreated }: ScheduleFormProps) {
               Schedule (OnCalendar syntax)
             </label>
             <Input
+              name="schedule-oncalendar"
               value={onCalendar}
               onChange={(e) => setOnCalendar(e.target.value)}
               placeholder="*-*-* 03:00:00"
