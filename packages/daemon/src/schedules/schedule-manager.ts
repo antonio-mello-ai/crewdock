@@ -100,9 +100,22 @@ export function listSchedules(): ScheduleInfo[] {
     const enabledOutput = run("systemctl", ["is-enabled", t.unit]).trim();
     const enabled = enabledOutput === "enabled";
 
-    // is-active returns "active" if currently triggered
-    const activeOutput = run("systemctl", ["is-active", t.unit]).trim();
-    const active = activeOutput === "active";
+    // "active" here means the SERVICE is currently executing, not the timer.
+    // A .timer unit is `active` whenever it's enabled and waiting, which
+    // would show every scheduled item as "running" in the UI. We want the
+    // spinner only when the associated .service is actually in-flight, so
+    // we check that unit's state — "activating" | "active" with SubState
+    // "running"/"start" means in-flight; "inactive"/"dead" means idle.
+    const serviceState = run("systemctl", [
+      "show",
+      t.activates,
+      "--property=ActiveState,SubState",
+    ]);
+    const activeState = serviceState.match(/^ActiveState=(.*)$/m)?.[1]?.trim();
+    const subState = serviceState.match(/^SubState=(.*)$/m)?.[1]?.trim();
+    const active =
+      activeState === "activating" ||
+      (activeState === "active" && subState !== "exited" && subState !== "dead");
 
     schedules.push({
       name: t.unit,
