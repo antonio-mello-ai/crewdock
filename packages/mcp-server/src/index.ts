@@ -733,6 +733,52 @@ server.registerTool(
 );
 
 server.registerTool(
+  "sync_company_brain_github_notifications",
+  {
+    title: "Sync GitHub notifications into Company Brain",
+    description:
+      "Read authenticated GitHub notifications into Company Brain as observe-only watcher artifacts and optional unread signals. Does not mark notifications read or write back to GitHub.",
+    inputSchema: {
+      all: z.boolean().default(false),
+      participating: z.boolean().default(false),
+      limit: z.number().int().positive().max(100).default(25),
+      sourceId: z.string().optional(),
+      sourceName: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("development"),
+      owner: z.string().optional(),
+      createSignals: z.boolean().default(true),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/adapters/github/notifications/sync",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_decision",
   {
     title: "Register Company Brain decision",

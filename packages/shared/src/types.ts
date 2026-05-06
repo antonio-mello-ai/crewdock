@@ -632,6 +632,27 @@ export interface SyncGitHubPrCiResponse {
   failingChecksSeen: number;
 }
 
+export interface SyncGitHubNotificationsRequest {
+  all?: boolean;
+  participating?: boolean;
+  limit?: number;
+  sourceId?: string | null;
+  sourceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+  createSignals?: boolean;
+}
+
+export interface SyncGitHubNotificationsResponse {
+  source: Source;
+  watcherRun: WatcherRun;
+  artifactsCreated: Artifact[];
+  signalsCreated: Signal[];
+  notificationsSeen: number;
+  unreadSeen: number;
+}
+
 export interface StrategicPriority {
   id: string;
   title: string;

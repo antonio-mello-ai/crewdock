@@ -35,6 +35,7 @@ import {
   useRunCompanyBrainWatcher,
   useRunFelhenDemo,
   useSyncCompanyBrainGitHubIssues,
+  useSyncCompanyBrainGitHubNotifications,
   useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
   useUpdateCompanyBrainDecision,
@@ -244,6 +245,7 @@ export default function CompanyBrainPage() {
   const runFelhenDemo = useRunFelhenDemo();
   const syncGitHubIssues = useSyncCompanyBrainGitHubIssues();
   const syncGitHubPrCi = useSyncCompanyBrainGitHubPrCi();
+  const syncGitHubNotifications = useSyncCompanyBrainGitHubNotifications();
   const importSlackMessages = useImportCompanyBrainSlackMessages();
   const syncSlackChannel = useSyncCompanyBrainSlackChannel();
   const updateGuidance = useUpdateCompanyBrainGuidanceItem();
@@ -457,6 +459,14 @@ export default function CompanyBrainPage() {
     limit: "5",
     sourceName: "CrewDock GitHub PR/CI read-only watcher",
     owner: "Felhen",
+    createSignals: true,
+  });
+
+  const [githubNotificationsForm, setGithubNotificationsForm] = useState({
+    sourceName: "GitHub Notifications read-only watcher",
+    limit: "10",
+    all: false,
+    participating: false,
     createSignals: true,
   });
 
@@ -741,6 +751,20 @@ export default function CompanyBrainPage() {
       area: "development",
       owner: githubPrCiForm.owner || undefined,
       createSignals: githubPrCiForm.createSignals,
+      visibility: "internal",
+    });
+  };
+
+  const handleSyncGitHubNotifications = (event: FormEvent) => {
+    event.preventDefault();
+    syncGitHubNotifications.mutate({
+      sourceName: githubNotificationsForm.sourceName || undefined,
+      limit: Number(githubNotificationsForm.limit) || 10,
+      all: githubNotificationsForm.all,
+      participating: githubNotificationsForm.participating,
+      createSignals: githubNotificationsForm.createSignals,
+      area: "development",
+      owner: "Felhen",
       visibility: "internal",
     });
   };
@@ -1975,6 +1999,78 @@ export default function CompanyBrainPage() {
                 Create CI Signals
               </label>
               <SubmitButton pending={syncGitHubPrCi.isPending} />
+            </KernelForm>
+
+            <KernelForm
+              title="GitHub notifications"
+              icon={AlertTriangle}
+              onSubmit={handleSyncGitHubNotifications}
+            >
+              <FieldLabel>Source name</FieldLabel>
+              <Input
+                value={githubNotificationsForm.sourceName}
+                onChange={(event) =>
+                  setGithubNotificationsForm({
+                    ...githubNotificationsForm,
+                    sourceName: event.target.value,
+                  })
+                }
+              />
+              <FieldLabel>Limit</FieldLabel>
+              <Input
+                value={githubNotificationsForm.limit}
+                onChange={(event) =>
+                  setGithubNotificationsForm({
+                    ...githubNotificationsForm,
+                    limit: event.target.value,
+                  })
+                }
+              />
+              <div className="grid gap-2 text-xs text-neutral-400">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={githubNotificationsForm.all}
+                    onChange={(event) =>
+                      setGithubNotificationsForm({
+                        ...githubNotificationsForm,
+                        all: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Include read
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={githubNotificationsForm.participating}
+                    onChange={(event) =>
+                      setGithubNotificationsForm({
+                        ...githubNotificationsForm,
+                        participating: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Participating
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={githubNotificationsForm.createSignals}
+                    onChange={(event) =>
+                      setGithubNotificationsForm({
+                        ...githubNotificationsForm,
+                        createSignals: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Create unread Signals
+                </label>
+              </div>
+              <SubmitButton pending={syncGitHubNotifications.isPending} />
             </KernelForm>
 
             <KernelForm

@@ -608,6 +608,33 @@ Dogfood real validado em DB temporario `/tmp/aios-runtime-github-pr-ci-dogfood.s
 
 Proximo corte recomendado: GitHub notifications watcher, depois writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
 
+## Slice GitHub Notifications Watcher v0
+
+Objetivo: observar a inbox autenticada de GitHub notifications como fonte operacional read-only, sem marcar notificacoes como lidas e sem writeback no GitHub.
+
+Implementado em 2026-05-06:
+
+1. Seed `watcher-github-notifications-v0` em `packages/daemon/src/db/client.ts`, com `actionPolicy=observe_only`, `riskClass=B`, `targetWorkflowBlueprintId=development-blueprint-v0` e `outputPolicy=notification_artifacts_and_unread_signals`.
+2. Tipos `SyncGitHubNotificationsRequest` e `SyncGitHubNotificationsResponse` em `packages/shared/src/types.ts`.
+3. `POST /api/company-brain/adapters/github/notifications/sync` busca `/notifications` via GitHub API autenticada.
+4. O route cria/reutiliza Source `GitHub Notifications`, cria Artifact `github_notification` por notification id e registra `WatcherRun`.
+5. Signals AutoImprove sao criados para notifications `unread`; severidade `critical` para `mention`/`review_requested`, `warn` para demais reasons.
+6. Source metadata registra watcher, ultimo run, notifications vistas, unread vistas e `actionPolicy=observe_only`.
+7. UI `/company-brain` adiciona formulario `GitHub notifications`; MCP expõe `sync_company_brain_github_notifications`.
+8. Nenhum writeback GitHub foi implementado; o watcher nao marca notificacoes como lidas.
+
+Dogfood real validado em DB temporario `/tmp/aios-runtime-github-notifications-dogfood.sqlite`, daemon em `127.0.0.1:43123`:
+
+- Source: `eJNSWqIRGbTG`.
+- WatcherRun: `vL2oZwgzEXhF`, `watcherId=watcher-github-notifications-v0`.
+- Notifications vistas: `10`.
+- Unread vistas: `10`.
+- Artifacts `github_notification` criados: `10`.
+- Signals AutoImprove criados: `10`.
+- Watcher permaneceu `active`.
+
+Proximo corte recomendado: writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail. Nao iniciar sem politica explicita de risco/escopo.
+
 ## Slice Strategy Tradeoff v0
 
 Objetivo: tornar tradeoffs, constraints, non-goals, riscos, dependencias e principios objetos explicitos do Company Brain, ligados a priority/decision/evidence em vez de texto solto em roadmap.
@@ -881,10 +908,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos GitHub PR/CI Watcher v0. O corte recomendado e GitHub notifications watcher, mantendo qualquer writeback externo bloqueado.
+Objetivo da sessao: desenhar ou implementar apenas com politica explicita o proximo corte apos GitHub Notifications Watcher v0. O proximo tema e writeback controlado com `action_policy`, `risk_class`, HITL e audit trail; nao iniciar mutacao externa sem escopo/risco aceitos.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- criar watcher de GitHub notifications em modo read-only;
+- especificar politica de writeback controlado antes de qualquer mutacao externa;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.

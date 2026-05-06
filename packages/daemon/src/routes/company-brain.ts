@@ -40,6 +40,7 @@ import type {
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
+  SyncGitHubNotificationsRequest,
   SyncGitHubPrCiRequest,
   SyncSlackChannelRequest,
   UpdateDecisionRequest,
@@ -84,6 +85,7 @@ function stableHash(input: string) {
 const AIOS_BRIEFING_SOURCE_ID = "source-aios-briefing-v0";
 const AIOS_BRIEFING_WATCHER_ID = "watcher-aios-briefing-v0";
 const GITHUB_PR_CI_WATCHER_ID = "watcher-github-pr-ci-v0";
+const GITHUB_NOTIFICATIONS_WATCHER_ID = "watcher-github-notifications-v0";
 
 function allowedLocalDocRoots() {
   const envRoots = process.env.AIOS_LOCAL_DOC_IMPORT_ROOTS?.split(",") ?? [];
@@ -395,6 +397,25 @@ interface GitHubCheckRunsPayload {
   check_runs: GitHubCheckRunPayload[];
 }
 
+interface GitHubNotificationPayload {
+  id: string;
+  unread: boolean;
+  reason: string;
+  updated_at: string;
+  last_read_at: string | null;
+  url: string;
+  subject: {
+    title: string;
+    url: string | null;
+    latest_comment_url: string | null;
+    type: string;
+  };
+  repository: {
+    full_name: string;
+    html_url: string;
+  };
+}
+
 function parseGitHubRepo(repo: string) {
   const normalized = repo
     .trim()
@@ -470,6 +491,22 @@ async function fetchGitHubPullRequestsWithCi(repo: string, state: string, limit:
     });
   }
   return { repo: parsed, pulls: enriched };
+}
+
+async function fetchGitHubNotifications(args: {
+  all: boolean;
+  participating: boolean;
+  limit: number;
+}) {
+  const notifications = await githubApi<GitHubNotificationPayload[]>(
+    "/notifications",
+    {
+      all: String(args.all),
+      participating: String(args.participating),
+      per_page: String(Math.max(1, Math.min(args.limit, 100))),
+    }
+  );
+  return notifications;
 }
 
 function requireText(value: unknown, field: string) {
@@ -3884,6 +3921,358 @@ app.post("/adapters/github/pr-ci/sync", async (c) => {
         updatedAt: finishedAt,
       })
       .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
+      .run();
+    return c.json({ error: "sync_failed", message }, 400);
+  }
+});
+
+app.post("/adapters/github/notifications/sync", async (c) => {
+  const db = getDb();
+  const timestamp = now();
+  const runId = nanoid(12);
+
+  try {
+    const body = await c.req.json<SyncGitHubNotificationsRequest>();
+    const watcher = db
+      .select()
+      .from(cbWatchers)
+      .where(eq(cbWatchers.id, GITHUB_NOTIFICATIONS_WATCHER_ID))
+      .get();
+    if (!watcher) throw new Error("GitHub notifications watcher seed not found");
+    if (watcher.status !== "active") {
+      throw new Error("GitHub notifications watcher is not active");
+    }
+
+    const notifications = await fetchGitHubNotifications({
+      all: body.all ?? false,
+      participating: body.participating ?? false,
+      limit: body.limit ?? 25,
+    });
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source =
+        db
+          .select()
+          .from(cbSources)
+          .all()
+          .find(
+            (item) =>
+              item.sourceType === "github_repo" &&
+              item.externalRef === "https://github.com/notifications"
+          ) ?? null;
+    }
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? "GitHub Notifications",
+        sourceType: "github_repo" as const,
+        area: body.area ?? "development",
+        externalRef: "https://github.com/notifications",
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          adapter: "github_notifications",
+          readOnly: true,
+          actionPolicy: "observe_only",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const existingArtifacts = db.select().from(cbArtifacts).all();
+    const existingSignals = db.select().from(cbSignals).all();
+    const artifactsCreated = [];
+    const signalsCreated = [];
+    const unreadSeen = notifications.filter((item) => item.unread).length;
+
+    for (const notification of notifications) {
+      const rawRef = `github://notification/${notification.id}`;
+      let artifact = existingArtifacts.find((item) => item.rawRef === rawRef);
+      if (!artifact) {
+        const payload = JSON.stringify({
+          id: notification.id,
+          unread: notification.unread,
+          reason: notification.reason,
+          updatedAt: notification.updated_at,
+          subject: notification.subject,
+          repository: notification.repository.full_name,
+        });
+        artifact = {
+          id: nanoid(12),
+          sourceId: source.id,
+          artifactType: "github_notification",
+          area: body.area ?? source.area,
+          title: `${notification.repository.full_name}: ${notification.subject.title}`,
+          summary: `${notification.subject.type} notification (${notification.reason}); unread=${notification.unread}.`,
+          contentRef: notification.subject.url ?? notification.url,
+          rawRef,
+          author: "github",
+          occurredAt: Date.parse(notification.updated_at),
+          ingestedAt: timestamp,
+          hash: stableHash(payload),
+          visibility: body.visibility ?? source.visibility,
+          provenance: {
+            sourceId: source.id,
+            rawRef,
+            createdFrom: "watcher:github_notifications:artifact",
+            confidence: 1,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: body.visibility ?? source.visibility,
+            notes: "read_only=true; action_policy=observe_only",
+          },
+          humanReviewStatus: "pending" as const,
+          confidence: 1,
+          metadata: {
+            adapter: "github_notifications",
+            watcherId: watcher.id,
+            watcherRunId: runId,
+            readOnly: true,
+            actionPolicy: "observe_only",
+            notificationId: notification.id,
+            unread: notification.unread,
+            reason: notification.reason,
+            updatedAt: notification.updated_at,
+            lastReadAt: notification.last_read_at,
+            repository: notification.repository.full_name,
+            repositoryUrl: notification.repository.html_url,
+            subjectTitle: notification.subject.title,
+            subjectType: notification.subject.type,
+            subjectUrl: notification.subject.url,
+            latestCommentUrl: notification.subject.latest_comment_url,
+          },
+        };
+        db.insert(cbArtifacts).values(artifact).run();
+        existingArtifacts.push(artifact);
+        artifactsCreated.push(artifact);
+      }
+
+      if (body.createSignals === false || !notification.unread) continue;
+      const signalRawRef = `${rawRef}#unread`;
+      if (
+        existingSignals.some(
+          (signal) =>
+            signal.rawRef === signalRawRef &&
+            signal.metadata?.notificationId === notification.id
+        )
+      ) {
+        continue;
+      }
+      const severity: SignalSeverity = ["mention", "review_requested"].includes(
+        notification.reason
+      )
+        ? "critical"
+        : "warn";
+      const summary = `Unread GitHub notification in ${notification.repository.full_name}: ${notification.subject.title} (${notification.reason}).`;
+      const signalId = nanoid(12);
+      const tags = [
+        "github_notification",
+        notification.repository.full_name,
+        notification.reason,
+        notification.subject.type,
+      ];
+      const envelope = {
+        source: "qa" as const,
+        scope: "core" as const,
+        entity_type: "job" as const,
+        entity_id: notification.id,
+        timestamp,
+        summary,
+        raw_ref: signalRawRef,
+        severity,
+        confidence: 0.95,
+        tags,
+      };
+      const signal = {
+        id: signalId,
+        source: "qa" as const,
+        scope: "core" as const,
+        entityType: "job" as const,
+        entityId: notification.id,
+        timestamp,
+        summary,
+        rawRef: signalRawRef,
+        severity,
+        confidence: 0.95,
+        tags,
+        area: body.area ?? source.area,
+        sourceId: source.id,
+        artifactId: artifact.id,
+        workItemId: null,
+        workflowRunId: null,
+        watcherId: watcher.id,
+        watcherRunId: runId,
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: signalRawRef,
+          artifactId: artifact.id,
+          createdFrom: "watcher:github_notifications:signal",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: "read_only=true; action_policy=observe_only",
+        },
+        metadata: {
+          autoImproveEnvelope: envelope,
+          notificationId: notification.id,
+          unread: notification.unread,
+          reason: notification.reason,
+          repository: notification.repository.full_name,
+          subjectType: notification.subject.type,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSignals).values(signal).run();
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId: artifact.id,
+          targetType: "signal",
+          targetId: signal.id,
+          relationship: "generated_signal",
+          confidence: signal.confidence,
+          rationale:
+            "GitHub notifications watcher normalized an unread notification into an internal signal.",
+          createdAt: timestamp,
+        })
+        .run();
+      existingSignals.push(signal);
+      signalsCreated.push(signal);
+    }
+
+    const finishedAt = now();
+    const run = {
+      id: runId,
+      watcherId: watcher.id,
+      startedAt: timestamp,
+      finishedAt,
+      status: "completed" as const,
+      triggerRef: "https://github.com/notifications",
+      sourceIds: [source.id],
+      artifactsCreated: artifactsCreated.map((artifact) => artifact.id),
+      signalsCreated: signalsCreated.map((signal) => signal.id),
+      alignmentFindingsCreated: [],
+      workItemsCreated: [],
+      guidanceCreated: [],
+      workflowRunsLinked: [],
+      errorSummary: null,
+      actionPolicy: watcher.actionPolicy,
+      riskClass: watcher.riskClass,
+      provenance: {
+        sourceId: source.id,
+        rawRef: "https://github.com/notifications",
+        createdFrom: "watcher:github_notifications:run",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending" as const,
+        visibility: watcher.visibility,
+      },
+      createdAt: timestamp,
+      updatedAt: finishedAt,
+    };
+    db.insert(cbWatcherRuns).values(run).run();
+
+    const updatedSource = {
+      ...source,
+      lastSyncAt: finishedAt,
+      healthStatus: "healthy" as const,
+      syncError: null,
+      metadata: {
+        ...(source.metadata ?? {}),
+        adapter: "github_notifications",
+        readOnly: true,
+        actionPolicy: "observe_only",
+        watcherId: watcher.id,
+        lastWatcherRunId: run.id,
+        notificationsSeen: notifications.length,
+        unreadSeen,
+      },
+      updatedAt: finishedAt,
+    };
+    db.update(cbSources)
+      .set({
+        lastSyncAt: updatedSource.lastSyncAt,
+        healthStatus: updatedSource.healthStatus,
+        syncError: updatedSource.syncError,
+        metadata: updatedSource.metadata,
+        updatedAt: updatedSource.updatedAt,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        status: "active",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, watcher.id))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          source: updatedSource,
+          watcherRun: run,
+          artifactsCreated,
+          signalsCreated,
+          notificationsSeen: notifications.length,
+          unreadSeen,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const finishedAt = now();
+    const message = err instanceof Error ? err.message : "Unknown error";
+    db.insert(cbWatcherRuns)
+      .values({
+        id: runId,
+        watcherId: GITHUB_NOTIFICATIONS_WATCHER_ID,
+        startedAt: timestamp,
+        finishedAt,
+        status: "failed",
+        triggerRef: null,
+        sourceIds: [],
+        artifactsCreated: [],
+        signalsCreated: [],
+        alignmentFindingsCreated: [],
+        workItemsCreated: [],
+        guidanceCreated: [],
+        workflowRunsLinked: [],
+        errorSummary: message,
+        actionPolicy: "observe_only",
+        riskClass: "B",
+        provenance: {
+          createdFrom: "watcher:github_notifications:run",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending",
+          visibility: "internal",
+        },
+        createdAt: timestamp,
+        updatedAt: finishedAt,
+      })
+      .run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        status: "error",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, GITHUB_NOTIFICATIONS_WATCHER_ID))
       .run();
     return c.json({ error: "sync_failed", message }, 400);
   }

@@ -777,6 +777,45 @@ function seedCompanyBrain(sqlite: Database.Database) {
       )`
     )
     .run({
+      id: "watcher-github-notifications-v0",
+      title: "GitHub notifications watcher v0",
+      description:
+        "Read-only watcher for authenticated GitHub notification inbox items. It records artifacts and internal signals without marking notifications read or writing back.",
+      sourceIds: JSON.stringify([]),
+      triggerType: "manual",
+      schedule: "poll on demand",
+      eventFilter: "github.notification",
+      scopeQuery: "notifications unread/all",
+      owner: "Felhen",
+      ownerType: "team",
+      targetWorkflowBlueprintId: "development-blueprint-v0",
+      riskClass: "B",
+      actionPolicy: "observe_only",
+      status: "active",
+      lastRunAt: null,
+      nextRunAt: null,
+      failurePolicy: "record_error_no_writeback",
+      outputPolicy: "notification_artifacts_and_unread_signals",
+      visibility: "internal",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  sqlite
+    .prepare(
+      `INSERT OR IGNORE INTO cb_watchers (
+        id, title, description, source_ids, trigger_type, schedule, event_filter,
+        scope_query, owner, owner_type, target_workflow_blueprint_id, risk_class,
+        action_policy, status, last_run_at, next_run_at, failure_policy,
+        output_policy, visibility, created_at, updated_at
+      ) VALUES (
+        @id, @title, @description, @sourceIds, @triggerType, @schedule, @eventFilter,
+        @scopeQuery, @owner, @ownerType, @targetWorkflowBlueprintId, @riskClass,
+        @actionPolicy, @status, @lastRunAt, @nextRunAt, @failurePolicy,
+        @outputPolicy, @visibility, @createdAt, @updatedAt
+      )`
+    )
+    .run({
       id: "watcher-github-pr-ci-v0",
       title: "GitHub PR/CI watcher v0",
       description:

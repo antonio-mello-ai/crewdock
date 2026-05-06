@@ -43,13 +43,15 @@ Status Slack Threads/Incremental Sync v0 em 2026-05-06: adapter Slack evoluido p
 
 Status GitHub PR/CI Watcher v0 em 2026-05-06: watcher real/read-only `watcher-github-pr-ci-v0` implementado para PRs, commit statuses e check-runs, gerando `Artifact` `github_pr_ci`, `WatcherRun` e Signals AutoImprove para CI pending/failure/error com provenance e `actionPolicy=observe_only`. Sem writeback GitHub.
 
+Status GitHub Notifications Watcher v0 em 2026-05-06: watcher real/read-only `watcher-github-notifications-v0` implementado para a inbox autenticada do GitHub, gerando `Artifact` `github_notification`, `WatcherRun` e Signals AutoImprove para notificacoes unread, sem marcar notificacoes como lidas e sem writeback GitHub.
+
 Status Demo Felhen v0.1 em 2026-05-06: runner interno/API/UI/MCP implementado para criar uma cadeia demonstravel strategy -> goal -> evidence -> work item -> workflow run -> signal -> finding -> guidance -> improvement proposal, com Adoption Dashboard em `improving` e Source Health healthy.
 
 Status AIOS Briefing Watcher v0 em 2026-05-06: seed `watcher-aios-briefing-v0` implementado sobre a camada existente de Watcher/WatcherRun, com `actionPolicy=observe_only`. O run gera Artifact interno `aios_briefing` com secoes estruturadas de decisions, tradeoffs, guidance aberta, findings, source health, adoption dashboard, work sem priority/goal, gates/SLA e proximos passos; emite Signals opcionais apenas para gaps claros com envelope AutoImprove e expose o ultimo briefing em summary/API/UI/MCP. Sem Slack/GitHub/writeback externo.
 
 Status Review Cohesion v0 em 2026-05-06: fila unificada derivada para Decision/Signal/AlignmentFinding/Guidance candidates implementada em summary/API/UI/MCP. O corte mostra decisions propostas, signals sem finding, findings sem guidance e guidance aberta com feedback pendente, com next action, severity, provenance e acoes internas de review/extracao/feedback. Sem writeback externo.
 
-Proximos cortes planejados em ordem: GitHub notifications watcher; writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
+Proximo corte planejado: writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail. Nao iniciar sem politica explicita de risco/escopo.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -82,6 +84,7 @@ Proximos cortes planejados em ordem: GitHub notifications watcher; writeback con
 - [x] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
 - [x] **GitHub Issues sync adapter v0** — sincronizar issues reais do GitHub em modo read-only para `Source`, `Artifact` e `WorkItem` canonico com dedupe, links, source health e provenance
 - [x] **GitHub PR/CI watcher v0** — observar PRs reais, commit statuses e check-runs em modo read-only, criando Artifact/WatcherRun/Signal com provenance e action policy
+- [x] **GitHub notifications watcher v0** — observar notificacoes autenticadas do GitHub em modo read-only, criando Artifact/WatcherRun/Signal sem marcar como lidas
 - [x] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente. Implementado como importer manual e adapter real de canal Slack.
 - [x] **Slack threads/incremental sync v0** — usar cursor incremental por source e importar replies de threads como artifacts read-only com provenance e metadata de thread
 - [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
