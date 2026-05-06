@@ -275,12 +275,28 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, agent contexts, improvement proposals, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
     const result = await daemonFetch<{ data: unknown }>(
       "/api/company-brain/summary"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_adoption_dashboard",
+  {
+    title: "Get Company Brain adoption dashboard",
+    description:
+      "Show AIOS adoption by source/project, including closed-loop stage, unlinked work, pending gates, SLA risk, source health gaps and open guidance.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/adoption-dashboard"
     );
     return formatJsonResult(result.data);
   }

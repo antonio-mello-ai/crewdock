@@ -140,14 +140,24 @@ function StatusBadge({ value }: { value: string }) {
     value === "at_risk" ||
     value === "critical" ||
     value === "drift" ||
-    value === "contradiction"
+    value === "contradiction" ||
+    value === "source_unhealthy" ||
+    value === "source_without_artifacts" ||
+    value === "unlinked_work_item" ||
+    value === "pending_gate" ||
+    value === "sla_risk" ||
+    value === "missing_workflow" ||
+    value === "missing_signal" ||
+    value === "open_guidance"
       ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
       : value === "done" ||
           value === "completed" ||
           value === "passed" ||
           value === "on_track" ||
           value === "aligned" ||
-          value === "accepted"
+          value === "accepted" ||
+          value === "closed_loop" ||
+          value === "improving"
         ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
         : "border-neutral-800 bg-neutral-900/60 text-neutral-400";
 
@@ -196,6 +206,7 @@ export default function CompanyBrainPage() {
   const guidanceItems = summary?.guidanceItems ?? [];
   const agentContexts = summary?.agentContexts ?? [];
   const improvementProposals = summary?.improvementProposals ?? [];
+  const adoptionDashboard = summary?.adoptionDashboard;
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -591,8 +602,18 @@ export default function CompanyBrainPage() {
             Strategy, goals, evidence, work items, workflow runs and gates.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-9">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-12">
           <Metric icon={Database} label="Sources" value={summary?.stats.sourceCount ?? 0} />
+          <Metric
+            icon={Database}
+            label="Projects"
+            value={adoptionDashboard?.stats.projectCount ?? 0}
+          />
+          <Metric
+            icon={Workflow}
+            label="Closed loop"
+            value={adoptionDashboard?.stats.closedLoopProjectCount ?? 0}
+          />
           <Metric icon={Target} label="Goals" value={summary?.stats.goalCount ?? 0} />
           <Metric
             icon={CheckCircle2}
@@ -616,6 +637,11 @@ export default function CompanyBrainPage() {
             value={summary?.stats.openGuidanceCount ?? 0}
           />
           <Metric
+            icon={AlertTriangle}
+            label="Gates"
+            value={adoptionDashboard?.stats.pendingGateCount ?? 0}
+          />
+          <Metric
             icon={FileText}
             label="Contexts"
             value={summary?.stats.agentContextCount ?? 0}
@@ -634,6 +660,94 @@ export default function CompanyBrainPage() {
         </div>
       ) : (
         <div className="space-y-8">
+          {adoptionDashboard ? (
+            <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Adoption Dashboard
+                  </h2>
+                </div>
+              </div>
+              <div className="grid gap-0 lg:grid-cols-[1.5fr_1fr]">
+                <div className="divide-y divide-neutral-800/40 border-neutral-800/50 lg:border-r">
+                  {adoptionDashboard.projects.length === 0 ? (
+                    <EmptyState label="No Company Brain sources registered" />
+                  ) : (
+                    adoptionDashboard.projects.slice(0, 6).map((project) => (
+                      <div key={project.id} className="px-5 py-4">
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-sm font-medium text-neutral-200">
+                                {project.title}
+                              </p>
+                              <StatusBadge value={project.stage} />
+                              <StatusBadge value={project.healthStatus} />
+                            </div>
+                            <p className="mt-1 text-xs text-neutral-600">
+                              {project.area} · {project.sourceType} ·{" "}
+                              {project.owner ?? "no owner"} ·{" "}
+                              {project.lastActivityAt
+                                ? formatTimeAgo(project.lastActivityAt)
+                                : "no activity"}
+                            </p>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-left xl:w-72">
+                            <MiniMetric
+                              label="evidence"
+                              value={project.metrics.artifactCount}
+                            />
+                            <MiniMetric
+                              label="work"
+                              value={project.metrics.workItemCount}
+                            />
+                            <MiniMetric
+                              label="signals"
+                              value={project.metrics.signalCount}
+                            />
+                          </div>
+                        </div>
+                        {project.gapKinds.length ? (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {project.gapKinds.map((gap) => (
+                              <StatusBadge key={gap} value={gap} />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="divide-y divide-neutral-800/40">
+                  {adoptionDashboard.gaps.length === 0 ? (
+                    <EmptyState label="No adoption gaps detected" />
+                  ) : (
+                    adoptionDashboard.gaps.slice(0, 8).map((gap) => (
+                      <div key={gap.id} className="px-5 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-neutral-200">
+                              {gap.title}
+                            </p>
+                            <p className="mt-1 text-xs text-neutral-600">
+                              {gap.kind.replaceAll("_", " ")} · {gap.area}
+                            </p>
+                          </div>
+                          <StatusBadge value={gap.severity} />
+                        </div>
+                        <p className="mt-2 text-xs text-neutral-500">
+                          {gap.rationale}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           <section className="grid gap-4 lg:grid-cols-3">
             <KernelForm title="Source" icon={Database} onSubmit={handleCreateSource}>
               <FieldLabel>Name</FieldLabel>
@@ -2397,6 +2511,15 @@ function Metric({
         <span className="text-xs text-neutral-500">{label}</span>
       </div>
       <p className="mt-1 text-lg font-semibold text-neutral-200">{value}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded border border-neutral-800/60 px-2 py-1.5">
+      <p className="text-xs font-medium text-neutral-300">{value}</p>
+      <p className="truncate text-[11px] text-neutral-600">{label}</p>
     </div>
   );
 }

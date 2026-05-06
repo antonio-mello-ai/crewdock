@@ -6,6 +6,7 @@ import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
   AlignmentClassification,
+  CompanyBrainAdoptionDashboard,
   CreateAgentContextRequest,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
@@ -423,8 +424,304 @@ function listAll() {
   };
 }
 
+function latestTimestamp(values: Array<number | null | undefined>) {
+  const valid = values.filter(
+    (value): value is number => typeof value === "number" && Number.isFinite(value)
+  );
+  if (!valid.length) return null;
+  return Math.max(...valid);
+}
+
+function buildAdoptionDashboard(
+  data: ReturnType<typeof listAll>
+): CompanyBrainAdoptionDashboard {
+  type AdoptionGap = CompanyBrainAdoptionDashboard["gaps"][number];
+  type AdoptionGapKind = AdoptionGap["kind"];
+  type AdoptionProject = CompanyBrainAdoptionDashboard["projects"][number];
+
+  const generatedAt = now();
+  const staleAfterMs = 7 * 24 * 60 * 60 * 1000;
+  const gaps: AdoptionGap[] = [];
+  const workItemById = new Map(data.workItems.map((item) => [item.id, item]));
+
+  const addGap = (gap: AdoptionGap) => {
+    if (!gaps.some((item) => item.id === gap.id)) gaps.push(gap);
+  };
+
+  const projects: AdoptionProject[] = data.sources.map((source) => {
+    const artifacts = data.artifacts.filter((artifact) => artifact.sourceId === source.id);
+    const artifactIds = new Set(artifacts.map((artifact) => artifact.id));
+    const workItems = data.workItems.filter(
+      (item) =>
+        item.sourceId === source.id ||
+        (item.artifactId ? artifactIds.has(item.artifactId) : false)
+    );
+    const workItemIds = new Set(workItems.map((item) => item.id));
+    const workflowRuns = data.workflowRuns.filter(
+      (run) => run.workItemId !== null && workItemIds.has(run.workItemId)
+    );
+    const workflowRunIds = new Set(workflowRuns.map((run) => run.id));
+    const signals = data.signals.filter(
+      (signal) =>
+        signal.sourceId === source.id ||
+        (signal.artifactId ? artifactIds.has(signal.artifactId) : false) ||
+        (signal.workItemId ? workItemIds.has(signal.workItemId) : false) ||
+        (signal.workflowRunId ? workflowRunIds.has(signal.workflowRunId) : false)
+    );
+    const signalIds = new Set(signals.map((signal) => signal.id));
+    const findings = data.alignmentFindings.filter(
+      (finding) =>
+        finding.signalIds.some((id) => signalIds.has(id)) ||
+        finding.artifactIds.some((id) => artifactIds.has(id)) ||
+        (finding.workItemId ? workItemIds.has(finding.workItemId) : false) ||
+        (finding.workflowRunId ? workflowRunIds.has(finding.workflowRunId) : false)
+    );
+    const findingIds = new Set(findings.map((finding) => finding.id));
+    const guidance = data.guidanceItems.filter(
+      (item) =>
+        (item.signalId ? signalIds.has(item.signalId) : false) ||
+        (item.findingId ? findingIds.has(item.findingId) : false) ||
+        (item.workItemId ? workItemIds.has(item.workItemId) : false) ||
+        (item.workflowRunId ? workflowRunIds.has(item.workflowRunId) : false)
+    );
+    const guidanceIds = new Set(guidance.map((item) => item.id));
+    const proposals = data.improvementProposals.filter(
+      (proposal) =>
+        proposal.sourceArtifactIds.some((id) => artifactIds.has(id)) ||
+        proposal.workItemIds.some((id) => workItemIds.has(id)) ||
+        proposal.signalIds.some((id) => signalIds.has(id)) ||
+        proposal.alignmentFindingIds.some((id) => findingIds.has(id)) ||
+        proposal.guidanceItemIds.some((id) => guidanceIds.has(id))
+    );
+    const openGuidance = guidance.filter((item) => ["new", "open"].includes(item.status));
+    const activeWorkflowRuns = workflowRuns.filter((run) =>
+      ["planned", "running", "blocked", "needs_human"].includes(run.status)
+    );
+    const gateBlocked = workflowRuns.filter((run) =>
+      ["pending", "blocked", "failed"].includes(run.gateStatus)
+    );
+    const slaAtRisk = workflowRuns.filter((run) =>
+      ["at_risk", "breached"].includes(run.slaStatus)
+    );
+    const unlinkedWorkItems = workItems.filter((item) => !item.priorityId && !item.goalId);
+    const sourceIsStale =
+      !source.lastSyncAt || generatedAt - source.lastSyncAt > staleAfterMs;
+    const sourceHasHealthIssue = source.healthStatus !== "healthy" || sourceIsStale;
+    const gapKinds = new Set<AdoptionGapKind>();
+
+    if (sourceHasHealthIssue) {
+      gapKinds.add("source_unhealthy");
+      addGap({
+        id: `source_unhealthy:${source.id}`,
+        kind: "source_unhealthy",
+        title: `${source.name} source health needs review`,
+        severity: source.healthStatus === "error" ? "critical" : "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale:
+          source.syncError ??
+          (source.lastSyncAt ? "Source freshness window exceeded." : "Source never synced."),
+      });
+    }
+
+    if (!artifacts.length) {
+      gapKinds.add("source_without_artifacts");
+      addGap({
+        id: `source_without_artifacts:${source.id}`,
+        kind: "source_without_artifacts",
+        title: `${source.name} has no artifacts`,
+        severity: "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale: "Closed loop adoption needs evidence artifacts for this source.",
+      });
+    }
+
+    if (workItems.length && !workflowRuns.length) {
+      gapKinds.add("missing_workflow");
+      addGap({
+        id: `missing_workflow:${source.id}`,
+        kind: "missing_workflow",
+        title: `${source.name} has work without workflow runs`,
+        severity: "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale: "Closed loop adoption needs workflow runs for linked work.",
+      });
+    }
+    if (workflowRuns.length && !signals.length) {
+      gapKinds.add("missing_signal");
+      addGap({
+        id: `missing_signal:${source.id}`,
+        kind: "missing_signal",
+        title: `${source.name} has workflows without signals`,
+        severity: "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale: "Closed loop adoption needs signals from workflow evidence.",
+      });
+    }
+    if (unlinkedWorkItems.length) gapKinds.add("unlinked_work_item");
+    if (gateBlocked.length) gapKinds.add("pending_gate");
+    if (slaAtRisk.length) gapKinds.add("sla_risk");
+    if (openGuidance.length) gapKinds.add("open_guidance");
+
+    let stage: AdoptionProject["stage"] = "source_registered";
+    if (artifacts.length) stage = "evidence_only";
+    if (workItems.length) stage = "work_linked";
+    if (workflowRuns.length) stage = activeWorkflowRuns.length ? "workflow_running" : "workflow_tracked";
+    if (signals.length || guidance.length) stage = "closed_loop";
+    if (proposals.length) stage = "improving";
+
+    return {
+      id: source.id,
+      title: source.name,
+      area: source.area,
+      owner: source.owner,
+      sourceType: source.sourceType,
+      healthStatus: source.healthStatus,
+      stage,
+      lastActivityAt: latestTimestamp([
+        source.lastSyncAt,
+        source.updatedAt,
+        ...artifacts.map((artifact) => artifact.ingestedAt),
+        ...workItems.map((item) => item.updatedAt),
+        ...workflowRuns.map((run) => run.updatedAt),
+        ...signals.map((signal) => signal.timestamp),
+        ...guidance.map((item) => item.updatedAt),
+        ...proposals.map((proposal) => proposal.updatedAt),
+      ]),
+      sourceIds: [source.id],
+      metrics: {
+        artifactCount: artifacts.length,
+        workItemCount: workItems.length,
+        unlinkedWorkItemCount: unlinkedWorkItems.length,
+        workflowRunCount: workflowRuns.length,
+        activeWorkflowRunCount: activeWorkflowRuns.length,
+        signalCount: signals.length,
+        openGuidanceCount: openGuidance.length,
+        improvementProposalCount: proposals.length,
+        gateBlockedCount: gateBlocked.length,
+        slaAtRiskCount: slaAtRisk.length,
+      },
+      gapKinds: [...gapKinds],
+    };
+  });
+
+  for (const item of data.workItems) {
+    if (!item.priorityId && !item.goalId) {
+      addGap({
+        id: `unlinked_work_item:${item.id}`,
+        kind: "unlinked_work_item",
+        title: item.title,
+        severity: "warn",
+        area: item.area,
+        sourceId: item.sourceId,
+        targetType: "work_item",
+        targetId: item.id,
+        rationale: "Work item has no priority or goal link.",
+      });
+    }
+  }
+
+  for (const run of data.workflowRuns) {
+    if (["pending", "blocked", "failed"].includes(run.gateStatus)) {
+      const workItem = run.workItemId ? workItemById.get(run.workItemId) : undefined;
+      addGap({
+        id: `pending_gate:${run.id}`,
+        kind: "pending_gate",
+        title: run.title,
+        severity: run.gateStatus === "failed" || run.gateStatus === "blocked" ? "critical" : "warn",
+        area: run.workflowArea,
+        sourceId: workItem?.sourceId ?? null,
+        targetType: "workflow_run",
+        targetId: run.id,
+        rationale: `Workflow gate is ${run.gateStatus}.`,
+      });
+    }
+    if (["at_risk", "breached"].includes(run.slaStatus)) {
+      const workItem = run.workItemId ? workItemById.get(run.workItemId) : undefined;
+      addGap({
+        id: `sla_risk:workflow_run:${run.id}`,
+        kind: "sla_risk",
+        title: run.title,
+        severity: run.slaStatus === "breached" ? "critical" : "warn",
+        area: run.workflowArea,
+        sourceId: workItem?.sourceId ?? null,
+        targetType: "workflow_run",
+        targetId: run.id,
+        rationale: `Workflow SLA is ${run.slaStatus}.`,
+      });
+    }
+  }
+
+  for (const goal of data.goals) {
+    if (["at_risk", "breached"].includes(goal.slaStatus)) {
+      addGap({
+        id: `sla_risk:goal:${goal.id}`,
+        kind: "sla_risk",
+        title: goal.title,
+        severity: goal.slaStatus === "breached" ? "critical" : "warn",
+        area: goal.area,
+        sourceId: null,
+        targetType: "goal",
+        targetId: goal.id,
+        rationale: `Goal SLA is ${goal.slaStatus}.`,
+      });
+    }
+  }
+
+  for (const item of data.guidanceItems) {
+    if (["new", "open"].includes(item.status)) {
+      addGap({
+        id: `open_guidance:${item.id}`,
+        kind: "open_guidance",
+        title: item.title,
+        severity: item.severity,
+        area: item.area,
+        sourceId: null,
+        targetType: "guidance_item",
+        targetId: item.id,
+        rationale: "Guidance is still open and needs feedback or completion.",
+      });
+    }
+  }
+
+  projects.sort((a, b) => (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0));
+
+  return {
+    generatedAt,
+    projects,
+    gaps,
+    stats: {
+      projectCount: projects.length,
+      closedLoopProjectCount: projects.filter((project) =>
+        ["closed_loop", "improving"].includes(project.stage)
+      ).length,
+      improvingProjectCount: projects.filter((project) => project.stage === "improving")
+        .length,
+      sourceHealthIssueCount: gaps.filter((gap) => gap.kind === "source_unhealthy")
+        .length,
+      unlinkedWorkItemCount: gaps.filter((gap) => gap.kind === "unlinked_work_item")
+        .length,
+      pendingGateCount: gaps.filter((gap) => gap.kind === "pending_gate").length,
+      slaRiskCount: gaps.filter((gap) => gap.kind === "sla_risk").length,
+      openGuidanceCount: gaps.filter((gap) => gap.kind === "open_guidance").length,
+    },
+  };
+}
+
 app.get("/summary", (c) => {
   const data = listAll();
+  const adoptionDashboard = buildAdoptionDashboard(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -453,6 +750,7 @@ app.get("/summary", (c) => {
   return c.json({
     data: {
       ...data,
+      adoptionDashboard,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -488,6 +786,11 @@ app.get("/summary", (c) => {
       },
     },
   });
+});
+
+app.get("/adoption-dashboard", (c) => {
+  const data = buildAdoptionDashboard(listAll());
+  return c.json({ data });
 });
 
 app.get("/sources", (c) => {

@@ -1164,6 +1164,78 @@ export interface RunWatcherResponse {
   workflowRunsLinked: string[];
 }
 
+export type AdoptionStage =
+  | "source_registered"
+  | "evidence_only"
+  | "work_linked"
+  | "workflow_tracked"
+  | "workflow_running"
+  | "closed_loop"
+  | "improving";
+
+export type AdoptionGapKind =
+  | "source_unhealthy"
+  | "source_without_artifacts"
+  | "unlinked_work_item"
+  | "pending_gate"
+  | "sla_risk"
+  | "missing_workflow"
+  | "missing_signal"
+  | "open_guidance";
+
+export interface AdoptionGap {
+  id: string;
+  kind: AdoptionGapKind;
+  title: string;
+  severity: SignalSeverity;
+  area: CompanyBrainArea;
+  sourceId: string | null;
+  targetType: "source" | "work_item" | "workflow_run" | "goal" | "guidance_item";
+  targetId: string;
+  rationale: string;
+}
+
+export interface AdoptionProjectStatus {
+  id: string;
+  title: string;
+  area: CompanyBrainArea;
+  owner: string | null;
+  sourceType: SourceType;
+  healthStatus: HealthStatus;
+  stage: AdoptionStage;
+  lastActivityAt: number | null;
+  sourceIds: string[];
+  metrics: {
+    artifactCount: number;
+    workItemCount: number;
+    unlinkedWorkItemCount: number;
+    workflowRunCount: number;
+    activeWorkflowRunCount: number;
+    signalCount: number;
+    openGuidanceCount: number;
+    improvementProposalCount: number;
+    gateBlockedCount: number;
+    slaAtRiskCount: number;
+  };
+  gapKinds: AdoptionGapKind[];
+}
+
+export interface CompanyBrainAdoptionDashboard {
+  generatedAt: number;
+  projects: AdoptionProjectStatus[];
+  gaps: AdoptionGap[];
+  stats: {
+    projectCount: number;
+    closedLoopProjectCount: number;
+    improvingProjectCount: number;
+    sourceHealthIssueCount: number;
+    unlinkedWorkItemCount: number;
+    pendingGateCount: number;
+    slaRiskCount: number;
+    openGuidanceCount: number;
+  };
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -1183,6 +1255,7 @@ export interface CompanyBrainSummary {
   guidanceItems: GuidanceItem[];
   agentContexts: AgentContext[];
   improvementProposals: ImprovementProposal[];
+  adoptionDashboard: CompanyBrainAdoptionDashboard;
   stats: {
     sourceCount: number;
     artifactCount: number;

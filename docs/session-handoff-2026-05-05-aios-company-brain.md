@@ -127,7 +127,7 @@ Agora existem:
 Ainda nao existem:
 
 - conector Slack com envelope comum;
-- adoption dashboard para enxergar quais frentes estao em closed loop.
+- source health dedicado com drill-down por fonte/freshness/volume.
 
 Parciais que precisam evoluir:
 
@@ -246,7 +246,8 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- Adoption Dashboard.
+- Source Health hardening v0.
+- Slack ingestao read-only v0.
 
 ## Slice Decision v0
 
@@ -279,7 +280,8 @@ Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-
 Proximos cortes recomendados:
 
 - `ImprovementProposal v0`.
-- Adoption Dashboard.
+- Source Health hardening v0.
+- Slack ingestao read-only v0.
 
 ## Slice AgentContext v0
 
@@ -316,7 +318,8 @@ Dogfood local AgentContext v0 validado em DB temporario `/tmp/aios-runtime-agent
 Proximos cortes recomendados:
 
 - Importer local docs/corp.
-- Adoption Dashboard.
+- Source Health hardening v0.
+- Slack ingestao read-only v0.
 
 ## Slice ImprovementProposal v0
 
@@ -347,7 +350,8 @@ Dogfood local ImprovementProposal v0 validado em DB temporario `/tmp/aios-runtim
 
 Proximos cortes recomendados:
 
-- Adoption Dashboard.
+- Source Health hardening v0.
+- Slack ingestao read-only v0.
 
 ## Slice Local Docs Importer v0
 
@@ -406,9 +410,37 @@ Dogfood local GitHub Issues Sync Adapter v0 validado em DB temporario `/tmp/aios
 - Summary retornou `sourceCount=1`, `artifactCount=5`, `workItemCount=5`, `unlinkedWorkItemCount=5`, `watcherErrorCount=0`.
 - Segunda sincronizacao do mesmo repo retornou `issuesSeen=5`, `artifactsCreated=0`, `workItemsCreated=0`, validando dedupe.
 
+## Slice Adoption Dashboard v0
+
+Objetivo: dar visibilidade operacional de quais frentes ja estao em closed loop e quais lacunas bloqueiam adocao real do AIOS.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `AdoptionStage`, `AdoptionGap`, `AdoptionProjectStatus` e `CompanyBrainAdoptionDashboard` em `packages/shared/src/types.ts`.
+2. Builder derivado no daemon, sem schema novo, agrupando frentes por `Source`.
+3. `GET /api/company-brain/adoption-dashboard`.
+4. `/api/company-brain/summary` inclui `adoptionDashboard`.
+5. UI `/company-brain` mostra Adoption Dashboard com stage, source health, evidence/work/signal counts e gaps principais.
+6. MCP tool `get_company_brain_adoption_dashboard`.
+7. Gaps v0: `source_unhealthy`, `source_without_artifacts`, `unlinked_work_item`, `pending_gate`, `sla_risk`, `missing_workflow`, `missing_signal` e `open_guidance`.
+8. Nenhum writeback externo.
+
+Dogfood local Adoption Dashboard v0 validado em DB temporario `/tmp/aios-runtime-adoption-dashboard-dogfood.sqlite`, daemon em `127.0.0.1:43110`:
+
+- GitHub sync read-only: `issuesSeen=2`, `artifactsCreated=2`, `workItemsCreated=2`.
+- Watcher manual rodou no mesmo source: run `0JqT82jf1BPv`, `signals=1`, `findings=1`, `guidance=1`.
+- WorkflowRun criado: `jHKnNAZud2sY`, `gateStatus=pending`, `slaStatus=at_risk`.
+- ImprovementProposal criado: `wTpZZxa9mvvX`, `promotionStatus=candidate`.
+- Dashboard retornou `projectCount=1`, `closedLoopProjectCount=1`, `improvingProjectCount=1`.
+- Dashboard retornou gaps: `unlinkedWorkItemCount=2`, `pendingGateCount=1`, `slaRiskCount=1`, `openGuidanceCount=1`.
+- Projeto `Adoption dashboard GitHub sync` apareceu com `stage=improving`, `artifactCount=3`, `workItemCount=3`, `workflowRunCount=1`, `signalCount=1`, `improvementProposalCount=1`.
+
 Proximos cortes recomendados:
 
-- Adoption Dashboard.
+- Source Health hardening v0.
+- Slack ingestao read-only v0.
 
 ## Dogfood ERP
 
@@ -528,12 +560,12 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos GitHub Issues Sync Adapter v0, focado em `AIOS Adoption Dashboard v0`, sem recriar o kernel, watchers ou adapters ja entregues.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Adoption Dashboard v0, focado em `Source Health hardening v0`, sem recriar o kernel, watchers ou adapters ja entregues.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- mostrar quais frentes/projetos tem sources, artifacts, work items, workflow runs, signals/guidance e improvement proposals;
-- destacar work items sem priority/goal, gates pendentes, SLA at-risk/breached e sources sem freshness;
-- expor a visao em summary/API/UI/MCP se necessario, reaproveitando dados existentes antes de criar schema novo;
+- expor source health dedicado com freshness, volume de artifacts/work items/signals, ultimo sync, ultimo erro e status agregado;
+- destacar sources sem artifacts, sources stale/error/unknown e sources sem caminho para work item ou workflow;
+- reaproveitar `adoptionDashboard` quando fizer sentido, evitando schema novo sem necessidade;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.
