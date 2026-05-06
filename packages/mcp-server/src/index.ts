@@ -556,6 +556,54 @@ server.registerTool(
 );
 
 server.registerTool(
+  "sync_company_brain_slack_channel",
+  {
+    title: "Sync Slack channel into Company Brain",
+    description:
+      "Read recent messages from a Slack channel using SLACK_BOT_TOKEN and import them as read-only Company Brain artifacts with provenance. Does not post or mutate Slack.",
+    inputSchema: {
+      channelId: z.string().optional(),
+      channelName: z.string().optional(),
+      sourceId: z.string().optional(),
+      sourceName: z.string().optional(),
+      workspaceName: z.string().optional(),
+      limit: z.number().int().positive().max(200).default(25),
+      oldest: z.string().optional(),
+      latest: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("operations"),
+      owner: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/adapters/slack/channel/sync",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "sync_company_brain_github_issues",
   {
     title: "Sync GitHub Issues into Company Brain",

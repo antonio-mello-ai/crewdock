@@ -45,6 +45,8 @@ import type {
   RunWatcherResponse,
   SyncGitHubIssuesRequest,
   SyncGitHubIssuesResponse,
+  SyncSlackChannelRequest,
+  SyncSlackChannelResponse,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   AlignmentFinding,
@@ -501,6 +503,22 @@ export function useImportCompanyBrainSlackMessages() {
   >({
     mutationFn: (body) =>
       api("/api/company-brain/importers/slack-messages", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useSyncCompanyBrainSlackChannel() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<SyncSlackChannelResponse>,
+    Error,
+    SyncSlackChannelRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/adapters/slack/channel/sync", {
         method: "POST",
         body: JSON.stringify(body),
       }),

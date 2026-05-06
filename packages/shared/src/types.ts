@@ -517,6 +517,36 @@ export interface ImportSlackMessagesResponse {
   messagesSeen: number;
 }
 
+export interface SyncSlackChannelRequest {
+  channelId?: string | null;
+  channelName?: string | null;
+  sourceId?: string | null;
+  sourceName?: string | null;
+  workspaceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+  limit?: number;
+  oldest?: string | null;
+  latest?: string | null;
+}
+
+export interface SyncSlackChannelResponse {
+  source: Source;
+  artifactsCreated: Artifact[];
+  messagesSeen: number;
+  channel: {
+    id: string;
+    name: string | null;
+    isPrivate: boolean;
+    isMember: boolean;
+  };
+  workspace: {
+    id: string | null;
+    name: string | null;
+  };
+}
+
 export interface RunFelhenDemoRequest {
   owner?: string | null;
   visibility?: Visibility;

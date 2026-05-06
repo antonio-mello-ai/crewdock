@@ -31,6 +31,7 @@ import type {
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
+  SyncSlackChannelRequest,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   WorkflowBlueprintStage,
@@ -125,6 +126,172 @@ function parseSlackTimestamp(ts: string | null | undefined) {
 
 function summarizeSlackText(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+function readEnvValueFromFile(path: string, key: string) {
+  if (!existsSync(path)) return null;
+  const line = readFileSync(path, "utf8")
+    .split(/\r?\n/)
+    .find((item) => item.trim().startsWith(`${key}=`));
+  if (!line) return null;
+  const value = line.slice(line.indexOf("=") + 1).trim();
+  return value.replace(/^["']|["']$/g, "") || null;
+}
+
+function getSecretEnv(key: string) {
+  if (process.env[key]) return process.env[key];
+  const candidates = [
+    resolve(process.cwd(), ".env.local"),
+    resolve(process.cwd(), ".env.dev"),
+    resolve(process.cwd(), ".env.prod"),
+    resolve(process.cwd(), "../..", ".env.local"),
+    resolve(process.cwd(), "../..", ".env.dev"),
+    resolve(process.cwd(), "../..", ".env.prod"),
+  ];
+  for (const candidate of candidates) {
+    const value = readEnvValueFromFile(candidate, key);
+    if (value) return value;
+  }
+  return null;
+}
+
+interface SlackApiEnvelope {
+  ok: boolean;
+  error?: string;
+  needed?: string;
+  provided?: string;
+}
+
+interface SlackAuthTestResponse extends SlackApiEnvelope {
+  team?: string;
+  team_id?: string;
+}
+
+interface SlackConversation {
+  id: string;
+  name?: string;
+  is_private?: boolean;
+  is_member?: boolean;
+}
+
+interface SlackConversationsListResponse extends SlackApiEnvelope {
+  channels?: SlackConversation[];
+  response_metadata?: {
+    next_cursor?: string;
+  };
+}
+
+interface SlackConversationInfoResponse extends SlackApiEnvelope {
+  channel?: SlackConversation;
+}
+
+interface SlackMessagePayload {
+  type?: string;
+  subtype?: string;
+  text?: string;
+  user?: string;
+  username?: string;
+  bot_id?: string;
+  ts?: string;
+  thread_ts?: string;
+}
+
+interface SlackConversationHistoryResponse extends SlackApiEnvelope {
+  messages?: SlackMessagePayload[];
+}
+
+interface SlackPermalinkResponse extends SlackApiEnvelope {
+  permalink?: string;
+}
+
+async function slackApi<T extends SlackApiEnvelope>(
+  token: string,
+  method: string,
+  params: Record<string, string | number | boolean | null | undefined> = {}
+) {
+  const url = new URL(`https://slack.com/api/${method}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "User-Agent": "aios-runtime-company-brain",
+    },
+  });
+  const payload = (await res.json().catch(() => ({
+    ok: false,
+    error: `invalid_json_status_${res.status}`,
+  }))) as T;
+  if (!res.ok || !payload.ok) {
+    const details = payload.needed
+      ? ` needed=${payload.needed} provided=${payload.provided ?? "unknown"}`
+      : "";
+    throw new Error(`Slack ${method} failed: ${payload.error ?? res.status}${details}`);
+  }
+  return payload;
+}
+
+function normalizeSlackChannelName(channelName: string) {
+  return channelName.trim().replace(/^#/, "");
+}
+
+async function findSlackChannel(args: {
+  token: string;
+  channelId?: string | null;
+  channelName?: string | null;
+}) {
+  if (args.channelId?.trim()) {
+    const info = await slackApi<SlackConversationInfoResponse>(
+      args.token,
+      "conversations.info",
+      { channel: args.channelId.trim() }
+    );
+    if (!info.channel) throw new Error("Slack conversations.info returned no channel");
+    return info.channel;
+  }
+
+  const wantedName = args.channelName
+    ? normalizeSlackChannelName(args.channelName)
+    : null;
+  if (!wantedName) {
+    throw new Error("channelId or channelName is required");
+  }
+
+  let cursor = "";
+  for (let page = 0; page < 20; page += 1) {
+    const list = await slackApi<SlackConversationsListResponse>(
+      args.token,
+      "conversations.list",
+      {
+        types: "public_channel,private_channel",
+        exclude_archived: true,
+        limit: 200,
+        cursor,
+      }
+    );
+    const match = list.channels?.find((channel) => channel.name === wantedName);
+    if (match) return match;
+    cursor = list.response_metadata?.next_cursor ?? "";
+    if (!cursor) break;
+  }
+
+  throw new Error(`Slack channel not found or not visible to bot: ${wantedName}`);
+}
+
+async function fetchSlackPermalink(token: string, channelId: string, ts: string) {
+  try {
+    const result = await slackApi<SlackPermalinkResponse>(
+      token,
+      "chat.getPermalink",
+      { channel: channelId, message_ts: ts }
+    );
+    return result.permalink ?? null;
+  } catch {
+    return null;
+  }
 }
 
 interface GitHubIssuePayload {
@@ -1649,6 +1816,205 @@ app.post("/importers/local-docs", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "import_failed", message }, 400);
+  }
+});
+
+app.post("/adapters/slack/channel/sync", async (c) => {
+  try {
+    const body = await c.req.json<SyncSlackChannelRequest>();
+    const token = getSecretEnv("SLACK_BOT_TOKEN");
+    if (!token) {
+      throw new Error("SLACK_BOT_TOKEN is required for Slack channel sync");
+    }
+    if (!token.startsWith("xoxb-")) {
+      throw new Error("SLACK_BOT_TOKEN must be a Bot User OAuth Token");
+    }
+
+    const db = getDb();
+    const timestamp = now();
+    const auth = await slackApi<SlackAuthTestResponse>(token, "auth.test");
+    const channel = await findSlackChannel({
+      token,
+      channelId: body.channelId,
+      channelName: body.channelName,
+    });
+    const limit = Math.max(1, Math.min(body.limit ?? 25, 200));
+    const history = await slackApi<SlackConversationHistoryResponse>(
+      token,
+      "conversations.history",
+      {
+        channel: channel.id,
+        limit,
+        oldest: body.oldest,
+        latest: body.latest,
+        inclusive: true,
+      }
+    );
+    const workspaceName = body.workspaceName?.trim() || auth.team || "slack";
+    const workspaceId = auth.team_id ?? null;
+    const channelName = channel.name ?? body.channelName ?? channel.id;
+    const externalRef = `slack://${workspaceId ?? workspaceName}/${channel.id}`;
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source =
+        db
+          .select()
+          .from(cbSources)
+          .all()
+          .find(
+            (item) =>
+              item.sourceType === "slack" &&
+              (item.externalRef === externalRef || item.name === body.sourceName)
+          ) ?? null;
+    }
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? `${workspaceName} #${channelName} Slack sync`,
+        sourceType: "slack" as const,
+        area: body.area ?? "operations",
+        externalRef,
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          adapter: "slack_channel",
+          workspaceName,
+          workspaceId,
+          channelId: channel.id,
+          channelName,
+          readOnly: true,
+          actionPolicy: "observe_only",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const existingArtifacts = db.select().from(cbArtifacts).all();
+    const artifactsCreated = [];
+    const messages = history.messages ?? [];
+    for (const message of messages) {
+      const text = summarizeSlackText(message.text ?? "");
+      if (!message.ts || !text) continue;
+      const permalink = await fetchSlackPermalink(token, channel.id, message.ts);
+      const rawRef =
+        permalink ?? `slack://${workspaceId ?? workspaceName}/${channel.id}/${message.ts}`;
+      if (existingArtifacts.some((artifact) => artifact.rawRef === rawRef)) continue;
+      const occurredAt = parseSlackTimestamp(message.ts) ?? timestamp;
+      const payload = JSON.stringify({
+        workspaceName,
+        workspaceId,
+        channelId: channel.id,
+        channelName,
+        user: message.user ?? null,
+        username: message.username ?? null,
+        botId: message.bot_id ?? null,
+        ts: message.ts,
+        threadTs: message.thread_ts ?? null,
+        subtype: message.subtype ?? null,
+        text,
+      });
+      const author =
+        message.user ?? message.username ?? message.bot_id ?? source.owner ?? "slack";
+      const artifact = {
+        id: nanoid(12),
+        sourceId: source.id,
+        artifactType: "slack_message",
+        area: body.area ?? source.area,
+        title: `Slack #${channelName}: ${text.slice(0, 80)}`,
+        summary: text,
+        contentRef: permalink ?? rawRef,
+        rawRef,
+        author,
+        occurredAt,
+        ingestedAt: timestamp,
+        hash: stableHash(payload),
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef,
+          createdFrom: "adapter:slack_channel",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: "read_only=true; action_policy=observe_only",
+        },
+        humanReviewStatus: "pending" as const,
+        confidence: 0.95,
+        metadata: {
+          adapter: "slack_channel",
+          readOnly: true,
+          actionPolicy: "observe_only",
+          workspaceName,
+          workspaceId,
+          channelId: channel.id,
+          channelName,
+          isPrivate: Boolean(channel.is_private),
+          isMember: Boolean(channel.is_member),
+          user: message.user ?? null,
+          username: message.username ?? null,
+          botId: message.bot_id ?? null,
+          ts: message.ts,
+          threadTs: message.thread_ts ?? null,
+          subtype: message.subtype ?? null,
+          permalink,
+        },
+      };
+      db.insert(cbArtifacts).values(artifact).run();
+      existingArtifacts.push(artifact);
+      artifactsCreated.push(artifact);
+    }
+
+    const updatedSource = {
+      ...source,
+      lastSyncAt: timestamp,
+      healthStatus: "healthy" as const,
+      syncError: null,
+      updatedAt: timestamp,
+    };
+    db.update(cbSources)
+      .set({
+        lastSyncAt: updatedSource.lastSyncAt,
+        healthStatus: updatedSource.healthStatus,
+        syncError: updatedSource.syncError,
+        updatedAt: updatedSource.updatedAt,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          source: updatedSource,
+          artifactsCreated,
+          messagesSeen: messages.length,
+          channel: {
+            id: channel.id,
+            name: channelName,
+            isPrivate: Boolean(channel.is_private),
+            isMember: Boolean(channel.is_member),
+          },
+          workspace: {
+            id: workspaceId,
+            name: workspaceName,
+          },
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "sync_failed", message }, 400);
   }
 });
 

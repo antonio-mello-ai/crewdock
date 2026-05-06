@@ -526,8 +526,36 @@ Dogfood local Demo Felhen v0.1 validado em DB temporario `/tmp/aios-runtime-felh
 
 Proximos cortes recomendados:
 
-- Slack API adapter real quando houver token/workspace definidos.
-- Strategy tradeoffs v0 se a proxima sessao continuar sem credenciais Slack.
+- Strategy tradeoffs v0.
+- Hardening de Slack threads/mentions se o dogfood pedir leitura mais profunda.
+
+## Slice Slack API Adapter v0
+
+Objetivo: transformar a ingestao Slack de importer manual para adapter real read-only usando o bot Felhen, sem writeback externo automatico.
+
+Implementado em 2026-05-06:
+
+1. Tipos `SyncSlackChannelRequest` e `SyncSlackChannelResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/adapters/slack/channel/sync`.
+3. Leitura real via `SLACK_BOT_TOKEN` com `auth.test`, `conversations.list`/`conversations.info`, `conversations.history` e permalink quando disponivel.
+4. Source `slack` reutilizavel por `slack://workspace/channel`, com metadata `adapter=slack_channel`, `readOnly=true` e `actionPolicy=observe_only`.
+5. Artifact `slack_message` com raw_ref/permalink, hash, Slack metadata, provenance `createdFrom=adapter:slack_channel`, `humanReviewStatus=pending` e nota `read_only=true; action_policy=observe_only`.
+6. Dedupe por `rawRef`.
+7. UI `/company-brain` tem formulario `Slack sync` para canal/limit.
+8. MCP tool `sync_company_brain_slack_channel`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-slack-channel-sync-dogfood.sqlite`, daemon em `127.0.0.1:43114`:
+
+- Workspace: `Felhen` (`T09QRU28V1Q`).
+- Canal: `#aios-runtime` (`C0B1ZM0JULA`), bot membro.
+- Source criado/reutilizado: `-DJOUy_HH5l1`, `sourceType=slack`, `healthStatus=healthy`.
+- Primeira sync: `messagesSeen=5`, `artifactsCreated=5`.
+- Segunda sync: `messagesSeen=5`, `artifactsCreated=0` por dedupe.
+- Artifacts criados com `createdFrom=adapter:slack_channel`, `actionPolicy=observe_only`, `readOnly=true`.
+- Summary retornou `sourceCount=1`, `artifactCount=5`, `slackSourceCount=1`, `slackArtifactCount=5`.
+- Source Health retornou freshness `fresh`; residuos esperados nesta fase: `no_work_items` e `no_signals`.
+
+Boundary: o Slack App tem escopos amplos para evitar bloqueio operacional, mas o runtime continua sem writeback automatico. Escrita externa deve entrar em corte separado com `action_policy`, HITL/gates e aceite explicito.
 
 ## Dogfood ERP
 
@@ -647,11 +675,11 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Demo Felhen v0.1. Se houver `SLACK_BOT_TOKEN` e workspace/canais definidos, focar em `Slack API adapter real read-only`; se nao houver credencial, focar em `Strategy tradeoffs v0`.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Slack API Adapter v0. O corte recomendado e `Strategy tradeoffs v0`: tradeoffs/constraints/rationale ligados a priority/decision, sem recriar foundation, watcher, closed loop ou adapters ja entregues.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- para Slack API real: ler mensagens/canais selecionados em modo read-only e gerar o mesmo envelope de `Source` + `Artifact` ja usado pelo importer manual;
-- para Strategy tradeoffs: adicionar tradeoffs/constraints/rationale ligados a priority/decision sem mexer em adapters externos;
+- adicionar tradeoffs/constraints/rationale ligados a priority/decision;
+- expor em API/UI/MCP e summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

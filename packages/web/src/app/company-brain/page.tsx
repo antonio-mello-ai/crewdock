@@ -10,6 +10,7 @@ import {
   Loader2,
   Milestone,
   Plus,
+  RefreshCw,
   Target,
   Workflow,
   type LucideIcon,
@@ -30,6 +31,7 @@ import {
   useRunCompanyBrainWatcher,
   useRunFelhenDemo,
   useSyncCompanyBrainGitHubIssues,
+  useSyncCompanyBrainSlackChannel,
   useUpdateCompanyBrainGuidanceItem,
   useUpdateCompanyBrainImprovementProposal,
 } from "@/hooks/use-api";
@@ -201,6 +203,7 @@ export default function CompanyBrainPage() {
   const runFelhenDemo = useRunFelhenDemo();
   const syncGitHubIssues = useSyncCompanyBrainGitHubIssues();
   const importSlackMessages = useImportCompanyBrainSlackMessages();
+  const syncSlackChannel = useSyncCompanyBrainSlackChannel();
   const updateGuidance = useUpdateCompanyBrainGuidanceItem();
 
   const summary = data?.data;
@@ -384,6 +387,13 @@ export default function CompanyBrainPage() {
     user: "Antonio",
     permalink: "",
     text: "Slack evidence imported into Company Brain with read-only provenance.",
+  });
+
+  const [slackSyncForm, setSlackSyncForm] = useState({
+    sourceName: "Felhen #aios-runtime Slack read-only sync",
+    workspaceName: "Felhen",
+    channelName: "aios-runtime",
+    limit: "10",
   });
 
   const handleCreateSource = (event: FormEvent) => {
@@ -617,6 +627,19 @@ export default function CompanyBrainPage() {
           occurredAt: Date.now(),
         },
       ],
+    });
+  };
+
+  const handleSyncSlackChannel = (event: FormEvent) => {
+    event.preventDefault();
+    syncSlackChannel.mutate({
+      sourceName: slackSyncForm.sourceName || undefined,
+      workspaceName: slackSyncForm.workspaceName || undefined,
+      channelName: slackSyncForm.channelName || undefined,
+      limit: Number(slackSyncForm.limit) || 10,
+      area: "operations",
+      owner: "Felhen",
+      visibility: "internal",
     });
   };
 
@@ -1440,6 +1463,63 @@ export default function CompanyBrainPage() {
                 Create internal WorkItems
               </label>
               <SubmitButton pending={syncGitHubIssues.isPending} />
+            </KernelForm>
+
+            <KernelForm
+              title="Slack sync"
+              icon={RefreshCw}
+              onSubmit={handleSyncSlackChannel}
+            >
+              <FieldLabel>Source name</FieldLabel>
+              <Input
+                value={slackSyncForm.sourceName}
+                onChange={(event) =>
+                  setSlackSyncForm({
+                    ...slackSyncForm,
+                    sourceName: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Workspace</FieldLabel>
+                  <Input
+                    value={slackSyncForm.workspaceName}
+                    onChange={(event) =>
+                      setSlackSyncForm({
+                        ...slackSyncForm,
+                        workspaceName: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Channel</FieldLabel>
+                  <Input
+                    value={slackSyncForm.channelName}
+                    onChange={(event) =>
+                      setSlackSyncForm({
+                        ...slackSyncForm,
+                        channelName: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <FieldLabel>Limit</FieldLabel>
+              <Input
+                value={slackSyncForm.limit}
+                onChange={(event) =>
+                  setSlackSyncForm({
+                    ...slackSyncForm,
+                    limit: event.target.value,
+                  })
+                }
+              />
+              <SubmitButton
+                pending={syncSlackChannel.isPending}
+                disabled={!slackSyncForm.channelName.trim()}
+              />
             </KernelForm>
 
             <KernelForm
