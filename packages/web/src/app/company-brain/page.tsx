@@ -21,6 +21,7 @@ import {
   companyBrainWritebackAuditTrailCsvUrl,
   companyBrainWritebackEvidencePacketJsonUrl,
   type CompanyBrainWritebackAuditTrailFilters,
+  type CompanyBrainWritebackEvidenceIntegrityGapFilters,
   useCompanyBrainSummary,
   useCreateCompanyBrainArtifact,
   useCreateCompanyBrainDecision,
@@ -53,6 +54,7 @@ import {
   usePreviewCompanyBrainGitHubStatusCheckProposal,
   usePreviewCompanyBrainSlackThreadReplyWriteback,
   useCompanyBrainWritebackAuditTrail,
+  useCompanyBrainWritebackEvidenceIntegrityGaps,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -217,6 +219,21 @@ const writebackExecutionStatuses = [
   "failed",
   "cancelled",
 ];
+const writebackEvidenceIntegrityGapKinds = [
+  "missing_guidance_link",
+  "missing_signal_or_finding_link",
+  "missing_work_item_or_workflow_link",
+  "missing_approval_event",
+  "missing_preview_event",
+  "missing_execution_event",
+  "missing_payload_hash",
+  "missing_idempotency_key",
+  "missing_external_ref_after_completed",
+  "stale_preview",
+  "stale_approval",
+  "insufficient_rationale",
+  "incomplete_provenance",
+];
 
 function toDateInput(value: number | null | undefined) {
   if (!value) return "";
@@ -369,6 +386,13 @@ export default function CompanyBrainPage() {
     toDate: "",
     limit: "25",
   });
+  const [writebackIntegrityFilters, setWritebackIntegrityFilters] = useState({
+    severity: "",
+    kind: "",
+    adapter: "",
+    proposalId: "",
+    limit: "25",
+  });
   const writebackAuditQueryFilters =
     useMemo<CompanyBrainWritebackAuditTrailFilters>(() => {
       const fromAt = writebackAuditFilters.fromDate
@@ -397,6 +421,15 @@ export default function CompanyBrainPage() {
   const writebackAuditTrail = useCompanyBrainWritebackAuditTrail(
     writebackAuditQueryFilters
   );
+  const writebackIntegrityQueryFilters =
+    useMemo<CompanyBrainWritebackEvidenceIntegrityGapFilters>(
+      () => writebackIntegrityFilters,
+      [writebackIntegrityFilters]
+    );
+  const writebackIntegrityGaps =
+    useCompanyBrainWritebackEvidenceIntegrityGaps(
+      writebackIntegrityQueryFilters
+    );
   const writebackAuditCsvUrl = companyBrainWritebackAuditTrailCsvUrl(
     writebackAuditQueryFilters
   );
@@ -404,6 +437,14 @@ export default function CompanyBrainPage() {
     field: keyof typeof writebackAuditFilters,
     value: string
   ) => setWritebackAuditFilters((current) => ({ ...current, [field]: value }));
+  const updateWritebackIntegrityFilter = (
+    field: keyof typeof writebackIntegrityFilters,
+    value: string
+  ) =>
+    setWritebackIntegrityFilters((current) => ({
+      ...current,
+      [field]: value,
+    }));
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -1883,6 +1924,135 @@ export default function CompanyBrainPage() {
                     />
                   </div>
                 </div>
+                <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                  <p className="text-xs font-medium text-neutral-300">
+                    Evidence integrity gaps
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-left md:grid-cols-4">
+                    <MiniMetric
+                      label="total"
+                      value={writebackSafetyDashboard.evidenceIntegritySummary.total}
+                    />
+                    <MiniMetric
+                      label="critical"
+                      value={
+                        writebackSafetyDashboard.evidenceIntegritySummary
+                          .criticalCount
+                      }
+                    />
+                    <MiniMetric
+                      label="warn"
+                      value={
+                        writebackSafetyDashboard.evidenceIntegritySummary.warnCount
+                      }
+                    />
+                    <MiniMetric
+                      label="info"
+                      value={
+                        writebackSafetyDashboard.evidenceIntegritySummary.infoCount
+                      }
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+                    <Select
+                      value={writebackIntegrityFilters.severity}
+                      onChange={(event) =>
+                        updateWritebackIntegrityFilter(
+                          "severity",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">severity</option>
+                      {signalSeverities.map((severity) => (
+                        <option key={severity} value={severity}>
+                          {severity}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackIntegrityFilters.kind}
+                      onChange={(event) =>
+                        updateWritebackIntegrityFilter("kind", event.target.value)
+                      }
+                    >
+                      <option value="">gap type</option>
+                      {writebackEvidenceIntegrityGapKinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackIntegrityFilters.adapter}
+                      onChange={(event) =>
+                        updateWritebackIntegrityFilter("adapter", event.target.value)
+                      }
+                    >
+                      <option value="">adapter</option>
+                      {writebackAdapters.map((adapter) => (
+                        <option key={adapter} value={adapter}>
+                          {adapter}
+                        </option>
+                      ))}
+                    </Select>
+                    <Input
+                      placeholder="proposal id"
+                      value={writebackIntegrityFilters.proposalId}
+                      onChange={(event) =>
+                        updateWritebackIntegrityFilter(
+                          "proposalId",
+                          event.target.value
+                        )
+                      }
+                    />
+                    <Input
+                      placeholder="limit"
+                      value={writebackIntegrityFilters.limit}
+                      onChange={(event) =>
+                        updateWritebackIntegrityFilter("limit", event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="mt-3 divide-y divide-neutral-800/40">
+                    {writebackIntegrityGaps.isLoading ? (
+                      <p className="py-2 text-xs text-neutral-600">
+                        Loading integrity gaps
+                      </p>
+                    ) : writebackIntegrityGaps.data?.data.items.length ? (
+                      writebackIntegrityGaps.data.data.items.slice(0, 8).map((gap) => (
+                        <div
+                          key={gap.id}
+                          className="grid gap-2 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate font-medium text-neutral-300">
+                                {gap.title}
+                              </p>
+                              <StatusBadge value={gap.severity} />
+                              <StatusBadge value={gap.kind} />
+                            </div>
+                            <p className="mt-1 line-clamp-1 text-neutral-600">
+                              {gap.rationale}
+                            </p>
+                          </div>
+                          <p className="text-neutral-700">{gap.adapter}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="py-2 text-xs text-neutral-600">
+                        No integrity gaps match the current filters
+                      </p>
+                    )}
+                  </div>
+                  {writebackIntegrityGaps.data?.data ? (
+                    <p className="mt-2 text-xs text-neutral-700">
+                      showing {writebackIntegrityGaps.data.data.items.length} of{" "}
+                      {writebackIntegrityGaps.data.data.total} matching gaps
+                    </p>
+                  ) : null}
+                </div>
                 {writebackSafetyDashboard.adapterSummaries.length ? (
                   <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                     {writebackSafetyDashboard.adapterSummaries.map((adapter) => (
@@ -2170,12 +2340,20 @@ export default function CompanyBrainPage() {
                                 </p>
                                 <StatusBadge value={packet.reviewStatus} />
                                 <StatusBadge value={packet.executionStatus} />
+                                {packet.integrityGapSeverity ? (
+                                  <StatusBadge value={packet.integrityGapSeverity} />
+                                ) : null}
                               </div>
                               <p className="mt-1 truncate text-neutral-600">
                                 events {packet.auditEventCount} · guidance{" "}
                                 {packet.hasGuidance ? "yes" : "no"} · signal{" "}
                                 {packet.hasSignal ? "yes" : "no"} · work{" "}
                                 {packet.hasWorkItem ? "yes" : "no"}
+                              </p>
+                              <p className="mt-1 truncate text-neutral-600">
+                                integrity gaps {packet.integrityGapCount} ·{" "}
+                                {packet.integrityGapKinds.slice(0, 3).join(", ") ||
+                                  "none"}
                               </p>
                               <p className="mt-1 truncate text-neutral-700">
                                 {packet.payloadHashCurrent}
@@ -2671,6 +2849,14 @@ export default function CompanyBrainPage() {
                         getWritebackEvidencePacket.data.data.payloadHashes
                           .current
                       }
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-600">
+                      integrity gaps{" "}
+                      {getWritebackEvidencePacket.data.data.integrityGaps.length} ·{" "}
+                      {getWritebackEvidencePacket.data.data.integrityGaps
+                        .slice(0, 3)
+                        .map((gap) => gap.kind)
+                        .join(", ") || "none"}
                     </p>
                     <p className="mt-1 truncate text-xs text-neutral-600">
                       {getWritebackEvidencePacket.data.data.externalRefs.externalUrl ??

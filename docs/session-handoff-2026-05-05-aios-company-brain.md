@@ -1561,7 +1561,50 @@ Dogfood read-only validado em `/tmp/aios-runtime-github-label-executor-dogfood.s
 - `externalUrl=https://github.com/antonio-mello-ai/crewdock/issues/3`.
 - `exportPath=/api/company-brain/external-action-proposals/fx3NheQm3Crv/evidence-packet?download=1`.
 
-Proximo corte recomendado: Writeback Evidence Integrity Gaps v0 para destacar proposals sem links completos de evidence/provenance ou com audit trail insuficiente.
+## Slice Writeback Evidence Integrity Gaps v0
+
+Objetivo: analisar evidence packets e proposals de forma read-only para tornar explicitos gaps de links, audit trail, hashes, idempotency, refs externas, stale review, rationale e provenance antes de expandir executores.
+
+Implementado em 2026-05-06:
+
+1. Tipos novos para `WritebackEvidenceIntegrityGap`, `WritebackEvidenceIntegritySummary` e response de gaps.
+2. `WritebackEvidencePacket` inclui `integrityGaps`.
+3. `evidencePacketIndex` inclui `integrityGapCount`, `integrityGapSeverity` e `integrityGapKinds`.
+4. Safety Dashboard inclui `evidenceIntegrityGaps` e `evidenceIntegritySummary`.
+5. Gaps detectados:
+   - `missing_guidance_link`;
+   - `missing_signal_or_finding_link`;
+   - `missing_work_item_or_workflow_link`;
+   - `missing_approval_event`;
+   - `missing_preview_event`;
+   - `missing_execution_event`;
+   - `missing_payload_hash`;
+   - `missing_idempotency_key`;
+   - `missing_external_ref_after_completed`;
+   - `stale_preview`;
+   - `stale_approval`;
+   - `insufficient_rationale`;
+   - `incomplete_provenance`.
+6. API `GET /api/company-brain/external-action-proposals/evidence-integrity-gaps`.
+7. Filtros por `severity`, `kind/gapType`, `adapter`, `proposalId` e `limit`.
+8. MCP tool `list_company_brain_writeback_evidence_integrity_gaps`.
+9. UI `/company-brain` mostra painel `Evidence integrity gaps`, filtros e badges no evidence packet index/packet carregado.
+10. AIOS Briefing `writeback_safety` inclui contadores de evidence integrity gaps e next step quando ha gaps.
+11. `docs/writeback-policy-matrix.md` foi atualizado para refletir a politica de GitHub interno privado allowlisted: status/check, assign/unassign e mark-notification-read podem ser Classe B planejada sob allowlist/gates, mas sem executor real neste corte.
+12. Nenhuma mutacao externa nova foi adicionada.
+
+Dogfood read-only validado:
+
+- DB bom `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43151`, proposal `fx3NheQm3Crv`: Safety Dashboard retornou `evidenceIntegritySummary.total=0`; evidence packet JSON retornou `integrityGaps=[]`; index manteve `hasGuidance=true`, `hasSignal=true`, `hasFinding=true`, `hasWorkItem=true`, `hasWorkflowRun=true`.
+- DB negativo existente `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon `127.0.0.1:43152`: proposals bloqueadas de policy estavam completas do ponto de vista de integridade, retornando `evidenceIntegritySummary.total=0`.
+- DB especifico `/tmp/aios-runtime-evidence-integrity-gaps-dogfood.sqlite`, daemon `127.0.0.1:43153`: proposal `J-IH-nLDh83B` gerou 12 gaps, incluindo missing guidance, missing signal/finding, missing work/workflow, missing approval/preview/execution events, missing payload hash, missing idempotency key, missing external ref after completed, stale approval, insufficient rationale e incomplete provenance.
+- No mesmo DB, proposal `kcQMiZsMf0RQ` gerou `stale_preview` alem de links ausentes.
+- Endpoint de gaps retornou `total=15`, `criticalCount=6`, `warnCount=9`, cobrindo todos os 13 tipos.
+- Filtro `kind=stale_preview` retornou apenas `kcQMiZsMf0RQ`.
+- Evidence packet JSON de `J-IH-nLDh83B` incluiu `integrityGaps` com os tipos esperados.
+- Run do `watcher-aios-briefing-v0` gerou artifact `Oz4A41Psq9qj`; secao `writeback_safety` mostrou `15 evidence integrity gaps; 6 critical; 9 warn` e next step `Review 15 writeback evidence integrity gaps before expanding executors.`
+
+Proximo corte recomendado: Evidence remediation suggestions read-only para sugerir correcoes de links/provenance/audit sem executar mutacao externa.
 
 ## Dogfood ERP
 
@@ -1681,12 +1724,12 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0 e Writeback Evidence Packet Index v0. O proximo corte recomendado e Writeback Evidence Integrity Gaps v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0 e Writeback Evidence Integrity Gaps v0. O proximo corte recomendado e Evidence remediation suggestions read-only. Pare antes de novo executor real que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
 - expor em API/UI/MCP ou summary quando fizer sentido;
-- manter labels/status/assign/merge/deploy/Slack top-level/DM bloqueados sem novo escopo explicito;
+- manter close/reopen/merge/deploy/delete/permissions/secrets/customer repos/Slack top-level/DM bloqueados sem novo escopo explicito;
 - qualquer writeback novo deve passar por action_policy, risk_class, HITL, dry-run, idempotency e audit trail.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

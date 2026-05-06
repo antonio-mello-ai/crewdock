@@ -16,6 +16,7 @@ import type {
   CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
   CompanyBrainWritebackAuditTrailResponse,
+  CompanyBrainWritebackEvidenceIntegrityGapsResponse,
   CompanyBrainWritebackSafetyDashboard,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -56,6 +57,7 @@ import type {
   GenerateAgentContextRequest,
   ImportLocalDocsRequest,
   ImportSlackMessagesRequest,
+  Provenance,
   RunFelhenDemoRequest,
   SignalSource,
   SignalSeverity,
@@ -70,6 +72,7 @@ import type {
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   Visibility,
+  WritebackAdapterKey,
   WritebackEvidencePacket,
   WorkflowBlueprintStage,
 } from "@aios/shared";
@@ -2628,6 +2631,7 @@ function buildBriefingSections(args: {
       event.event.endsWith("_completed_noop")
   );
   const writebackLoopMetrics = writebackSafetyDashboard.operatingLoopMetrics;
+  const integritySummary = writebackSafetyDashboard.evidenceIntegritySummary;
 
   const sections: CompanyBrainBriefingSection[] = [
     {
@@ -2770,6 +2774,7 @@ function buildBriefingSections(args: {
       items: limitOrNone([
         `${pendingWritebackProposals.length} pending approvals; ${failedWritebackProposals.length} failed; ${writebackSafetyDashboard.stats.completedExternalWriteCount} completed external writes; ${writebackSafetyDashboard.stats.duplicateAvoidedCount} duplicates prevented.`,
         `${blockedWritebackItems.length} blocked by safety; ${writebackLoopMetrics.counts.staleApproval} stale approvals; ${writebackLoopMetrics.counts.stalePreview} stale previews; ${writebackLoopMetrics.counts.mutationAttempted} mutation attempts.`,
+        `${integritySummary.total} evidence integrity gaps; ${integritySummary.criticalCount} critical; ${integritySummary.warnCount} warn.`,
         ...pendingWritebackProposals.slice(0, 4).map((proposal) =>
           formatEntityLine({
             prefix: "pending",
@@ -2860,6 +2865,9 @@ function buildBriefingSections(args: {
       : "",
     blockedWritebackItems.length
       ? `Keep ${blockedWritebackItems.length} safety-blocked writeback items out of execution.`
+      : "",
+    integritySummary.criticalCount || integritySummary.warnCount
+      ? `Review ${integritySummary.total} writeback evidence integrity gaps before expanding executors.`
       : "",
     relevantGaps.length
       ? "Run review cohesion before expanding adapters."
@@ -4125,10 +4133,328 @@ function writebackAuditTrailCsv(data: CompanyBrainWritebackAuditTrailResponse) {
   ].join("\n");
 }
 
+const writebackEvidenceIntegrityGapKinds: Array<
+  NonNullable<CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["kind"]>
+> = [
+  "missing_guidance_link",
+  "missing_signal_or_finding_link",
+  "missing_work_item_or_workflow_link",
+  "missing_approval_event",
+  "missing_preview_event",
+  "missing_execution_event",
+  "missing_payload_hash",
+  "missing_idempotency_key",
+  "missing_external_ref_after_completed",
+  "stale_preview",
+  "stale_approval",
+  "insufficient_rationale",
+  "incomplete_provenance",
+];
+
+function rationaleIsInsufficient(value: string | null | undefined) {
+  return !value || value.trim().length < 20;
+}
+
+function provenanceIsIncomplete(provenance: Provenance | null) {
+  return (
+    !provenance ||
+    !provenance.createdFrom ||
+    !provenance.extractedAt ||
+    !provenance.humanReviewStatus ||
+    (!provenance.rawRef && !provenance.sourceId && !provenance.artifactId)
+  );
+}
+
+function buildWritebackEvidenceIntegrityGaps(
+  data: ReturnType<typeof listAll>,
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >,
+  generatedAt = now()
+): CompanyBrainWritebackEvidenceIntegrityGapsResponse["items"] {
+  const guidanceIds = new Set(data.guidanceItems.map((item) => item.id));
+  const signalIds = new Set(data.signals.map((item) => item.id));
+  const findingIds = new Set(data.alignmentFindings.map((item) => item.id));
+  const workItemIds = new Set(data.workItems.map((item) => item.id));
+  const workflowRunIds = new Set(data.workflowRuns.map((item) => item.id));
+  const gaps: CompanyBrainWritebackEvidenceIntegrityGapsResponse["items"] = [];
+
+  const addGap = (
+    proposal: ExternalActionProposal,
+    review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"],
+    kind: NonNullable<
+      CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["kind"]
+    >,
+    severity: SignalSeverity,
+    rationale: string
+  ) => {
+    const latestAudit = latestExternalActionAudit(proposal);
+    gaps.push({
+      id: `writeback_integrity:${kind}:${proposal.id}`,
+      proposalId: proposal.id,
+      title: proposal.title,
+      adapter: writebackAdapterKey(proposal),
+      kind,
+      severity,
+      rationale,
+      destinationType: proposal.destinationType,
+      actionType: proposal.actionType,
+      riskClass: proposal.riskClass,
+      approvalStatus: proposal.approvalStatus,
+      executionStatus: proposal.executionStatus,
+      reviewStatus: review.status,
+      actor: review.actor ?? latestAudit?.actor ?? proposal.approvedBy,
+      detectedAt: generatedAt,
+      latestAuditAt: latestAudit?.at ?? null,
+    });
+  };
+
+  for (const proposal of data.externalActionProposals) {
+    const review =
+      reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal, generatedAt);
+    const approvalEvent = latestAuditEvent(proposal, "approved");
+    const previewEvent = review.previewEvent ? latestAuditEvent(proposal, review.previewEvent) : null;
+    const executionEvent = latestWritebackExecutionAudit(proposal);
+    const isApprovedOrBeyond =
+      proposal.approvalStatus === "approved" ||
+      ["dry_run", "completed", "executed", "failed"].includes(
+        proposal.executionStatus
+      );
+    const hasSignal = proposal.signalId ? signalIds.has(proposal.signalId) : false;
+    const hasFinding = proposal.findingId
+      ? findingIds.has(proposal.findingId)
+      : false;
+    const hasWorkItem = proposal.workItemId
+      ? workItemIds.has(proposal.workItemId)
+      : false;
+    const hasWorkflowRun = proposal.workflowRunId
+      ? workflowRunIds.has(proposal.workflowRunId)
+      : false;
+
+    if (!guidanceIds.has(proposal.guidanceItemId)) {
+      addGap(
+        proposal,
+        review,
+        "missing_guidance_link",
+        "warn",
+        "Proposal guidanceItemId does not resolve to a GuidanceItem."
+      );
+    }
+    if (!hasSignal && !hasFinding) {
+      addGap(
+        proposal,
+        review,
+        "missing_signal_or_finding_link",
+        "warn",
+        "Proposal is not linked to a Signal or AlignmentFinding."
+      );
+    }
+    if (!hasWorkItem && !hasWorkflowRun) {
+      addGap(
+        proposal,
+        review,
+        "missing_work_item_or_workflow_link",
+        "warn",
+        "Proposal is not linked to a WorkItem or WorkflowRun."
+      );
+    }
+    if (isApprovedOrBeyond && !approvalEvent) {
+      addGap(
+        proposal,
+        review,
+        "missing_approval_event",
+        "critical",
+        "Approved or executed proposal is missing an approval audit event."
+      );
+    }
+    if (
+      proposal.approvalStatus === "approved" &&
+      proposal.executionStatus !== "not_started" &&
+      !previewEvent
+    ) {
+      addGap(
+        proposal,
+        review,
+        "missing_preview_event",
+        "critical",
+        "Approved proposal has advanced beyond not_started without a preview audit event."
+      );
+    }
+    if (
+      ["completed", "executed", "failed"].includes(proposal.executionStatus) &&
+      !executionEvent
+    ) {
+      addGap(
+        proposal,
+        review,
+        "missing_execution_event",
+        "critical",
+        "Completed, executed or failed proposal is missing an execution audit event."
+      );
+    }
+    if (
+      !review.payloadHashCurrent ||
+      (isApprovedOrBeyond && !review.payloadHashApproved) ||
+      (review.previewAt !== null && !review.payloadHashPreview)
+    ) {
+      addGap(
+        proposal,
+        review,
+        "missing_payload_hash",
+        "critical",
+        "Payload hash snapshot is missing from current, approval or preview state."
+      );
+    }
+    if (
+      !proposal.idempotencyKey.trim() ||
+      (isApprovedOrBeyond && !review.idempotencyKeyApproved) ||
+      (review.previewAt !== null && !review.idempotencyKeyPreview)
+    ) {
+      addGap(
+        proposal,
+        review,
+        "missing_idempotency_key",
+        "critical",
+        "Idempotency key is missing from proposal, approval or preview snapshot."
+      );
+    }
+    if (
+      isCompletedExternalWriteback(proposal) &&
+      (!proposal.externalId || !proposal.externalUrl)
+    ) {
+      addGap(
+        proposal,
+        review,
+        "missing_external_ref_after_completed",
+        "critical",
+        "Completed external writeback is missing externalId or externalUrl."
+      );
+    }
+    if (review.flags.includes("stale_preview")) {
+      addGap(
+        proposal,
+        review,
+        "stale_preview",
+        "warn",
+        "Preview snapshot is older than the retry-safety freshness window."
+      );
+    }
+    if (
+      proposal.approvalStatus === "approved" &&
+      proposal.approvedAt !== null &&
+      review.previewAt === null &&
+      generatedAt - proposal.approvedAt > WRITEBACK_PREVIEW_STALE_MS
+    ) {
+      addGap(
+        proposal,
+        review,
+        "stale_approval",
+        "warn",
+        "Approval is stale and no fresh preview exists after approval."
+      );
+    }
+    if (
+      rationaleIsInsufficient(proposal.rationale) ||
+      (isApprovedOrBeyond && rationaleIsInsufficient(review.rationale))
+    ) {
+      addGap(
+        proposal,
+        review,
+        "insufficient_rationale",
+        "warn",
+        "Proposal or HITL approval rationale is missing or too short for audit review."
+      );
+    }
+    if (provenanceIsIncomplete(proposal.provenance)) {
+      addGap(
+        proposal,
+        review,
+        "incomplete_provenance",
+        "warn",
+        "Proposal provenance is missing source/raw/artifact link, creator, extraction time or review status."
+      );
+    }
+  }
+
+  return gaps.sort(
+    (a, b) =>
+      (b.latestAuditAt ?? b.detectedAt) - (a.latestAuditAt ?? a.detectedAt)
+  );
+}
+
+function buildWritebackEvidenceIntegritySummary(
+  gaps: CompanyBrainWritebackEvidenceIntegrityGapsResponse["items"]
+): CompanyBrainWritebackEvidenceIntegrityGapsResponse["summary"] {
+  const byKind = Object.fromEntries(
+    writebackEvidenceIntegrityGapKinds.map((kind) => [kind, 0])
+  ) as CompanyBrainWritebackEvidenceIntegrityGapsResponse["summary"]["byKind"];
+  const byAdapter = Object.fromEntries(
+    (
+      [
+        "github_comment",
+        "github_label",
+        "github_status_check",
+        "slack_thread_reply",
+        "other",
+      ] satisfies WritebackAdapterKey[]
+    ).map((adapter) => [adapter, 0])
+  ) as CompanyBrainWritebackEvidenceIntegrityGapsResponse["summary"]["byAdapter"];
+  for (const gap of gaps) {
+    byKind[gap.kind] += 1;
+    byAdapter[gap.adapter] += 1;
+  }
+  return {
+    total: gaps.length,
+    criticalCount: gaps.filter((gap) => gap.severity === "critical").length,
+    warnCount: gaps.filter((gap) => gap.severity === "warn").length,
+    infoCount: gaps.filter((gap) => gap.severity === "info").length,
+    byKind,
+    byAdapter,
+  };
+}
+
+function buildWritebackEvidenceIntegrityGapsResponse(args: {
+  data: ReturnType<typeof listAll>;
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >;
+  severity?: SignalSeverity | null;
+  kind?: CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["kind"];
+  adapter?: CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["adapter"];
+  proposalId?: string | null;
+  limit?: number;
+}): CompanyBrainWritebackEvidenceIntegrityGapsResponse {
+  const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
+  const allGaps = buildWritebackEvidenceIntegrityGaps(args.data, args.reviews);
+  const items = allGaps.filter((gap) => {
+    if (args.severity && gap.severity !== args.severity) return false;
+    if (args.kind && gap.kind !== args.kind) return false;
+    if (args.adapter && gap.adapter !== args.adapter) return false;
+    if (args.proposalId && gap.proposalId !== args.proposalId) return false;
+    return true;
+  });
+  return {
+    generatedAt: now(),
+    filters: {
+      severity: args.severity ?? null,
+      kind: args.kind ?? null,
+      adapter: args.adapter ?? null,
+      proposalId: args.proposalId ?? null,
+      limit,
+    },
+    items: items.slice(0, limit),
+    total: items.length,
+    summary: buildWritebackEvidenceIntegritySummary(allGaps),
+  };
+}
+
 function buildWritebackEvidencePacket(
   proposal: ExternalActionProposal
 ): WritebackEvidencePacket {
   const db = getDb();
+  const generatedAt = now();
   const executionReview = buildWritebackExecutionReview(proposal);
   const auditReview = buildWritebackAuditReview(proposal, executionReview);
   const approvalEvent = latestAuditEvent(proposal, "approved");
@@ -4142,8 +4468,12 @@ function buildWritebackEvidencePacket(
     proposalId: proposal.id,
     limit: 250,
   }).items;
+  const integrityData = {
+    ...listAll(),
+    externalActionProposals: [proposal],
+  };
   return {
-    generatedAt: now(),
+    generatedAt,
     proposal,
     guidanceItem: db
       .select()
@@ -4174,6 +4504,11 @@ function buildWritebackEvidencePacket(
       : null,
     executionReview,
     auditReview,
+    integrityGaps: buildWritebackEvidenceIntegrityGaps(
+      integrityData,
+      new Map([[proposal.id, executionReview]]),
+      generatedAt
+    ),
     auditTrail,
     approvalEvent,
     previewEvent,
@@ -4213,19 +4548,36 @@ function buildWritebackEvidencePacketIndex(
   reviews: Map<
     string,
     CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
-  >
+  >,
+  integrityGaps: CompanyBrainWritebackEvidenceIntegrityGapsResponse["items"]
 ): CompanyBrainWritebackSafetyDashboard["evidencePacketIndex"] {
   const guidanceIds = new Set(data.guidanceItems.map((item) => item.id));
   const signalIds = new Set(data.signals.map((item) => item.id));
   const findingIds = new Set(data.alignmentFindings.map((item) => item.id));
   const workItemIds = new Set(data.workItems.map((item) => item.id));
   const workflowRunIds = new Set(data.workflowRuns.map((item) => item.id));
+  const gapsByProposal = new Map<string, typeof integrityGaps>();
+  for (const gap of integrityGaps) {
+    const existing = gapsByProposal.get(gap.proposalId) ?? [];
+    existing.push(gap);
+    gapsByProposal.set(gap.proposalId, existing);
+  }
+  const severityRank: Record<SignalSeverity, number> = {
+    critical: 3,
+    warn: 2,
+    info: 1,
+  };
 
   return data.externalActionProposals
     .map((proposal) => {
       const review =
         reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
       const latestAudit = latestExternalActionAudit(proposal);
+      const proposalGaps = gapsByProposal.get(proposal.id) ?? [];
+      const integrityGapSeverity =
+        proposalGaps
+          .map((gap) => gap.severity)
+          .sort((a, b) => severityRank[b] - severityRank[a])[0] ?? null;
       return {
         proposalId: proposal.id,
         title: proposal.title,
@@ -4237,6 +4589,9 @@ function buildWritebackEvidencePacketIndex(
         reviewStatus: review.status,
         auditEventCount: proposal.auditTrail.length,
         latestAuditAt: latestAudit?.at ?? null,
+        integrityGapCount: proposalGaps.length,
+        integrityGapSeverity,
+        integrityGapKinds: [...new Set(proposalGaps.map((gap) => gap.kind))],
         hasGuidance: guidanceIds.has(proposal.guidanceItemId),
         hasSignal: proposal.signalId ? signalIds.has(proposal.signalId) : false,
         hasFinding: proposal.findingId ? findingIds.has(proposal.findingId) : false,
@@ -4273,6 +4628,11 @@ function buildWritebackSafetyDashboard(
       proposal.id,
       buildWritebackExecutionReview(proposal, generatedAt),
     ])
+  );
+  const evidenceIntegrityGaps = buildWritebackEvidenceIntegrityGaps(
+    data,
+    reviews,
+    generatedAt
   );
   const items: CompanyBrainWritebackSafetyDashboard["items"] = [];
   for (const proposal of proposals) {
@@ -4339,7 +4699,14 @@ function buildWritebackSafetyDashboard(
     adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
     destinationSummaries: buildWritebackDestinationSummaries(proposals, reviews),
     operatingLoopMetrics: buildWritebackOperatingLoopMetrics(data, reviews, generatedAt),
-    evidencePacketIndex: buildWritebackEvidencePacketIndex(data, reviews),
+    evidencePacketIndex: buildWritebackEvidencePacketIndex(
+      data,
+      reviews,
+      evidenceIntegrityGaps
+    ),
+    evidenceIntegrityGaps,
+    evidenceIntegritySummary:
+      buildWritebackEvidenceIntegritySummary(evidenceIntegrityGaps),
     latestAuditTrail: buildWritebackAuditTrail({
       proposals,
       reviews,
@@ -7889,6 +8256,62 @@ app.get("/external-action-proposals/audit-trail", (c) => {
     });
   }
   return c.json({ data });
+});
+
+app.get("/external-action-proposals/evidence-integrity-gaps", (c) => {
+  const severityParam = c.req.query("severity")?.trim() || null;
+  const kindParam = c.req.query("kind")?.trim() || c.req.query("gapType")?.trim() || null;
+  const adapterParam = c.req.query("adapter")?.trim() || null;
+  const proposalId = c.req.query("proposalId")?.trim() || null;
+  const limitParam = Number(c.req.query("limit") ?? "50");
+  const allowedSeverities: SignalSeverity[] = ["info", "warn", "critical"];
+  const severity = allowedSeverities.includes(severityParam as SignalSeverity)
+    ? (severityParam as SignalSeverity)
+    : null;
+  const kind = writebackEvidenceIntegrityGapKinds.includes(
+    kindParam as NonNullable<
+      CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["kind"]
+    >
+  )
+    ? (kindParam as NonNullable<
+        CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["kind"]
+      >)
+    : null;
+  const allowedAdapters: CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["adapter"][] =
+    [
+      "github_comment",
+      "github_label",
+      "github_status_check",
+      "slack_thread_reply",
+      "other",
+    ];
+  const adapter = allowedAdapters.includes(
+    adapterParam as NonNullable<
+      CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["adapter"]
+    >
+  )
+    ? (adapterParam as NonNullable<
+        CompanyBrainWritebackEvidenceIntegrityGapsResponse["filters"]["adapter"]
+      >)
+    : null;
+  const data = listAll();
+  const reviews = new Map(
+    data.externalActionProposals.map((proposal) => [
+      proposal.id,
+      buildWritebackExecutionReview(proposal),
+    ])
+  );
+  return c.json({
+    data: buildWritebackEvidenceIntegrityGapsResponse({
+      data,
+      reviews,
+      severity,
+      kind,
+      adapter,
+      proposalId,
+      limit: Number.isFinite(limitParam) ? limitParam : 50,
+    }),
+  });
 });
 
 app.get("/external-action-proposals/:id/evidence-packet", (c) => {

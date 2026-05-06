@@ -2048,6 +2048,63 @@ export interface CompanyBrainWritebackAuditTrailResponse {
   total: number;
 }
 
+export type WritebackEvidenceIntegrityGapKind =
+  | "missing_guidance_link"
+  | "missing_signal_or_finding_link"
+  | "missing_work_item_or_workflow_link"
+  | "missing_approval_event"
+  | "missing_preview_event"
+  | "missing_execution_event"
+  | "missing_payload_hash"
+  | "missing_idempotency_key"
+  | "missing_external_ref_after_completed"
+  | "stale_preview"
+  | "stale_approval"
+  | "insufficient_rationale"
+  | "incomplete_provenance";
+
+export interface WritebackEvidenceIntegrityGap {
+  id: string;
+  proposalId: string;
+  title: string;
+  adapter: WritebackAdapterKey;
+  kind: WritebackEvidenceIntegrityGapKind;
+  severity: SignalSeverity;
+  rationale: string;
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  reviewStatus: WritebackExecutionReviewStatus;
+  actor: string | null;
+  detectedAt: number;
+  latestAuditAt: number | null;
+}
+
+export interface WritebackEvidenceIntegritySummary {
+  total: number;
+  criticalCount: number;
+  warnCount: number;
+  infoCount: number;
+  byKind: Record<WritebackEvidenceIntegrityGapKind, number>;
+  byAdapter: Record<WritebackAdapterKey, number>;
+}
+
+export interface CompanyBrainWritebackEvidenceIntegrityGapsResponse {
+  generatedAt: number;
+  filters: {
+    severity: SignalSeverity | null;
+    kind: WritebackEvidenceIntegrityGapKind | null;
+    adapter: WritebackAdapterKey | null;
+    proposalId: string | null;
+    limit: number;
+  };
+  items: WritebackEvidenceIntegrityGap[];
+  total: number;
+  summary: WritebackEvidenceIntegritySummary;
+}
+
 export interface WritebackEvidencePacket {
   generatedAt: number;
   proposal: ExternalActionProposal;
@@ -2058,6 +2115,7 @@ export interface WritebackEvidencePacket {
   workflowRun: WorkflowRun | null;
   executionReview: WritebackExecutionReview;
   auditReview: WritebackAuditReview;
+  integrityGaps: WritebackEvidenceIntegrityGap[];
   auditTrail: WritebackAuditTrailEntry[];
   approvalEvent: ExternalActionAuditEvent | null;
   previewEvent: ExternalActionAuditEvent | null;
@@ -2102,6 +2160,9 @@ export interface WritebackEvidencePacketIndexItem {
   reviewStatus: WritebackExecutionReviewStatus;
   auditEventCount: number;
   latestAuditAt: number | null;
+  integrityGapCount: number;
+  integrityGapSeverity: SignalSeverity | null;
+  integrityGapKinds: WritebackEvidenceIntegrityGapKind[];
   hasGuidance: boolean;
   hasSignal: boolean;
   hasFinding: boolean;
@@ -2121,6 +2182,8 @@ export interface CompanyBrainWritebackSafetyDashboard {
   destinationSummaries: WritebackDestinationSummary[];
   operatingLoopMetrics: WritebackOperatingLoopMetrics;
   evidencePacketIndex: WritebackEvidencePacketIndexItem[];
+  evidenceIntegrityGaps: WritebackEvidenceIntegrityGap[];
+  evidenceIntegritySummary: WritebackEvidenceIntegritySummary;
   latestAuditTrail: WritebackAuditTrailEntry[];
   stats: {
     proposalCount: number;

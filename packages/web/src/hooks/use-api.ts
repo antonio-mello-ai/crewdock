@@ -23,6 +23,7 @@ import type {
   ApiResponse,
   ApiListResponse,
   CompanyBrainWritebackAuditTrailResponse,
+  CompanyBrainWritebackEvidenceIntegrityGapsResponse,
   CompanyBrainSummary,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -104,8 +105,18 @@ export interface CompanyBrainWritebackAuditTrailFilters {
   limit?: number | string | null;
 }
 
+export interface CompanyBrainWritebackEvidenceIntegrityGapFilters {
+  severity?: string | null;
+  kind?: string | null;
+  adapter?: string | null;
+  proposalId?: string | null;
+  limit?: number | string | null;
+}
+
 function writebackAuditTrailQueryString(
-  filters: CompanyBrainWritebackAuditTrailFilters,
+  filters:
+    | CompanyBrainWritebackAuditTrailFilters
+    | CompanyBrainWritebackEvidenceIntegrityGapFilters,
   format?: "csv"
 ) {
   const params = new URLSearchParams();
@@ -503,6 +514,21 @@ export function useCompanyBrainWritebackAuditTrail(
     queryFn: () =>
       api(
         `/api/company-brain/external-action-proposals/audit-trail${writebackAuditTrailQueryString(
+          filters
+        )}`
+      ),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useCompanyBrainWritebackEvidenceIntegrityGaps(
+  filters: CompanyBrainWritebackEvidenceIntegrityGapFilters
+) {
+  return useQuery<ApiResponse<CompanyBrainWritebackEvidenceIntegrityGapsResponse>>({
+    queryKey: ["company-brain", "writeback-evidence-integrity-gaps", filters],
+    queryFn: () =>
+      api(
+        `/api/company-brain/external-action-proposals/evidence-integrity-gaps${writebackAuditTrailQueryString(
           filters
         )}`
       ),

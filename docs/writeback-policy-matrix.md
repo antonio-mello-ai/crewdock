@@ -23,6 +23,11 @@ execute.
 - `blocked`, `cancelled` and rejected proposals require a new proposal.
 - Idempotency marker reuse must be recorded as duplicate prevention, not as a
   new write.
+- For private internal GitHub repositories on an explicit allowlist, non-
+  destructive Class B routing or feedback metadata may be prepared for future
+  executors when approval, preview, HITL rationale, retry safety, idempotency
+  and audit trail are all enforced. This does not apply to customer/external
+  repos.
 - Audit trail must include actor, rationale, request snapshot, response
   summary, idempotency key, external id/url when available, and error summary on
   failure.
@@ -32,7 +37,7 @@ execute.
 | risk_class | Meaning | Allowed action_policy | Execution posture |
 | --- | --- | --- | --- |
 | A | Internal action, draft, private note, or non-mutating preparation. | `observe_only`, `create_artifacts`, `create_work_items`, `request_human` for internal draft. | No external writeback. May create internal artifacts, work items, drafts or proposals. |
-| B | Low-risk external response or allowlisted routing metadata that does not change access, ownership, deployment or public lifecycle. | `request_human`, then `writeback_allowed` only after explicit approval. | May execute only allowlisted comment/reply/label-add adapters after HITL, preview, idempotency and retry-safety gates. |
+| B | Low-risk external response or allowlisted routing/feedback metadata that does not change access, deployment, release or public lifecycle. | `request_human`, then `writeback_allowed` only after explicit approval. | May execute only implemented allowlisted adapters after HITL, preview, idempotency and retry-safety gates. Current executors are comment/reply/label-add. Internal GitHub metadata actions require their own executor before execution. |
 | C | Destructive, state-changing, public, sensitive, access-changing or operationally irreversible action. | None in v0. | Blocked. Requires a future reinforced approval model and explicit implementation. |
 | unknown | Unclassified action. | None. | Blocked until reclassified. |
 
@@ -44,12 +49,12 @@ execute.
 | `github` | `comment` / `github_comment` | B | Executable. | Issue/PR comments only; requires `GITHUB_TOKEN`/`GH_TOKEN`, approval, preview, idempotency marker and Retry Safety review. |
 | `slack` | `thread_reply` / `slack_thread_reply` | B | Executable. | Existing thread replies only; requires `SLACK_BOT_TOKEN`, approval, preview, idempotency marker and Retry Safety review. |
 | `github` | `label` / `github_label` | B only for allowlisted low-risk add; C otherwise | Executable for allowlisted add v0. | One existing repo label only; requires approval, preview, Retry Safety, allowlist and current-label read. Remove/set/create-label remain blocked. |
-| `github` | `github_status` / `github_check` | B | Preview-only proposal implemented. | No execution in v0. Shows repo, PR/SHA, context/name, proposed state/conclusion and risk rationale before any future write. |
-| `github` | `assign` / `unassign` | C | Blocked. | Changes ownership and routing. |
+| `github` | `github_status` / `github_check` | B for private internal allowlisted repos; C otherwise | Preview-only proposal implemented; executor not implemented. | Policy allows future execution only on explicit internal repo allowlist with approval, preview, retry safety, idempotency and audit. Current runtime does not create real statuses/check-runs. |
+| `github` | `assign` / `unassign` | B for private internal allowlisted repos; C otherwise | No executor yet. | May become non-destructive routing metadata only for internal repos with explicit allowlist, approval, preview, idempotency and audit. Customer/external repos remain blocked. |
 | `github` | `close` / `reopen` | C | Blocked. | Changes lifecycle state. |
 | `github` | `merge` | C | Blocked. | Code integration action. |
 | `github` | `deploy` | C | Blocked. | Production/runtime action. |
-| `github` | `mark_notification_read` | C | Blocked. | Mutates human inbox state. |
+| `github` | `mark_notification_read` | B for Felhen-owned allowlisted inbox; C otherwise | No executor yet. | May be allowed only for the authenticated AIOS/Felhen-owned inbox with explicit allowlist, audit and idempotency. Customer/external inboxes remain blocked. |
 | `slack` | top-level message | B or C depending channel | Blocked in v0. | Not a thread reply; must be separately designed. |
 | `slack` | DM | C | Blocked. | Direct/private outreach. |
 | `slack` | edit / delete | C | Blocked. | Mutates existing human-authored content. |
@@ -125,13 +130,29 @@ GitHub label add:
 17. Completed proposals return `already_completed` on replay and never write
     again.
 
+Future allowlisted GitHub metadata executors:
+
+1. Applies only to private internal GitHub repositories or Felhen-owned
+   notification inboxes on an explicit allowlist.
+2. Applies only to non-destructive Class B actions: status/check feedback,
+   assign/unassign routing, or mark-notification-read for the owned inbox.
+3. Requires the same HITL, preview-after-approval, payload/destination/
+   idempotency review, stale-review blocking, manual retry rationale and audit
+   trail used by existing executors.
+4. Must start with preview-only support and dogfood in a controlled target
+   before any real executor is added.
+5. Must not close/reopen, merge, deploy, delete, change permissions, change
+   branch protection, mutate secrets or touch customer/external repos.
+
 ## Preview-Only Candidates
 
 Preview-only candidates may create and review `ExternalActionProposal` records,
 but must not call write APIs:
 
-- GitHub status/check conclusion proposal. Implemented as preview-only.
-- GitHub assignee proposal.
+- GitHub status/check conclusion proposal until its internal allowlisted
+  executor exists.
+- GitHub assignee proposal until its internal allowlisted executor exists.
+- GitHub mark-notification-read proposal until its owned-inbox executor exists.
 - GitHub label proposals outside the v0 allowlist, with `mode=remove/set`, or
   with more than one label.
 - Slack top-level announcement draft.
@@ -149,8 +170,8 @@ Each preview-only candidate must include:
 
 ## Explicitly Out Of Scope Until A Future Policy Version
 
-- GitHub close/reopen, merge, deploy, branch protection, release, environment or
-  notification-read mutations.
+- GitHub close/reopen, merge, deploy, branch protection, release, environment
+  mutations, and notification-read outside the owned allowlist.
 - Slack DM, edit, delete, reaction, pin, invite, kick, topic, rename, channel
   creation or workspace admin actions.
 - Automatic execution from `GuidanceItem`, `Signal`, `AlignmentFinding`,

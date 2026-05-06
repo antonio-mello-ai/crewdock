@@ -1500,6 +1500,59 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_writeback_evidence_integrity_gaps",
+  {
+    title: "List Company Brain writeback evidence integrity gaps",
+    description:
+      "Read-only list of ExternalActionProposal evidence integrity gaps, filterable by severity, gap type, adapter or proposal. Does not execute or mutate external systems.",
+    inputSchema: {
+      severity: z.enum(["info", "warn", "critical"]).optional(),
+      kind: z
+        .enum([
+          "missing_guidance_link",
+          "missing_signal_or_finding_link",
+          "missing_work_item_or_workflow_link",
+          "missing_approval_event",
+          "missing_preview_event",
+          "missing_execution_event",
+          "missing_payload_hash",
+          "missing_idempotency_key",
+          "missing_external_ref_after_completed",
+          "stale_preview",
+          "stale_approval",
+          "insufficient_rationale",
+          "incomplete_provenance",
+        ])
+        .optional(),
+      adapter: z
+        .enum([
+          "github_comment",
+          "github_label",
+          "github_status_check",
+          "slack_thread_reply",
+          "other",
+        ])
+        .optional(),
+      proposalId: z.string().optional(),
+      limit: z.number().int().min(1).max(250).optional(),
+    },
+  },
+  async ({ severity, kind, adapter, proposalId, limit }) => {
+    const params = new URLSearchParams();
+    if (severity) params.set("severity", severity);
+    if (kind) params.set("kind", kind);
+    if (adapter) params.set("adapter", adapter);
+    if (proposalId) params.set("proposalId", proposalId);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/evidence-integrity-gaps${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_github_comment_writeback",
   {
     title: "Execute GitHub comment writeback",
