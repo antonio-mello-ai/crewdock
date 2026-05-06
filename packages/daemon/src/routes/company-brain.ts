@@ -34,6 +34,7 @@ import type {
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
   SyncSlackChannelRequest,
+  UpdateDecisionRequest,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   WorkflowBlueprintStage,
@@ -2587,6 +2588,79 @@ app.post("/decisions", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.put("/decisions/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const body = await c.req.json<UpdateDecisionRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const existing = db.select().from(cbDecisions).where(eq(cbDecisions.id, id)).get();
+    if (!existing) throw new Error("decision not found");
+
+    const priorityIds = body.priorityIds ?? existing.priorityIds;
+    for (const priorityId of priorityIds) {
+      const priority = db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, priorityId))
+        .get();
+      if (!priority) throw new Error(`priorityIds contains unknown priority ${priorityId}`);
+    }
+    const goalIds = body.goalIds ?? existing.goalIds;
+    for (const goalId of goalIds) {
+      const goal = db.select().from(cbGoals).where(eq(cbGoals.id, goalId)).get();
+      if (!goal) throw new Error(`goalIds contains unknown goal ${goalId}`);
+    }
+
+    const status = body.status ?? existing.status;
+    const reviewStatus =
+      status === "rejected"
+        ? ("rejected" as const)
+        : status === "proposed"
+          ? ("pending" as const)
+          : ("approved" as const);
+    const notes = [existing.provenance?.notes, body.reviewNote]
+      .map((item) => item?.trim())
+      .filter(Boolean)
+      .join("; ");
+    const visibility = body.visibility ?? existing.visibility;
+    const row = {
+      ...existing,
+      title: body.title !== undefined ? requireText(body.title, "title") : existing.title,
+      summary: body.summary !== undefined ? body.summary : existing.summary,
+      rationale: body.rationale !== undefined ? body.rationale : existing.rationale,
+      owner: body.owner !== undefined ? body.owner : existing.owner,
+      ownerType: body.ownerType ?? existing.ownerType,
+      status,
+      decidedAt:
+        body.decidedAt !== undefined
+          ? body.decidedAt
+          : status === "accepted"
+            ? (existing.decidedAt ?? timestamp)
+            : existing.decidedAt,
+      priorityIds,
+      goalIds,
+      visibility,
+      provenance: {
+        ...(existing.provenance ?? {}),
+        createdFrom: existing.provenance?.createdFrom ?? "api:decision_review",
+        confidence: existing.provenance?.confidence ?? 1,
+        extractedAt: existing.provenance?.extractedAt ?? timestamp,
+        humanReviewStatus: reviewStatus,
+        visibility,
+        notes: notes || undefined,
+      },
+      updatedAt: timestamp,
+    };
+
+    db.update(cbDecisions).set(row).where(eq(cbDecisions.id, id)).run();
+    return c.json({ data: row });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "update_failed", message }, 400);
   }
 });
 

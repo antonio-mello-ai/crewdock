@@ -50,6 +50,7 @@ import type {
   SyncGitHubIssuesResponse,
   SyncSlackChannelRequest,
   SyncSlackChannelResponse,
+  UpdateDecisionRequest,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   AlignmentFinding,
@@ -576,6 +577,22 @@ export function useCreateCompanyBrainAgentContext() {
     mutationFn: (body) =>
       api("/api/company-brain/agent-contexts", {
         method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useUpdateCompanyBrainDecision() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<Decision>,
+    Error,
+    { id: string; body: UpdateDecisionRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/decisions/${id}`, {
+        method: "PUT",
         body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),

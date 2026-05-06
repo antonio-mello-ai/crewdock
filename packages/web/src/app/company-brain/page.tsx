@@ -34,6 +34,7 @@ import {
   useRunFelhenDemo,
   useSyncCompanyBrainGitHubIssues,
   useSyncCompanyBrainSlackChannel,
+  useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainGuidanceItem,
   useUpdateCompanyBrainImprovementProposal,
 } from "@/hooks/use-api";
@@ -230,6 +231,7 @@ export default function CompanyBrainPage() {
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
+  const updateDecision = useUpdateCompanyBrainDecision();
   const createWorkItem = useCreateCompanyBrainWorkItem();
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
@@ -760,6 +762,16 @@ export default function CompanyBrainPage() {
         status,
         feedbackStatus,
         feedbackNote: `Updated from Company Brain UI as ${status}.`,
+      },
+    });
+  };
+
+  const updateDecisionStatus = (id: string, status: DecisionStatus) => {
+    updateDecision.mutate({
+      id,
+      body: {
+        status,
+        reviewNote: `Reviewed from Company Brain UI as ${status}.`,
       },
     });
   };
@@ -2888,6 +2900,38 @@ export default function CompanyBrainPage() {
                         )}
                       </div>
                       <StatusBadge value={decision.status} />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={updateDecision.isPending}
+                        onClick={() => updateDecisionStatus(decision.id, "accepted")}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Accept
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={updateDecision.isPending}
+                        onClick={() => updateDecisionStatus(decision.id, "rejected")}
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Reject
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={updateDecision.isPending}
+                        onClick={() => updateDecisionStatus(decision.id, "superseded")}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Supersede
+                      </Button>
                     </div>
                   </div>
                 ))

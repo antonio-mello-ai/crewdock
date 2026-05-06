@@ -611,6 +611,29 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-artifact-extractor-do
 
 Proximo corte recomendado: review/update API/UI/MCP para decisions candidates ou extractor de AlignmentFinding/Guidance a partir de signal candidato aprovado.
 
+## Slice Decision Review v0
+
+Objetivo: fechar o loop de candidates do Artifact Insights Extractor para decisions, permitindo aceitar/rejeitar/supersedar sem promover nada automaticamente para writeback externo.
+
+Implementado em 2026-05-06:
+
+1. Tipo `UpdateDecisionRequest` em `packages/shared/src/types.ts`.
+2. Rota `PUT /api/company-brain/decisions/:id`.
+3. Update valida priority/goal links quando enviados.
+4. Ao aceitar, `decidedAt` e setado se ainda estava vazio.
+5. Provenance preserva origem do extractor e atualiza `humanReviewStatus` para `approved`, `rejected` ou `pending`, com `reviewNote`.
+6. UI `/company-brain` adiciona acoes `Accept`, `Reject` e `Supersede` na lista de decisions.
+7. MCP tool `update_company_brain_decision`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-decision-review-dogfood.sqlite`, daemon em `127.0.0.1:43117`:
+
+- Candidate aceito: `D_EM2w3V-XcG`, `status=accepted`, `decidedAt` preenchido, provenance `humanReviewStatus=approved`.
+- Candidate rejeitado: `ijO22x-8CcDV`, `status=rejected`, `decidedAt` vazio, provenance `humanReviewStatus=rejected`.
+- Notes preservaram `candidate=true; extractor=artifact_insights_v0` e adicionaram a nota de review.
+- Summary retornou `decisionCount=2` e `activeDecisionCount=1`.
+
+Proximo corte recomendado: `Signal -> AlignmentFinding/Guidance extractor v0` para transformar signal candidato aprovado/revisado em finding e guidance sem auto-writeback.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -729,10 +752,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Artifact Insights Extractor v0. O corte recomendado e `Decision candidate review v0` ou `Signal -> Finding/Guidance extractor v0`, mantendo candidates sem auto-approve e qualquer writeback externo bloqueado.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Decision Review v0. O corte recomendado e `Signal -> AlignmentFinding/Guidance extractor v0`, mantendo candidates sem auto-approve e qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- adicionar review/update para decisions candidates ou gerar finding/guidance a partir de signal candidato aprovado;
+- gerar finding/guidance a partir de signal candidato revisado/aprovado;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.

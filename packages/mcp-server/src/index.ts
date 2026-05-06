@@ -703,6 +703,40 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_company_brain_decision",
+  {
+    title: "Update Company Brain decision",
+    description:
+      "Review or update a Company Brain decision candidate by changing status, rationale, links and review provenance. Does not write externally.",
+    inputSchema: {
+      id: z.string().min(1),
+      status: z
+        .enum(["proposed", "accepted", "superseded", "rejected", "archived"])
+        .optional(),
+      title: z.string().optional(),
+      summary: z.string().optional(),
+      rationale: z.string().optional(),
+      owner: z.string().optional(),
+      decidedAt: z.number().int().optional(),
+      priorityIds: z.array(z.string()).optional(),
+      goalIds: z.array(z.string()).optional(),
+      reviewNote: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const { id, ...body } = input;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/decisions/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "extract_company_brain_artifact_insights",
   {
     title: "Extract Company Brain artifact insights",

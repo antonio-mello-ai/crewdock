@@ -829,6 +829,20 @@ export interface CreateDecisionRequest {
   provenance?: Provenance | null;
 }
 
+export interface UpdateDecisionRequest {
+  title?: string;
+  summary?: string | null;
+  rationale?: string | null;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  status?: DecisionStatus;
+  decidedAt?: number | null;
+  priorityIds?: string[];
+  goalIds?: string[];
+  visibility?: Visibility;
+  reviewNote?: string | null;
+}
+
 export interface Signal {
   id: string;
   source: SignalSource;

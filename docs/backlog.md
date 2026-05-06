@@ -19,6 +19,8 @@ Status Strategy Tradeoff v0 em 2026-05-06: `StrategyTradeoff` implementado como 
 
 Status Artifact Insights Extractor v0 em 2026-05-06: extractor interno/manual-assistido implementado para transformar `Artifact` existente em candidatos de `Decision` e/ou `Signal` com provenance `extractor:artifact_insights`, review pendente, dedupe por artifact e sem auto-approve ou writeback externo.
 
+Status Decision Review v0 em 2026-05-06: decisions candidates podem ser aceitas, rejeitadas, supersedadas ou arquivadas via API/UI/MCP, atualizando `decided_at` quando aceitas e provenance de review sem writeback externo.
+
 Status AgentContext v0 em 2026-05-06: `AgentContext` implementado como contexto executavel gerado a partir de conhecimento aprovado, com target agent, source knowledge IDs, markdown content, status, validation status e provenance.
 
 Status ImprovementProposal v0 em 2026-05-06: `ImprovementProposal` implementado para o loop AutoImprove interno, com signals, hypothesis, change class, patch ref, validation plan, impact review e promotion status, sem auto-apply.
@@ -46,6 +48,7 @@ Status Demo Felhen v0.1 em 2026-05-06: runner interno/API/UI/MCP implementado pa
 - [x] **Strategy layer** — cadastrar prioridades, tradeoffs, owners, criterios de sucesso e status. Implementado com priorities, goals/cadence, decisions e strategy tradeoffs.
 - [x] **Decision v0** — registrar escolhas com racional, owner, status, source artifacts, priorities/goals, visibility e provenance
 - [x] **Decision/Signal extractor v0** — transformar artifacts reais em candidatos de decision/signal com provenance e review pendente, sem auto-approve
+- [x] **Decision candidate review v0** — aceitar/rejeitar/supersedar decisions propostas com provenance de review e sem writeback externo
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
