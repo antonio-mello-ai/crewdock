@@ -5,16 +5,18 @@
 Fonte de produto: `../../../../corp/docs/action/aios-product-roadmap.md`.
 Boundary local: `docs/company-brain-direction.md`.
 
-Status Slice 1 em 2026-05-05 23h BRT: primeiro kernel operacional implementado em codigo para strategy + goal/cadence + evidence + work item + workflow run + gates + provenance. O corte cobre `Source`, `Artifact`, `StrategicPriority`, `Goal`, `Milestone`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `WorkflowStep` e `ArtifactLink`; `Decision`, `Signal`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal` continuam para Slice 2+.
+Status Slice 1 em 2026-05-05 23h BRT: primeiro kernel operacional implementado em codigo para strategy + goal/cadence + evidence + work item + workflow run + gates + provenance. O corte cobre `Source`, `Artifact`, `StrategicPriority`, `Goal`, `Milestone`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `WorkflowStep` e `ArtifactLink`; `Decision`, `AgentContext` e `ImprovementProposal` continuam para Slice 2+.
 
-Status Watcher v0 em 2026-05-06: camada inicial implementada para transformar schedules/jobs em watchers ligados ao Company Brain, monitorando fontes e workflows sem depender de sessao interativa aberta. O corte cobre `Watcher`, `WatcherRun`, summary/API/UI/MCP e run manual que gera `Artifact` + `WorkItem` interno com provenance/action policy; `Signal`, `AlignmentFinding` e `GuidanceItem` ficam como proximo passo.
+Status Watcher v0 em 2026-05-06: camada inicial implementada para transformar schedules/jobs em watchers ligados ao Company Brain, monitorando fontes e workflows sem depender de sessao interativa aberta. O corte cobre `Watcher`, `WatcherRun`, summary/API/UI/MCP e run manual que gera outputs internos com provenance/action policy.
 
-- [ ] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
+Status Closed Loop v0 em 2026-05-06: implementado o loop minimo `WatcherRun -> Artifact -> Signal -> AlignmentFinding -> GuidanceItem`, com `Signal` no envelope do AutoImprove Core, classificacao contra priority/goal, guidance com status/feedback e exibicao em API/UI/MCP. Sem writeback externo automatico.
+
+- [ ] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`. Parcial: `Signal`, `AlignmentFinding` e `GuidanceItem` ja entraram; `Decision`, `AgentContext` e `ImprovementProposal` seguem pendentes.
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
 - [x] **Watcher / Operating Loop Layer v0** — adicionar `Watcher` e `WatcherRun` no schema/tipos/API, com `source_ids`, `trigger_type`, `schedule`, `scope_query`, `target_workflow_blueprint_id`, `risk_class`, `action_policy`, `status`, `last_run_at`, `next_run_at`, `failure_policy` e `output_policy`
 - [x] **Watcher status em Source Health / Summary** — expor status basico de watchers, ultimas execucoes, erro, artifacts/signals/work items gerados e freshness em `/api/company-brain/summary` ou tela de Source Health
 - [x] **Watcher manual/simulado v0** — criar watcher manual para PR/CI ou GitHub Issues que consiga registrar uma execucao sem webhook real
-- [x] **Watcher output com provenance e policy** — garantir que uma execucao de watcher consiga gerar `Artifact`, `Signal` ou `WorkItem` com provenance, `action_policy`, `risk_class` e trilha auditavel antes de qualquer writeback. Implementado para `Artifact` + `WorkItem`; `Signal` fica pendente em Drift/Alignment v0.
+- [x] **Watcher output com provenance e policy** — garantir que uma execucao de watcher consiga gerar `Artifact`, `Signal` ou `WorkItem` com provenance, `action_policy`, `risk_class` e trilha auditavel antes de qualquer writeback. Implementado para `Artifact`, `Signal`, `WorkItem`, `AlignmentFinding` e `GuidanceItem`.
 - [ ] **Strategy layer** — cadastrar prioridades, tradeoffs, owners, criterios de sucesso e status. Parcial: priorities/owners/status/success criteria implementados; tradeoffs ficam pendentes.
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
@@ -26,13 +28,13 @@ Status Watcher v0 em 2026-05-06: camada inicial implementada para transformar sc
 - [x] **Workflow Blueprint Engine** — modelar etapas, gates, owners, artifacts esperados, rollback e escalation por area
 - [x] **Development Blueprint v0** — `ticket -> triagem -> plano -> execucao -> revisao -> plano de testes -> testes -> QA visual -> security QA -> deploy gate -> deploy + monitoramento -> fechamento -> documentacao oficial`
 - [x] **Workflow Run Tracker** — executar um run real, registrar current step, gate status, evidencia, owner e failures
-- [ ] **Drift/Alignment v0** — classificar artifacts e work items como aligned, weak, drift, contradiction ou unknown contra prioridades
-- [ ] **Guidance Engine v0** — gerar proxima acao para humano/agente/sistema com status e feedback
+- [x] **Drift/Alignment v0** — classificar artifacts e work items como aligned, weak, drift, contradiction ou unknown contra prioridades
+- [x] **Guidance Engine v0** — gerar proxima acao para humano/agente/sistema com status e feedback
 - [ ] **Agent Context Generator v0** — transformar conhecimento aprovado em specs, prompts, playbooks, constraints ou briefing executavel para agentes
 - [ ] **AutoImprove UI/API v0** — normalizar signal -> hypothesis -> patch/proposal -> validation -> impact review -> promotion
 - [ ] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
 - [ ] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente
-- [ ] **MCP tools Company Brain** — expor create/read de artifacts, work items, workflow runs, guidance e signals para agentes. Parcial: summary + create source/artifact/work item/workflow run implementados.
+- [x] **MCP tools Company Brain** — expor create/read de artifacts, work items, workflow runs, guidance e signals para agentes. Implementado para summary/source/artifact/signal/alignment finding/guidance/work item/workflow run/watcher.
 - [ ] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
 - [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates
 - [ ] **Demo Felhen v0.1** — demonstrar estrategia -> evidencia -> drift/guidance -> workflow run -> learning usando dogfood interno

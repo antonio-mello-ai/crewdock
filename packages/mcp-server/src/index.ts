@@ -275,7 +275,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, artifacts, priorities, goals, work items, workflow blueprints/runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, artifacts, signals, alignment findings, guidance, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -393,6 +393,156 @@ server.registerTool(
           author,
           visibility,
           humanReviewStatus: "approved",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_signal",
+  {
+    title: "Register Company Brain signal",
+    description:
+      "Register a normalized AutoImprove Signal envelope linked to source/artifact/work item provenance.",
+    inputSchema: {
+      source: z
+        .enum(["feedback", "telemetry", "transcript", "error", "support", "qa"])
+        .default("qa"),
+      scope: z.enum(["tenant", "vertical", "core"]).default("core"),
+      entityType: z
+        .enum(["user", "school", "teacher", "flow", "screen", "job"])
+        .default("job"),
+      entityId: z.string().min(1),
+      summary: z.string().min(1),
+      rawRef: z.string().min(1),
+      severity: z.enum(["info", "warn", "critical"]).default("info"),
+      confidence: z.number().min(0).max(1).default(1),
+      tags: z.array(z.string()).default([]),
+      sourceId: z.string().optional(),
+      artifactId: z.string().optional(),
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      watcherId: z.string().optional(),
+      watcherRunId: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/signals",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_alignment_finding",
+  {
+    title: "Register Company Brain alignment finding",
+    description:
+      "Classify evidence or a work item against a priority/goal as aligned, weak, drift, contradiction, or unknown.",
+    inputSchema: {
+      classification: z
+        .enum(["aligned", "weak", "drift", "contradiction", "unknown"])
+        .default("unknown"),
+      rationale: z.string().min(1),
+      priorityId: z.string().optional(),
+      goalId: z.string().optional(),
+      artifactIds: z.array(z.string()).default([]),
+      signalIds: z.array(z.string()).default([]),
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("unknown"),
+      confidence: z.number().min(0).max(1).default(1),
+      suggestedAction: z.string().optional(),
+      severity: z.enum(["info", "warn", "critical"]).default("info"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/alignment-findings",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_guidance_item",
+  {
+    title: "Register Company Brain guidance item",
+    description:
+      "Create a recommended next action generated from a signal/finding with status and feedback status.",
+    inputSchema: {
+      title: z.string().min(1),
+      action: z.string().min(1),
+      audience: z.enum(["human", "team", "agent", "system"]).default("human"),
+      priorityId: z.string().optional(),
+      goalId: z.string().optional(),
+      findingId: z.string().optional(),
+      signalId: z.string().optional(),
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("unknown"),
+      severity: z.enum(["info", "warn", "critical"]).default("info"),
+      status: z
+        .enum(["new", "open", "accepted", "rejected", "done", "ignored"])
+        .default("open"),
+      feedbackStatus: z
+        .enum(["pending", "accepted", "rejected", "ignored", "completed"])
+        .default("pending"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/guidance-items",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
         }),
       }
     );
@@ -574,7 +724,7 @@ server.registerTool(
   {
     title: "Run Company Brain watcher manually",
     description:
-      "Run a watcher manually/simulated. The run creates a watcher observation Artifact and can link or create an internal WorkItem under the watcher's action policy.",
+      "Run a watcher manually/simulated. The run creates Artifact -> Signal -> AlignmentFinding -> GuidanceItem and can link or create an internal WorkItem under the watcher's action policy.",
     inputSchema: {
       watcherId: z.string().default("watcher-github-issues-manual-v0"),
       sourceId: z.string().optional(),
@@ -586,6 +736,21 @@ server.registerTool(
       createWorkItem: z.boolean().default(false),
       workItemTitle: z.string().optional(),
       externalUrl: z.string().optional(),
+      priorityId: z.string().optional(),
+      goalId: z.string().optional(),
+      signalSource: z
+        .enum(["feedback", "telemetry", "transcript", "error", "support", "qa"])
+        .default("qa"),
+      signalScope: z.enum(["tenant", "vertical", "core"]).default("core"),
+      signalEntityType: z
+        .enum(["user", "school", "teacher", "flow", "screen", "job"])
+        .default("job"),
+      signalEntityId: z.string().optional(),
+      signalSeverity: z.enum(["info", "warn", "critical"]).default("warn"),
+      signalTags: z.array(z.string()).default([]),
+      guidanceAudience: z.enum(["human", "team", "agent", "system"]).optional(),
+      guidanceAction: z.string().optional(),
+      guidanceDueAt: z.number().int().optional(),
     },
   },
   async ({ watcherId, ...body }) => {

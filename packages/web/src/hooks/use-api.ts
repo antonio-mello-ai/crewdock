@@ -24,7 +24,10 @@ import type {
   ApiListResponse,
   CompanyBrainSummary,
   CreateArtifactRequest,
+  CreateAlignmentFindingRequest,
   CreateGoalRequest,
+  CreateGuidanceItemRequest,
+  CreateSignalRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
   CreateWatcherRequest,
@@ -32,8 +35,11 @@ import type {
   CreateWorkItemRequest,
   RunWatcherRequest,
   RunWatcherResponse,
+  AlignmentFinding,
   Artifact,
   Goal,
+  GuidanceItem,
+  Signal,
   Source,
   StrategicPriority,
   Watcher,
@@ -476,6 +482,46 @@ export function useCreateCompanyBrainWorkItem() {
   return useMutation<ApiResponse<WorkItem>, Error, CreateWorkItemRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/work-items", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainSignal() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Signal>, Error, CreateSignalRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/signals", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainAlignmentFinding() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<AlignmentFinding>,
+    Error,
+    CreateAlignmentFindingRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/alignment-findings", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainGuidanceItem() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<GuidanceItem>, Error, CreateGuidanceItemRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/guidance-items", {
         method: "POST",
         body: JSON.stringify(body),
       }),

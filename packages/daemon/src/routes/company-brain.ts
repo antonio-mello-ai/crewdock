@@ -3,24 +3,33 @@ import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
+  AlignmentClassification,
   CreateArtifactRequest,
+  CreateAlignmentFindingRequest,
   CreateGoalRequest,
+  CreateGuidanceItemRequest,
   CreateMilestoneRequest,
+  CreateSignalRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
   CreateWatcherRequest,
   CreateWorkflowBlueprintRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  GuidanceAudience,
+  SignalSeverity,
   RunWatcherRequest,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
 import {
+  cbAlignmentFindings,
   cbArtifactLinks,
   cbArtifacts,
   cbGoals,
+  cbGuidanceItems,
   cbMilestones,
+  cbSignals,
   cbSources,
   cbStrategicPriorities,
   cbWatcherRuns,
@@ -46,6 +55,59 @@ function requireText(value: unknown, field: string) {
     throw new Error(`${field} is required`);
   }
   return value.trim();
+}
+
+function severityFromRisk(riskClass: string): SignalSeverity {
+  if (riskClass === "C") return "critical";
+  if (riskClass === "B") return "warn";
+  return "info";
+}
+
+function classifyAlignment(args: {
+  priorityId: string | null;
+  goalId: string | null;
+  hasWorkItem: boolean;
+}): {
+  classification: AlignmentClassification;
+  rationale: string;
+  suggestedAction: string;
+  confidence: number;
+} {
+  if (args.priorityId && args.goalId) {
+    return {
+      classification: "aligned",
+      rationale:
+        "Signal evidence is linked to a WorkItem with explicit priority and goal.",
+      suggestedAction:
+        "Continue execution through the linked workflow and keep attaching evidence to the goal.",
+      confidence: 0.9,
+    };
+  }
+  if (args.priorityId || args.goalId) {
+    return {
+      classification: "weak",
+      rationale:
+        "Signal evidence has a partial strategy link, but priority and goal are not both present.",
+      suggestedAction:
+        "Complete the missing priority or goal link before the work advances past triage.",
+      confidence: 0.72,
+    };
+  }
+  return {
+    classification: "unknown",
+    rationale: args.hasWorkItem
+      ? "WorkItem exists but is not linked to a priority or goal."
+      : "Evidence exists but no WorkItem, priority or goal link is present.",
+    suggestedAction:
+      "Triage this signal and link it to a priority/goal or explicitly keep it unlinked.",
+    confidence: 0.64,
+  };
+}
+
+function defaultGuidanceAudience(
+  classification: AlignmentClassification
+): GuidanceAudience {
+  return classification === "aligned" ? "agent" : "human";
 }
 
 function listAll() {
@@ -104,6 +166,24 @@ function listAll() {
     .orderBy(desc(cbWatcherRuns.startedAt))
     .limit(100)
     .all();
+  const signals = db
+    .select()
+    .from(cbSignals)
+    .orderBy(desc(cbSignals.timestamp))
+    .limit(100)
+    .all();
+  const alignmentFindings = db
+    .select()
+    .from(cbAlignmentFindings)
+    .orderBy(desc(cbAlignmentFindings.updatedAt))
+    .limit(100)
+    .all();
+  const guidanceItems = db
+    .select()
+    .from(cbGuidanceItems)
+    .orderBy(desc(cbGuidanceItems.updatedAt))
+    .limit(100)
+    .all();
 
   return {
     sources,
@@ -118,6 +198,9 @@ function listAll() {
     artifactLinks,
     watchers,
     watcherRuns,
+    signals,
+    alignmentFindings,
+    guidanceItems,
   };
 }
 
@@ -141,6 +224,12 @@ app.get("/summary", (c) => {
   const watcherErrorCount =
     data.watchers.filter((watcher) => watcher.status === "error").length +
     data.watcherRuns.filter((run) => run.status === "failed").length;
+  const driftFindingCount = data.alignmentFindings.filter((finding) =>
+    ["drift", "contradiction"].includes(finding.classification)
+  ).length;
+  const openGuidanceCount = data.guidanceItems.filter((item) =>
+    ["new", "open"].includes(item.status)
+  ).length;
 
   return c.json({
     data: {
@@ -160,6 +249,11 @@ app.get("/summary", (c) => {
           .length,
         watcherRunCount: data.watcherRuns.length,
         watcherErrorCount,
+        signalCount: data.signals.length,
+        alignmentFindingCount: data.alignmentFindings.length,
+        driftFindingCount,
+        guidanceItemCount: data.guidanceItems.length,
+        openGuidanceCount,
       },
     },
   });
@@ -424,6 +518,175 @@ app.post("/work-items", async (c) => {
       updatedAt: timestamp,
     };
     getDb().insert(cbWorkItems).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/signals", (c) => {
+  const watcherRunId = c.req.query("watcherRunId");
+  let data = getDb()
+    .select()
+    .from(cbSignals)
+    .orderBy(desc(cbSignals.timestamp))
+    .limit(100)
+    .all();
+  if (watcherRunId) data = data.filter((signal) => signal.watcherRunId === watcherRunId);
+  return c.json({ data, total: data.length });
+});
+
+app.post("/signals", async (c) => {
+  try {
+    const body = await c.req.json<CreateSignalRequest>();
+    const timestamp = now();
+    const db = getDb();
+    const artifact = body.artifactId
+      ? db.select().from(cbArtifacts).where(eq(cbArtifacts.id, body.artifactId)).get()
+      : null;
+    const sourceId = body.sourceId ?? artifact?.sourceId ?? null;
+    const source = sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, sourceId)).get()
+      : null;
+    const row = {
+      id: nanoid(12),
+      source: body.source,
+      scope: body.scope,
+      entityType: body.entityType,
+      entityId: requireText(body.entityId, "entityId"),
+      timestamp: body.timestamp ?? timestamp,
+      summary: requireText(body.summary, "summary"),
+      rawRef: requireText(body.rawRef, "rawRef"),
+      severity: body.severity ?? "info",
+      confidence: body.confidence ?? 1,
+      tags: body.tags ?? [],
+      area: body.area ?? artifact?.area ?? source?.area ?? "unknown",
+      sourceId,
+      artifactId: body.artifactId ?? null,
+      workItemId: body.workItemId ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      watcherId: body.watcherId ?? null,
+      watcherRunId: body.watcherRunId ?? null,
+      visibility: body.visibility ?? artifact?.visibility ?? source?.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        sourceId: sourceId ?? undefined,
+        rawRef: body.rawRef,
+        artifactId: body.artifactId ?? undefined,
+        createdFrom: "api:signal",
+        confidence: body.confidence ?? 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "approved",
+        visibility: body.visibility ?? artifact?.visibility ?? source?.visibility ?? "internal",
+      },
+      metadata: body.metadata ?? null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbSignals).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/alignment-findings", (c) => {
+  const data = getDb()
+    .select()
+    .from(cbAlignmentFindings)
+    .orderBy(desc(cbAlignmentFindings.updatedAt))
+    .limit(100)
+    .all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/alignment-findings", async (c) => {
+  try {
+    const body = await c.req.json<CreateAlignmentFindingRequest>();
+    const timestamp = now();
+    const row = {
+      id: nanoid(12),
+      priorityId: body.priorityId ?? null,
+      goalId: body.goalId ?? null,
+      artifactIds: body.artifactIds ?? [],
+      signalIds: body.signalIds ?? [],
+      workItemId: body.workItemId ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      area: body.area ?? "unknown",
+      classification: body.classification,
+      rationale: requireText(body.rationale, "rationale"),
+      confidence: body.confidence ?? 1,
+      suggestedAction: body.suggestedAction ?? null,
+      severity: body.severity ?? "info",
+      visibility: body.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        rawRef: body.signalIds?.[0] ?? body.artifactIds?.[0],
+        artifactId: body.artifactIds?.[0],
+        createdFrom: "api:alignment_finding",
+        confidence: body.confidence ?? 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "approved",
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    getDb().insert(cbAlignmentFindings).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/guidance-items", (c) => {
+  const status = c.req.query("status");
+  let data = getDb()
+    .select()
+    .from(cbGuidanceItems)
+    .orderBy(desc(cbGuidanceItems.updatedAt))
+    .limit(100)
+    .all();
+  if (status) data = data.filter((item) => item.status === status);
+  return c.json({ data, total: data.length });
+});
+
+app.post("/guidance-items", async (c) => {
+  try {
+    const body = await c.req.json<CreateGuidanceItemRequest>();
+    const timestamp = now();
+    const row = {
+      id: nanoid(12),
+      audience: body.audience ?? "human",
+      priorityId: body.priorityId ?? null,
+      goalId: body.goalId ?? null,
+      findingId: body.findingId ?? null,
+      signalId: body.signalId ?? null,
+      workItemId: body.workItemId ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      area: body.area ?? "unknown",
+      title: requireText(body.title, "title"),
+      action: requireText(body.action, "action"),
+      dueAt: body.dueAt ?? null,
+      severity: body.severity ?? "info",
+      status: body.status ?? "open",
+      feedbackStatus: body.feedbackStatus ?? "pending",
+      generatedFrom: body.generatedFrom ?? null,
+      visibility: body.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        rawRef: body.findingId ?? body.signalId ?? undefined,
+        artifactId: undefined,
+        createdFrom: "api:guidance_item",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "approved",
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    getDb().insert(cbGuidanceItems).values(row).run();
     return c.json({ data: row }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -742,8 +1005,28 @@ app.post("/watchers/:id/run", async (c) => {
     };
     db.insert(cbArtifacts).values(artifact).run();
 
+    const requestedGoal = body.goalId
+      ? db.select().from(cbGoals).where(eq(cbGoals.id, body.goalId)).get()
+      : null;
+    if (body.goalId && !requestedGoal) throw new Error("goalId not found");
+    const requestedPriorityId = body.priorityId ?? requestedGoal?.priorityId ?? null;
+    if (
+      requestedPriorityId &&
+      !db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, requestedPriorityId))
+        .get()
+    ) {
+      throw new Error("priorityId not found");
+    }
+
     const createdWorkItems = [];
     const linkedWorkItemIds: string[] = [];
+    const linkedWorkItem = body.workItemId
+      ? db.select().from(cbWorkItems).where(eq(cbWorkItems.id, body.workItemId)).get()
+      : null;
+    if (body.workItemId && !linkedWorkItem) throw new Error("workItemId not found");
     if (body.workItemId) {
       linkedWorkItemIds.push(body.workItemId);
       db.insert(cbArtifactLinks)
@@ -769,8 +1052,8 @@ app.post("/watchers/:id/run", async (c) => {
         owner: watcher.owner,
         ownerType: watcher.ownerType,
         status: "triage" as const,
-        priorityId: null,
-        goalId: null,
+        priorityId: requestedPriorityId,
+        goalId: body.goalId ?? null,
         milestoneId: null,
         externalProvider: source.sourceType.startsWith("github") ? "github" : null,
         externalId: body.rawRef ?? null,
@@ -825,6 +1108,177 @@ app.post("/watchers/:id/run", async (c) => {
         .run();
     }
 
+    const alignmentWorkItem = createdWorkItems[0] ?? linkedWorkItem ?? null;
+    const alignmentPriorityId =
+      requestedPriorityId ?? alignmentWorkItem?.priorityId ?? requestedGoal?.priorityId ?? null;
+    const alignmentGoalId = body.goalId ?? alignmentWorkItem?.goalId ?? null;
+    const signalSeverity = body.signalSeverity ?? severityFromRisk(watcher.riskClass);
+    const signalId = nanoid(12);
+    const signal = {
+      id: signalId,
+      source: body.signalSource ?? "qa",
+      scope: body.signalScope ?? "core",
+      entityType: body.signalEntityType ?? "job",
+      entityId:
+        body.signalEntityId ??
+        alignmentWorkItem?.id ??
+        body.workflowRunId ??
+        artifactId,
+      timestamp: startedAt,
+      summary: body.summary ?? summary,
+      rawRef,
+      severity: signalSeverity,
+      confidence: 1,
+      tags: body.signalTags ?? [
+        "watcher",
+        watcher.id,
+        source.sourceType,
+        source.area,
+      ],
+      area: source.area,
+      sourceId,
+      artifactId,
+      workItemId: alignmentWorkItem?.id ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      watcherId: watcher.id,
+      watcherRunId: runId,
+      visibility: watcher.visibility,
+      provenance: {
+        ...provenance,
+        artifactId,
+        createdFrom: `watcher:${watcher.id}:signal`,
+      },
+      metadata: {
+        autoImproveEnvelope: {
+          source: body.signalSource ?? "qa",
+          scope: body.signalScope ?? "core",
+          entity_type: body.signalEntityType ?? "job",
+          entity_id:
+            body.signalEntityId ??
+            alignmentWorkItem?.id ??
+            body.workflowRunId ??
+            artifactId,
+          timestamp: startedAt,
+          summary: body.summary ?? summary,
+          raw_ref: rawRef,
+          severity: signalSeverity,
+          confidence: 1,
+          tags: body.signalTags ?? [
+            "watcher",
+            watcher.id,
+            source.sourceType,
+            source.area,
+          ],
+        },
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    };
+    db.insert(cbSignals).values(signal).run();
+    db.insert(cbArtifactLinks)
+      .values({
+        id: nanoid(12),
+        artifactId,
+        targetType: "signal",
+        targetId: signalId,
+        relationship: "generated_signal",
+        confidence: 1,
+        rationale: `Watcher ${watcher.id} normalized the artifact into an AutoImprove Signal envelope.`,
+        createdAt: startedAt,
+      })
+      .run();
+
+    const alignment = classifyAlignment({
+      priorityId: alignmentPriorityId,
+      goalId: alignmentGoalId,
+      hasWorkItem: !!alignmentWorkItem,
+    });
+    const findingId = nanoid(12);
+    const finding = {
+      id: findingId,
+      priorityId: alignmentPriorityId,
+      goalId: alignmentGoalId,
+      artifactIds: [artifactId],
+      signalIds: [signalId],
+      workItemId: alignmentWorkItem?.id ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      area: source.area,
+      classification: alignment.classification,
+      rationale: alignment.rationale,
+      confidence: alignment.confidence,
+      suggestedAction: alignment.suggestedAction,
+      severity: signalSeverity,
+      visibility: watcher.visibility,
+      provenance: {
+        ...provenance,
+        artifactId,
+        createdFrom: `watcher:${watcher.id}:alignment_finding`,
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    };
+    db.insert(cbAlignmentFindings).values(finding).run();
+    db.insert(cbArtifactLinks)
+      .values({
+        id: nanoid(12),
+        artifactId,
+        targetType: "alignment_finding",
+        targetId: findingId,
+        relationship: "classified_against_strategy",
+        confidence: alignment.confidence,
+        rationale: alignment.rationale,
+        createdAt: startedAt,
+      })
+      .run();
+
+    const guidanceItemId = nanoid(12);
+    const guidanceItem = {
+      id: guidanceItemId,
+      audience: body.guidanceAudience ?? defaultGuidanceAudience(alignment.classification),
+      priorityId: alignmentPriorityId,
+      goalId: alignmentGoalId,
+      findingId,
+      signalId,
+      workItemId: alignmentWorkItem?.id ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      area: source.area,
+      title: `Guidance: ${title}`,
+      action: body.guidanceAction ?? alignment.suggestedAction,
+      dueAt: body.guidanceDueAt ?? null,
+      severity: signalSeverity,
+      status: "open" as const,
+      feedbackStatus: "pending" as const,
+      generatedFrom: {
+        watcherId: watcher.id,
+        watcherRunId: runId,
+        artifactId,
+        signalId,
+        findingId,
+        classification: alignment.classification,
+      },
+      visibility: watcher.visibility,
+      provenance: {
+        ...provenance,
+        artifactId,
+        createdFrom: `watcher:${watcher.id}:guidance_item`,
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    };
+    db.insert(cbGuidanceItems).values(guidanceItem).run();
+    db.insert(cbArtifactLinks)
+      .values({
+        id: nanoid(12),
+        artifactId,
+        targetType: "guidance_item",
+        targetId: guidanceItemId,
+        relationship: "generated_guidance",
+        confidence: alignment.confidence,
+        rationale: `Guidance created from finding ${findingId}.`,
+        createdAt: startedAt,
+      })
+      .run();
+
     const finishedAt = now();
     const run = {
       id: runId,
@@ -835,9 +1289,10 @@ app.post("/watchers/:id/run", async (c) => {
       triggerRef: rawRef,
       sourceIds,
       artifactsCreated: [artifactId],
-      signalsCreated: [],
+      signalsCreated: [signalId],
+      alignmentFindingsCreated: [findingId],
       workItemsCreated: createdWorkItems.map((item) => item.id),
-      guidanceCreated: [],
+      guidanceCreated: [guidanceItemId],
       workflowRunsLinked,
       errorSummary: null,
       actionPolicy: watcher.actionPolicy,
@@ -874,7 +1329,10 @@ app.post("/watchers/:id/run", async (c) => {
         data: {
           run,
           artifact,
+          signalsCreated: [signal],
+          alignmentFindingsCreated: [finding],
           workItemsCreated: createdWorkItems,
+          guidanceItemsCreated: [guidanceItem],
           workflowRunsLinked,
         },
       },
@@ -894,6 +1352,7 @@ app.post("/watchers/:id/run", async (c) => {
         sourceIds: [],
         artifactsCreated: [],
         signalsCreated: [],
+        alignmentFindingsCreated: [],
         workItemsCreated: [],
         guidanceCreated: [],
         workflowRunsLinked: [],

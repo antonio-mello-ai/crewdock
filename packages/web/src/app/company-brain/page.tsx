@@ -36,6 +36,7 @@ import type {
   RiskClass,
   SlaStatus,
   SourceType,
+  SignalSeverity,
   WorkItemStatus,
   ActionPolicy,
 } from "@aios/shared";
@@ -83,6 +84,7 @@ const workStatuses: WorkItemStatus[] = [
 
 const riskClasses: RiskClass[] = ["A", "B", "C", "unknown"];
 const slaStatuses: SlaStatus[] = ["not_set", "on_track", "at_risk", "breached"];
+const signalSeverities: SignalSeverity[] = ["info", "warn", "critical"];
 const actionPolicies: ActionPolicy[] = [
   "observe_only",
   "create_artifacts",
@@ -106,12 +108,17 @@ function StatusBadge({ value }: { value: string }) {
     value === "blocked" ||
     value === "failed" ||
     value === "breached" ||
-    value === "at_risk"
+    value === "at_risk" ||
+    value === "critical" ||
+    value === "drift" ||
+    value === "contradiction"
       ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
       : value === "done" ||
           value === "completed" ||
           value === "passed" ||
-          value === "on_track"
+          value === "on_track" ||
+          value === "aligned" ||
+          value === "accepted"
         ? "border-emerald-800/60 bg-emerald-950/30 text-emerald-300"
         : "border-neutral-800 bg-neutral-900/60 text-neutral-400";
 
@@ -148,6 +155,9 @@ export default function CompanyBrainPage() {
   const steps = summary?.workflowSteps ?? [];
   const watchers = summary?.watchers ?? [];
   const watcherRuns = summary?.watcherRuns ?? [];
+  const signals = summary?.signals ?? [];
+  const alignmentFindings = summary?.alignmentFindings ?? [];
+  const guidanceItems = summary?.guidanceItems ?? [];
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -245,6 +255,9 @@ export default function CompanyBrainPage() {
     summary: "Manual watcher run created an artifact and optional internal work item.",
     workItemId: "",
     workflowRunId: "",
+    priorityId: "",
+    goalId: "",
+    signalSeverity: "warn" as SignalSeverity,
     createWorkItem: true,
   });
 
@@ -350,6 +363,9 @@ export default function CompanyBrainPage() {
         summary: watcherRunForm.summary,
         workItemId: watcherRunForm.workItemId || null,
         workflowRunId: watcherRunForm.workflowRunId || null,
+        priorityId: watcherRunForm.priorityId || null,
+        goalId: watcherRunForm.goalId || null,
+        signalSeverity: watcherRunForm.signalSeverity,
         createWorkItem: watcherRunForm.createWorkItem,
         workItemTitle: watcherRunForm.title,
         externalUrl: watcherRunForm.rawRef || null,
@@ -368,7 +384,7 @@ export default function CompanyBrainPage() {
             Strategy, goals, evidence, work items, workflow runs and gates.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           <Metric icon={Database} label="Sources" value={summary?.stats.sourceCount ?? 0} />
           <Metric icon={Target} label="Goals" value={summary?.stats.goalCount ?? 0} />
           <Metric
@@ -376,10 +392,16 @@ export default function CompanyBrainPage() {
             label="Unlinked"
             value={summary?.stats.unlinkedWorkItemCount ?? 0}
           />
+          <Metric icon={FileText} label="Signals" value={summary?.stats.signalCount ?? 0} />
+          <Metric
+            icon={AlertTriangle}
+            label="Findings"
+            value={summary?.stats.alignmentFindingCount ?? 0}
+          />
           <Metric
             icon={Workflow}
-            label="Active runs"
-            value={summary?.stats.activeWorkflowRunCount ?? 0}
+            label="Guidance"
+            value={summary?.stats.openGuidanceCount ?? 0}
           />
         </div>
       </div>
@@ -766,6 +788,64 @@ export default function CompanyBrainPage() {
                   </Select>
                 </div>
               </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Priority</FieldLabel>
+                  <Select
+                    value={watcherRunForm.priorityId}
+                    onChange={(event) =>
+                      setWatcherRunForm({
+                        ...watcherRunForm,
+                        priorityId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">derive or unlinked</option>
+                    {priorities.map((priority) => (
+                      <option key={priority.id} value={priority.id}>
+                        {priority.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Goal</FieldLabel>
+                  <Select
+                    value={watcherRunForm.goalId}
+                    onChange={(event) =>
+                      setWatcherRunForm({
+                        ...watcherRunForm,
+                        goalId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">derive or unlinked</option>
+                    {goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Severity</FieldLabel>
+                  <Select
+                    value={watcherRunForm.signalSeverity}
+                    onChange={(event) =>
+                      setWatcherRunForm({
+                        ...watcherRunForm,
+                        signalSeverity: event.target.value as SignalSeverity,
+                      })
+                    }
+                  >
+                    {signalSeverities.map((severity) => (
+                      <option key={severity} value={severity}>
+                        {severity}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
               <label className="flex items-center gap-2 text-xs text-neutral-400">
                 <input
                   type="checkbox"
@@ -1002,6 +1082,122 @@ export default function CompanyBrainPage() {
                 disabled={!runForm.blueprintId}
               />
             </KernelForm>
+          </section>
+
+          <section className="grid gap-4 xl:grid-cols-3">
+            <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Signals
+                  </h2>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-800/40">
+                {signals.length === 0 ? (
+                  <EmptyState label="No signals generated" />
+                ) : (
+                  signals.slice(0, 6).map((signal) => {
+                    const artifact = artifacts.find(
+                      (item) => item.id === signal.artifactId
+                    );
+                    const source = sources.find((item) => item.id === signal.sourceId);
+                    return (
+                      <div key={signal.id} className="px-5 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-neutral-200">
+                              {signal.summary}
+                            </p>
+                            <p className="mt-1 text-xs text-neutral-600">
+                              {source?.name ?? signal.source} ·{" "}
+                              {artifact?.title ?? signal.entityId}
+                            </p>
+                          </div>
+                          <StatusBadge value={signal.severity} />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Alignment Findings
+                  </h2>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-800/40">
+                {alignmentFindings.length === 0 ? (
+                  <EmptyState label="No findings generated" />
+                ) : (
+                  alignmentFindings.slice(0, 6).map((finding) => {
+                    const priority = priorities.find(
+                      (item) => item.id === finding.priorityId
+                    );
+                    const workItem = workItems.find(
+                      (item) => item.id === finding.workItemId
+                    );
+                    return (
+                      <div key={finding.id} className="px-5 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-neutral-200">
+                              {priority?.title ?? workItem?.title ?? "Unlinked evidence"}
+                            </p>
+                            <p className="mt-1 line-clamp-2 text-xs text-neutral-600">
+                              {finding.rationale}
+                            </p>
+                          </div>
+                          <StatusBadge value={finding.classification} />
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Guidance Queue
+                  </h2>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-800/40">
+                {guidanceItems.length === 0 ? (
+                  <EmptyState label="No guidance generated" />
+                ) : (
+                  guidanceItems.slice(0, 6).map((item) => (
+                    <div key={item.id} className="px-5 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-neutral-200">
+                            {item.title}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-xs text-neutral-600">
+                            {item.action}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <StatusBadge value={item.status} />
+                          <StatusBadge value={item.feedbackStatus} />
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -1278,7 +1474,7 @@ export default function CompanyBrainPage() {
                           </p>
                           <p className="mt-1 text-xs text-neutral-600">
                             {lastRun
-                              ? `${lastRun.artifactsCreated.length} artifacts · ${lastRun.workItemsCreated.length} work items`
+                              ? `${lastRun.artifactsCreated.length} artifacts · ${lastRun.signalsCreated.length} signals · ${lastRun.alignmentFindingsCreated.length} findings · ${lastRun.guidanceCreated.length} guidance`
                               : "no outputs yet"}
                           </p>
                         </div>

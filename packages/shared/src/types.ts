@@ -323,6 +323,42 @@ export type ActionPolicy =
   | "create_work_items"
   | "request_human"
   | "writeback_allowed";
+export type SignalSource =
+  | "feedback"
+  | "telemetry"
+  | "transcript"
+  | "error"
+  | "support"
+  | "qa";
+export type SignalScope = "tenant" | "vertical" | "core";
+export type SignalEntityType =
+  | "user"
+  | "school"
+  | "teacher"
+  | "flow"
+  | "screen"
+  | "job";
+export type SignalSeverity = "info" | "warn" | "critical";
+export type AlignmentClassification =
+  | "aligned"
+  | "weak"
+  | "drift"
+  | "contradiction"
+  | "unknown";
+export type GuidanceAudience = "human" | "team" | "agent" | "system";
+export type GuidanceStatus =
+  | "new"
+  | "open"
+  | "accepted"
+  | "rejected"
+  | "done"
+  | "ignored";
+export type GuidanceFeedbackStatus =
+  | "pending"
+  | "accepted"
+  | "rejected"
+  | "ignored"
+  | "completed";
 
 export interface Provenance {
   sourceId?: string;
@@ -556,6 +592,135 @@ export interface CreateWorkItemRequest {
   provenance?: Provenance | null;
 }
 
+export interface Signal {
+  id: string;
+  source: SignalSource;
+  scope: SignalScope;
+  entityType: SignalEntityType;
+  entityId: string;
+  timestamp: number;
+  summary: string;
+  rawRef: string;
+  severity: SignalSeverity;
+  confidence: number;
+  tags: string[];
+  area: CompanyBrainArea;
+  sourceId: string | null;
+  artifactId: string | null;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  watcherId: string | null;
+  watcherRunId: string | null;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateSignalRequest {
+  source: SignalSource;
+  scope: SignalScope;
+  entityType: SignalEntityType;
+  entityId: string;
+  timestamp?: number;
+  summary: string;
+  rawRef: string;
+  severity?: SignalSeverity;
+  confidence?: number;
+  tags?: string[];
+  area?: CompanyBrainArea;
+  sourceId?: string | null;
+  artifactId?: string | null;
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  watcherId?: string | null;
+  watcherRunId?: string | null;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AlignmentFinding {
+  id: string;
+  priorityId: string | null;
+  goalId: string | null;
+  artifactIds: string[];
+  signalIds: string[];
+  workItemId: string | null;
+  workflowRunId: string | null;
+  area: CompanyBrainArea;
+  classification: AlignmentClassification;
+  rationale: string;
+  confidence: number;
+  suggestedAction: string | null;
+  severity: SignalSeverity;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateAlignmentFindingRequest {
+  priorityId?: string | null;
+  goalId?: string | null;
+  artifactIds?: string[];
+  signalIds?: string[];
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  area?: CompanyBrainArea;
+  classification: AlignmentClassification;
+  rationale: string;
+  confidence?: number;
+  suggestedAction?: string | null;
+  severity?: SignalSeverity;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
+export interface GuidanceItem {
+  id: string;
+  audience: GuidanceAudience;
+  priorityId: string | null;
+  goalId: string | null;
+  findingId: string | null;
+  signalId: string | null;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  area: CompanyBrainArea;
+  title: string;
+  action: string;
+  dueAt: number | null;
+  severity: SignalSeverity;
+  status: GuidanceStatus;
+  feedbackStatus: GuidanceFeedbackStatus;
+  generatedFrom: Record<string, unknown> | null;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateGuidanceItemRequest {
+  audience?: GuidanceAudience;
+  priorityId?: string | null;
+  goalId?: string | null;
+  findingId?: string | null;
+  signalId?: string | null;
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  area?: CompanyBrainArea;
+  title: string;
+  action: string;
+  dueAt?: number | null;
+  severity?: SignalSeverity;
+  status?: GuidanceStatus;
+  feedbackStatus?: GuidanceFeedbackStatus;
+  generatedFrom?: Record<string, unknown> | null;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
 export interface WorkflowBlueprintStage {
   key: string;
   title: string;
@@ -725,6 +890,7 @@ export interface WatcherRun {
   sourceIds: string[];
   artifactsCreated: string[];
   signalsCreated: string[];
+  alignmentFindingsCreated: string[];
   workItemsCreated: string[];
   guidanceCreated: string[];
   workflowRunsLinked: string[];
@@ -746,12 +912,26 @@ export interface RunWatcherRequest {
   createWorkItem?: boolean;
   workItemTitle?: string | null;
   externalUrl?: string | null;
+  priorityId?: string | null;
+  goalId?: string | null;
+  signalSource?: SignalSource;
+  signalScope?: SignalScope;
+  signalEntityType?: SignalEntityType;
+  signalEntityId?: string | null;
+  signalSeverity?: SignalSeverity;
+  signalTags?: string[];
+  guidanceAudience?: GuidanceAudience;
+  guidanceAction?: string | null;
+  guidanceDueAt?: number | null;
 }
 
 export interface RunWatcherResponse {
   run: WatcherRun;
   artifact: Artifact;
+  signalsCreated: Signal[];
+  alignmentFindingsCreated: AlignmentFinding[];
   workItemsCreated: WorkItem[];
+  guidanceItemsCreated: GuidanceItem[];
   workflowRunsLinked: string[];
 }
 
@@ -768,6 +948,9 @@ export interface CompanyBrainSummary {
   artifactLinks: ArtifactLink[];
   watchers: Watcher[];
   watcherRuns: WatcherRun[];
+  signals: Signal[];
+  alignmentFindings: AlignmentFinding[];
+  guidanceItems: GuidanceItem[];
   stats: {
     sourceCount: number;
     artifactCount: number;
@@ -782,6 +965,11 @@ export interface CompanyBrainSummary {
     activeWatcherCount: number;
     watcherRunCount: number;
     watcherErrorCount: number;
+    signalCount: number;
+    alignmentFindingCount: number;
+    driftFindingCount: number;
+    guidanceItemCount: number;
+    openGuidanceCount: number;
   };
 }
 

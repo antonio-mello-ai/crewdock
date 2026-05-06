@@ -229,6 +229,75 @@ CREATE TABLE IF NOT EXISTS cb_work_items (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_signals (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'core',
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  timestamp INTEGER NOT NULL,
+  summary TEXT NOT NULL,
+  raw_ref TEXT NOT NULL,
+  severity TEXT NOT NULL DEFAULT 'info',
+  confidence REAL NOT NULL DEFAULT 1,
+  tags TEXT NOT NULL DEFAULT '[]',
+  area TEXT NOT NULL DEFAULT 'unknown',
+  source_id TEXT,
+  artifact_id TEXT,
+  work_item_id TEXT,
+  workflow_run_id TEXT,
+  watcher_id TEXT,
+  watcher_run_id TEXT,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_alignment_findings (
+  id TEXT PRIMARY KEY,
+  priority_id TEXT,
+  goal_id TEXT,
+  artifact_ids TEXT NOT NULL DEFAULT '[]',
+  signal_ids TEXT NOT NULL DEFAULT '[]',
+  work_item_id TEXT,
+  workflow_run_id TEXT,
+  area TEXT NOT NULL DEFAULT 'unknown',
+  classification TEXT NOT NULL DEFAULT 'unknown',
+  rationale TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 1,
+  suggested_action TEXT,
+  severity TEXT NOT NULL DEFAULT 'info',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_guidance_items (
+  id TEXT PRIMARY KEY,
+  audience TEXT NOT NULL DEFAULT 'human',
+  priority_id TEXT,
+  goal_id TEXT,
+  finding_id TEXT,
+  signal_id TEXT,
+  work_item_id TEXT,
+  workflow_run_id TEXT,
+  area TEXT NOT NULL DEFAULT 'unknown',
+  title TEXT NOT NULL,
+  action TEXT NOT NULL,
+  due_at INTEGER,
+  severity TEXT NOT NULL DEFAULT 'info',
+  status TEXT NOT NULL DEFAULT 'open',
+  feedback_status TEXT NOT NULL DEFAULT 'pending',
+  generated_from TEXT,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cb_workflow_blueprints (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -335,6 +404,7 @@ CREATE TABLE IF NOT EXISTS cb_watcher_runs (
   source_ids TEXT NOT NULL DEFAULT '[]',
   artifacts_created TEXT NOT NULL DEFAULT '[]',
   signals_created TEXT NOT NULL DEFAULT '[]',
+  alignment_findings_created TEXT NOT NULL DEFAULT '[]',
   work_items_created TEXT NOT NULL DEFAULT '[]',
   guidance_created TEXT NOT NULL DEFAULT '[]',
   workflow_runs_linked TEXT NOT NULL DEFAULT '[]',
@@ -355,6 +425,13 @@ CREATE INDEX IF NOT EXISTS idx_cb_milestones_goal_id ON cb_milestones(goal_id);
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_status ON cb_work_items(status);
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_external ON cb_work_items(external_provider, external_id);
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_links ON cb_work_items(priority_id, goal_id);
+CREATE INDEX IF NOT EXISTS idx_cb_signals_artifact_id ON cb_signals(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_cb_signals_watcher_run_id ON cb_signals(watcher_run_id);
+CREATE INDEX IF NOT EXISTS idx_cb_signals_severity ON cb_signals(severity);
+CREATE INDEX IF NOT EXISTS idx_cb_alignment_findings_priority_id ON cb_alignment_findings(priority_id);
+CREATE INDEX IF NOT EXISTS idx_cb_alignment_findings_classification ON cb_alignment_findings(classification);
+CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_status ON cb_guidance_items(status);
+CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_finding_id ON cb_guidance_items(finding_id);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_blueprints_area ON cb_workflow_blueprints(workflow_area);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_status ON cb_workflow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_work_item_id ON cb_workflow_runs(work_item_id);
@@ -566,6 +643,16 @@ export function getDb() {
     }
     if (!colNames.has("claude_session_id")) {
       sqlite.exec("ALTER TABLE sessions ADD COLUMN claude_session_id TEXT");
+    }
+
+    const watcherRunCols = sqlite.prepare("PRAGMA table_info(cb_watcher_runs)").all() as Array<{
+      name: string;
+    }>;
+    const watcherRunColNames = new Set(watcherRunCols.map((c) => c.name));
+    if (!watcherRunColNames.has("alignment_findings_created")) {
+      sqlite.exec(
+        "ALTER TABLE cb_watcher_runs ADD COLUMN alignment_findings_created TEXT NOT NULL DEFAULT '[]'"
+      );
     }
 
     seedCompanyBrain(sqlite);

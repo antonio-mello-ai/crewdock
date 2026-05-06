@@ -2,13 +2,21 @@ import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import type {
   CompanyBrainArea,
   ActionPolicy,
+  AlignmentClassification,
   GateStatus,
   GoalStatus,
+  GuidanceAudience,
+  GuidanceFeedbackStatus,
+  GuidanceStatus,
   HealthStatus,
   OwnerType,
   Provenance,
   ReviewStatus,
   RiskClass,
+  SignalEntityType,
+  SignalScope,
+  SignalSeverity,
+  SignalSource,
   SlaStatus,
   SourceStatus,
   SourceType,
@@ -251,6 +259,84 @@ export const cbWorkItems = sqliteTable("cb_work_items", {
   updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
+export const cbSignals = sqliteTable("cb_signals", {
+  id: text("id").primaryKey(),
+  source: text("source").$type<SignalSource>().notNull(),
+  scope: text("scope").$type<SignalScope>().notNull().default("core"),
+  entityType: text("entity_type").$type<SignalEntityType>().notNull(),
+  entityId: text("entity_id").notNull(),
+  timestamp: integer("timestamp", { mode: "number" }).notNull(),
+  summary: text("summary").notNull(),
+  rawRef: text("raw_ref").notNull(),
+  severity: text("severity").$type<SignalSeverity>().notNull().default("info"),
+  confidence: real("confidence").notNull().default(1),
+  tags: text("tags", { mode: "json" }).$type<string[]>().notNull().default([]),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("unknown"),
+  sourceId: text("source_id"),
+  artifactId: text("artifact_id"),
+  workItemId: text("work_item_id"),
+  workflowRunId: text("workflow_run_id"),
+  watcherId: text("watcher_id"),
+  watcherRunId: text("watcher_run_id"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbAlignmentFindings = sqliteTable("cb_alignment_findings", {
+  id: text("id").primaryKey(),
+  priorityId: text("priority_id"),
+  goalId: text("goal_id"),
+  artifactIds: text("artifact_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  signalIds: text("signal_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  workItemId: text("work_item_id"),
+  workflowRunId: text("workflow_run_id"),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("unknown"),
+  classification: text("classification")
+    .$type<AlignmentClassification>()
+    .notNull()
+    .default("unknown"),
+  rationale: text("rationale").notNull(),
+  confidence: real("confidence").notNull().default(1),
+  suggestedAction: text("suggested_action"),
+  severity: text("severity").$type<SignalSeverity>().notNull().default("info"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbGuidanceItems = sqliteTable("cb_guidance_items", {
+  id: text("id").primaryKey(),
+  audience: text("audience").$type<GuidanceAudience>().notNull().default("human"),
+  priorityId: text("priority_id"),
+  goalId: text("goal_id"),
+  findingId: text("finding_id"),
+  signalId: text("signal_id"),
+  workItemId: text("work_item_id"),
+  workflowRunId: text("workflow_run_id"),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("unknown"),
+  title: text("title").notNull(),
+  action: text("action").notNull(),
+  dueAt: integer("due_at", { mode: "number" }),
+  severity: text("severity").$type<SignalSeverity>().notNull().default("info"),
+  status: text("status").$type<GuidanceStatus>().notNull().default("open"),
+  feedbackStatus: text("feedback_status")
+    .$type<GuidanceFeedbackStatus>()
+    .notNull()
+    .default("pending"),
+  generatedFrom: text("generated_from", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
 export const cbWorkflowBlueprints = sqliteTable("cb_workflow_blueprints", {
   id: text("id").primaryKey(),
   title: text("title").notNull(),
@@ -384,6 +470,10 @@ export const cbWatcherRuns = sqliteTable("cb_watcher_runs", {
     .notNull()
     .default([]),
   signalsCreated: text("signals_created", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  alignmentFindingsCreated: text("alignment_findings_created", { mode: "json" })
     .$type<string[]>()
     .notNull()
     .default([]),

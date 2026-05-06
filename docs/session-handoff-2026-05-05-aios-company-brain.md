@@ -134,7 +134,7 @@ Parciais que precisam evoluir:
 
 - Strategy layer ainda nao tem tradeoffs/decisions.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/work items/runs/watchers, mas ainda nao cobre guidance/signals.
+- MCP cobre sources/artifacts/signals/alignment findings/guidance/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
 
 ## Slice Watcher / Operating Loop Layer
 
@@ -142,7 +142,7 @@ Objetivo: transformar o Company Brain de base consultavel em loop operacional qu
 
 Fonte de produto: `corp/docs/action/aios-product-roadmap.md`, secao `Watcher / Operating Loop Layer`, e `corp/docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`, gaps/entregaveis de Watcher.
 
-Status em 2026-05-06: implementado no corte v0. O proximo passo natural e criar `Signal`, `AlignmentFinding` e `GuidanceItem` para que watchers deixem de gerar apenas evidence/work items e passem a alimentar drift/guidance.
+Status em 2026-05-06: implementado no corte v0. O watcher manual foi mantido e passou a alimentar o closed loop minimo via `Signal`, `AlignmentFinding` e `GuidanceItem`.
 
 Implementar no menor corte util:
 
@@ -150,14 +150,14 @@ Implementar no menor corte util:
 2. Tabelas `cb_watchers` e `cb_watcher_runs` em `packages/daemon/src/db/schema.ts` e migration inline idempotente em `packages/daemon/src/db/client.ts`. Implementado.
 3. Campos minimos:
    - `Watcher`: `id`, `title`, `description`, `source_ids`, `trigger_type`, `schedule`, `event_filter`, `scope_query`, `owner`, `owner_type`, `target_workflow_blueprint_id`, `risk_class`, `action_policy`, `status`, `last_run_at`, `next_run_at`, `failure_policy`, `output_policy`, `visibility`.
-   - `WatcherRun`: `id`, `watcher_id`, `started_at`, `finished_at`, `status`, `artifacts_created`, `signals_created`, `work_items_created`, `guidance_created`, `error_summary`, `provenance`.
+   - `WatcherRun`: `id`, `watcher_id`, `started_at`, `finished_at`, `status`, `artifacts_created`, `signals_created`, `alignment_findings_created`, `work_items_created`, `guidance_created`, `error_summary`, `provenance`.
 4. Rotas REST em `/api/company-brain/watchers` e `/api/company-brain/watcher-runs`. Implementado.
 5. Expor status basico de watchers no `/api/company-brain/summary` e na UI `/company-brain`, preferencialmente como Source Health / Operating Loops. Implementado.
 6. Criar watcher manual/simulado para PR/CI ou GitHub Issues. Implementado com seed `watcher-github-issues-manual-v0` e run manual por API/MCP/UI.
-7. Garantir que o watcher consiga gerar ao menos `Artifact` e `WorkItem` com `provenance`, `risk_class` e `action_policy`. Implementado para artifact/work item; `Signal` segue residual.
+7. Garantir que o watcher consiga gerar ao menos `Artifact` e `WorkItem` com `provenance`, `risk_class` e `action_policy`. Implementado para artifact/work item no Watcher v0; expandido no Closed Loop v0 para signal/finding/guidance.
 8. Nao implementar writeback externo automatico neste corte. Cumprido: run manual registra no AIOS; nao comenta/abre issue externa.
 
-Aceite do proximo slice:
+Aceite do Watcher v0:
 
 - Build passa: `npx turbo build`.
 - Schema e migrations continuam idempotentes.
@@ -177,6 +177,52 @@ Dogfood local Watcher v0 validado em DB temporario `/tmp/aios-runtime-watcher-do
 - ArtifactLink: artifact -> work_item com relationship `created_from_watcher`.
 - Source Health atualizado para `healthy`, `lastSyncAt=1778034446868`, `syncError=null`.
 - Run provenance incluiu `createdFrom=watcher:1IhRM9qC8sz0:run`, `action_policy=create_work_items`, `risk_class=B`, `artifactId=QpbIBVz38wOo`.
+
+## Slice Closed Loop v0
+
+Objetivo: fechar o loop minimo dentro do Company Brain sem writeback externo automatico.
+
+Status em 2026-05-06: implementado no menor corte util. O watcher manual existente agora consegue gerar a cadeia `WatcherRun -> Artifact -> Signal -> AlignmentFinding -> GuidanceItem`, mantendo WorkItem/WorkflowRun como links internos e preservando provenance, action policy, risk class, visibility e area.
+
+Implementado:
+
+1. Tipos compartilhados `Signal`, `AlignmentFinding`, `GuidanceItem` e requests correspondentes em `packages/shared/src/types.ts`.
+2. Tabelas `cb_signals`, `cb_alignment_findings`, `cb_guidance_items` e coluna `alignment_findings_created` em `cb_watcher_runs`, com migration incremental idempotente.
+3. Rotas REST:
+   - `GET/POST /api/company-brain/signals`
+   - `GET/POST /api/company-brain/alignment-findings`
+   - `GET/POST /api/company-brain/guidance-items`
+4. Watcher manual gera automaticamente:
+   - `Artifact` watcher observation;
+   - `Signal` v0 no envelope AutoImprove Core (`source`, `scope`, `entity_type`, `entity_id`, `timestamp`, `summary`, `raw_ref`, `severity`, `confidence`, `tags`);
+   - `AlignmentFinding` classificado como `aligned`, `weak` ou `unknown` contra priority/goal v0;
+   - `GuidanceItem` com `status` e `feedback_status`;
+   - links em `artifact_links` e arrays de output no `WatcherRun`.
+5. UI `/company-brain` mostra Signals, Alignment Findings, Guidance Queue e Operating Loops com contadores completos.
+6. MCP expõe create/read via summary e ferramentas para signal/alignment/guidance, alem de `run_company_brain_watcher` com campos de priority/goal/severity/envelope.
+7. Nenhum writeback externo automatico foi implementado.
+
+Dogfood local Closed Loop v0 validado em DB temporario `/tmp/aios-runtime-loop-dogfood.sqlite`, daemon em `127.0.0.1:43103`:
+
+- Source real `AIOS Runtime GitHub Issues`: `WVhuCXq0dh8H`, repo `antonio-mello-ai/crewdock`.
+- Priority `AIOS closed loop minimum kernel`: `fxsko_x6_amN`.
+- Goal `Close Watcher/Signal/Guidance loop v0`: `7lyDCAcUwPI7`.
+- WorkItem real ligado a GitHub Issue `crewdock#5`: `NSKawlK3KQgg`.
+- WorkflowRun no `development-blueprint-v0`: `cmCLD7uoHRri`.
+- WatcherRun manual: `ipdvD_Ig1JcN`.
+- Artifact criado: `3rzeoaH0ny8Y`, raw_ref `https://github.com/antonio-mello-ai/crewdock/issues/5`.
+- Signal criado: `A09cnKqTQTgV`, envelope `source=qa`, `scope=core`, `entityType=job`, `severity=warn`.
+- AlignmentFinding criado: `pLArniL1acc_`, classification `aligned`, com priority/goal/work item/signal/artifact linkados.
+- GuidanceItem criado: `eiM1Plq0ONk8`, `status=open`, `feedbackStatus=pending`, audience `agent`.
+- Run outputs: `artifacts=1`, `signals=1`, `findings=1`, `workItems=1`, `guidance=1`, `workflowRunsLinked=1`.
+- Summary retornou `signalCount=1`, `alignmentFindingCount=1`, `guidanceItemCount=1`, `openGuidanceCount=1`, `unlinkedWorkItemCount=0`, `watcherErrorCount=0`.
+
+Proximos cortes recomendados:
+
+- Melhorar Drift/Alignment alem da heuristica v0, incluindo `drift` e `contradiction` a partir de regras de strategy/decision.
+- Adicionar `GuidanceItem` feedback/update workflow na UI/API.
+- Adicionar `Decision`, `AgentContext` e `ImprovementProposal`.
+- Depois disso, avaliar adapters/read-only reais e writeback gated, sem auto-writeback por default.
 
 ## Dogfood ERP
 
@@ -243,14 +289,14 @@ Objetos minimos do primeiro corte:
 - `WorkflowStep` ou gate equivalente
 - `ArtifactLink`
 
-Objetos que ficam para Slice 2+:
+Objetos fora do Slice 1 original / pendencias posteriores:
 
 - `Metric`
 - `Cadence`
 - `Decision`
-- `Signal`
-- `AlignmentFinding`
-- `GuidanceItem`
+- `Signal` (implementado no Closed Loop v0; hardening e extractors reais ficam pendentes)
+- `AlignmentFinding` (implementado no Closed Loop v0; drift/contradiction mais ricos ficam pendentes)
+- `GuidanceItem` (implementado no Closed Loop v0; feedback/update workflow fica pendente)
 
 Se o diff crescer, deixar `Decision/Signal/Alignment/Guidance` para Slice 2.
 
@@ -268,7 +314,7 @@ Se o diff crescer, deixar `Decision/Signal/Alignment/Guidance` para Slice 2.
 - Pelo menos um `WorkflowRun` pode apontar para issue ERP real: validado com issue #33.
 - O sistema consegue apontar work item sem prioridade/meta como `unlinked`: validado com issue #32.
 - UI mostra Strategy Map, Evidence Inbox, Unlinked Work e Workflow Runs em `/company-brain`.
-- MCP consegue listar/criar summary, sources, artifacts, work items e workflow runs.
+- MCP consegue listar/criar summary, sources, artifacts, signals, alignment findings, guidance, work items, workflow runs e watchers.
 
 ## Cuidados tecnicos
 
