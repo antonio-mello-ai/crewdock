@@ -1697,6 +1697,30 @@ export default function CompanyBrainPage() {
                     ))}
                   </div>
                 ) : null}
+                {writebackSafetyDashboard.latestAuditTrail.length ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <p className="text-xs font-medium text-neutral-300">
+                      Latest audit trail
+                    </p>
+                    <div className="mt-2 divide-y divide-neutral-800/40">
+                      {writebackSafetyDashboard.latestAuditTrail
+                        .slice(0, 5)
+                        .map((event) => (
+                          <div
+                            key={`${event.proposalId}:${event.event}:${event.at}`}
+                            className="grid gap-1 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                          >
+                            <p className="min-w-0 truncate text-neutral-500">
+                              {event.adapter} · {event.event} · {event.title}
+                            </p>
+                            <p className="text-neutral-700">
+                              {event.actor ?? "system"}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 divide-y divide-neutral-800/40">
                   {writebackSafetyDashboard.items.length === 0 ? (
                     <p className="py-2 text-xs text-neutral-600">

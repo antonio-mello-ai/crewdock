@@ -1388,6 +1388,39 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_writeback_audit_trail",
+  {
+    title: "List Company Brain writeback audit trail",
+    description:
+      "Read-only export of ExternalActionProposal audit events, optionally filtered by adapter or proposal id. Does not execute or mutate external systems.",
+    inputSchema: {
+      adapter: z
+        .enum([
+          "github_comment",
+          "github_label",
+          "github_status_check",
+          "slack_thread_reply",
+          "other",
+        ])
+        .optional(),
+      proposalId: z.string().optional(),
+      limit: z.number().int().min(1).max(250).optional(),
+    },
+  },
+  async ({ adapter, proposalId, limit }) => {
+    const params = new URLSearchParams();
+    if (adapter) params.set("adapter", adapter);
+    if (proposalId) params.set("proposalId", proposalId);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/audit-trail${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_github_comment_writeback",
   {
     title: "Execute GitHub comment writeback",

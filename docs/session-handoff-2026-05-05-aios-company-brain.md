@@ -1283,7 +1283,31 @@ Dogfood read-only validado reaproveitando `/tmp/aios-runtime-writeback-negative-
 - `github_label`: `proposalCount=3`, `blockedCount=3`, `completedCount=0`, `completedNoopCount=0`, `mutationAttemptedCount=0`, `failedCount=0`, `latestAt` presente.
 - `github_status_check`: `proposalCount=1`, `blockedCount=1`, `completedCount=0`, `completedNoopCount=0`, `mutationAttemptedCount=0`, `failedCount=0`, `latestAt` presente.
 
-Proximo corte recomendado: revisar UX/API read-only para exportar audit trail filtravel por adapter/proposal, antes de qualquer novo executor real.
+## Slice Writeback Audit Trail Export v0
+
+Objetivo: permitir revisao/export read-only do audit trail de writeback por adapter/proposal.
+
+Implementado em 2026-05-06:
+
+1. `WritebackAuditTrailEntry` e `CompanyBrainWritebackAuditTrailResponse` em `packages/shared/src/types.ts`.
+2. `CompanyBrainWritebackSafetyDashboard.latestAuditTrail` com os ultimos eventos.
+3. API read-only `GET /api/company-brain/external-action-proposals/audit-trail`.
+4. Filtros:
+   - `adapter=github_comment|github_label|github_status_check|slack_thread_reply|other`;
+   - `proposalId=<id>`;
+   - `limit=1..250`.
+5. MCP tool `list_company_brain_writeback_audit_trail`.
+6. UI `/company-brain` mostra `Latest audit trail` no painel Writeback Governance.
+7. Cada evento exportado inclui proposal, adapter, destination/action, risk/policy, approval/execution status, idempotency, refs externas, reviewStatus, blockReasons, actor, timestamp, note e metadata.
+8. Nenhuma chamada externa e nenhuma rota de execute nova.
+
+Dogfood read-only validado reaproveitando `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon em `127.0.0.1:43138`:
+
+- Summary retornou `latestAuditTrailCount=12`.
+- `GET /external-action-proposals/audit-trail?adapter=github_label&limit=20` retornou `total=9`, `adapter=github_label` e todos os items com adapter `github_label`.
+- `GET /external-action-proposals/audit-trail?proposalId=I5PGjeflFsRN&limit=10` retornou `total=3`, todos do mesmo proposal e blockReasons `blocked/github_label_mode_not_supported/github_label_target_or_policy_blocked`.
+
+Proximo corte recomendado: preparar runbook/HITL checklist read-only para quando um novo executor externo for proposto, antes de qualquer nova mutacao real.
 
 ## Dogfood ERP
 
@@ -1403,7 +1427,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0 e Writeback Adapter Summary v0. O proximo corte recomendado e UX/API read-only para exportar audit trail filtravel por adapter/proposal, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0 e Writeback Audit Trail Export v0. O proximo corte recomendado e runbook/HITL checklist read-only para quando um novo executor externo for proposto, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

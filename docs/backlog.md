@@ -81,7 +81,9 @@ Status Writeback Negative-Path Review v0 em 2026-05-06: Safety Dashboard agora e
 
 Status Writeback Adapter Summary v0 em 2026-05-06: Safety Dashboard agora expõe `adapterSummaries` por adapter (`github_comment`, `github_label`, `github_status_check`, `slack_thread_reply`, `other`) com totais de proposals, completados, noops, mutacoes tentadas, bloqueados, prontos, falhas e latestAt. UI mostra o resumo por adapter sem nova mutacao externa.
 
-Proximo corte planejado: revisar UX/API read-only para exportar audit trail filtravel por adapter/proposal, antes de qualquer novo executor real.
+Status Writeback Audit Trail Export v0 em 2026-05-06: audit trail de `ExternalActionProposal` agora e exportavel por API/MCP em modo read-only, com filtros por adapter/proposal, `latestAuditTrail` no Safety Dashboard e UI mostrando ultimos eventos. Inclui reviewStatus e blockReasons junto de cada evento.
+
+Proximo corte planejado: preparar runbook/HITL checklist read-only para quando um novo executor externo for proposto, antes de qualquer nova mutacao real.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -110,6 +112,7 @@ Proximo corte planejado: revisar UX/API read-only para exportar audit trail filt
 - [x] **Post-Writeback Audit Review v0** — distinguir label completado/noop, mutacao tentada e execution event na Safety Dashboard/API/UI/MCP sem novas mutacoes
 - [x] **Writeback Negative-Path Review v0** — expor motivos e contadores para proposals bloqueadas de label/status/check, incluindo remove, multi-label, alvo fora da allowlist e preview-only
 - [x] **Writeback Adapter Summary v0** — consolidar writeback safety por adapter com completed/noop/mutation/block/ready/failed em summary/API/UI/MCP
+- [x] **Writeback Audit Trail Export v0** — exportar eventos de audit trail por adapter/proposal em API/MCP e mostrar ultimos eventos na UI/Summary
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

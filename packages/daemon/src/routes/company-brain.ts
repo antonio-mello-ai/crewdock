@@ -15,6 +15,7 @@ import type {
   CompanyBrainReviewCohesion,
   CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
+  CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainWritebackSafetyDashboard,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -3477,6 +3478,63 @@ function buildWritebackAdapterSummaries(
   return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
 }
 
+function buildWritebackAuditTrail(args: {
+  proposals: ExternalActionProposal[];
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >;
+  adapter?: CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"];
+  proposalId?: string | null;
+  limit?: number;
+}): CompanyBrainWritebackAuditTrailResponse {
+  const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
+  const entries: CompanyBrainWritebackAuditTrailResponse["items"] = [];
+  for (const proposal of args.proposals) {
+    const adapter = writebackAdapterKey(proposal);
+    if (args.adapter && adapter !== args.adapter) continue;
+    if (args.proposalId && proposal.id !== args.proposalId) continue;
+    const review =
+      args.reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
+    const blockReasons = writebackBlockReasons(proposal, review);
+    for (const event of proposal.auditTrail) {
+      entries.push({
+        proposalId: proposal.id,
+        adapter,
+        title: proposal.title,
+        destinationType: proposal.destinationType,
+        destinationRef: proposal.destinationRef,
+        actionType: proposal.actionType,
+        riskClass: proposal.riskClass,
+        actionPolicy: proposal.actionPolicy,
+        approvalStatus: proposal.approvalStatus,
+        executionStatus: proposal.executionStatus,
+        idempotencyKey: proposal.idempotencyKey,
+        externalId: proposal.externalId,
+        externalUrl: proposal.externalUrl,
+        reviewStatus: review.status,
+        blockReasons,
+        event: event.event,
+        actor: event.actor,
+        at: event.at,
+        note: event.note,
+        metadata: event.metadata ?? null,
+      });
+    }
+  }
+  entries.sort((a, b) => b.at - a.at);
+  return {
+    generatedAt: now(),
+    filters: {
+      adapter: args.adapter ?? null,
+      proposalId: args.proposalId ?? null,
+      limit,
+    },
+    items: entries.slice(0, limit),
+    total: entries.length,
+  };
+}
+
 function buildWritebackSafetyDashboard(
   data: ReturnType<typeof listAll>
 ): CompanyBrainWritebackSafetyDashboard {
@@ -3552,6 +3610,11 @@ function buildWritebackSafetyDashboard(
     },
     items,
     adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
+    latestAuditTrail: buildWritebackAuditTrail({
+      proposals,
+      reviews,
+      limit: 12,
+    }).items,
     stats: {
       proposalCount: proposals.length,
       pendingApprovalCount: proposals.filter(
@@ -6975,6 +7038,49 @@ app.get("/external-action-proposals", (c) => {
     data = data.filter((item) => item.approvalStatus === approvalStatus);
   }
   return c.json({ data, total: data.length });
+});
+
+app.get("/external-action-proposals/audit-trail", (c) => {
+  const adapterParam = c.req.query("adapter")?.trim() || null;
+  const proposalId = c.req.query("proposalId")?.trim() || null;
+  const limitParam = Number(c.req.query("limit") ?? "50");
+  const allowedAdapters: CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"][] =
+    [
+      "github_comment",
+      "github_label",
+      "github_status_check",
+      "slack_thread_reply",
+      "other",
+    ];
+  const adapter = allowedAdapters.includes(
+    adapterParam as NonNullable<
+      CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"]
+    >
+  )
+    ? (adapterParam as NonNullable<
+        CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"]
+      >)
+    : null;
+  const proposals = getDb()
+    .select()
+    .from(cbExternalActionProposals)
+    .orderBy(desc(cbExternalActionProposals.updatedAt))
+    .limit(250)
+    .all();
+  const reviews = new Map(
+    proposals.map((proposal) => [
+      proposal.id,
+      buildWritebackExecutionReview(proposal),
+    ])
+  );
+  const data = buildWritebackAuditTrail({
+    proposals,
+    reviews,
+    adapter,
+    proposalId,
+    limit: Number.isFinite(limitParam) ? limitParam : 50,
+  });
+  return c.json({ data });
 });
 
 app.post("/external-action-proposals/from-guidance", async (c) => {

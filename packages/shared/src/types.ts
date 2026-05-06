@@ -1924,11 +1924,46 @@ export interface WritebackAdapterSummary {
   latestAt: number | null;
 }
 
+export interface WritebackAuditTrailEntry {
+  proposalId: string;
+  adapter: WritebackAdapterKey;
+  title: string;
+  destinationType: ExternalActionDestination;
+  destinationRef: string | null;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  idempotencyKey: string;
+  externalId: string | null;
+  externalUrl: string | null;
+  reviewStatus: WritebackExecutionReviewStatus;
+  blockReasons: string[];
+  event: string;
+  actor: string | null;
+  at: number;
+  note: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface CompanyBrainWritebackAuditTrailResponse {
+  generatedAt: number;
+  filters: {
+    adapter: WritebackAdapterKey | null;
+    proposalId: string | null;
+    limit: number;
+  };
+  items: WritebackAuditTrailEntry[];
+  total: number;
+}
+
 export interface CompanyBrainWritebackSafetyDashboard {
   generatedAt: number;
   retryPolicy: WritebackRetryPolicy;
   items: WritebackSafetyQueueItem[];
   adapterSummaries: WritebackAdapterSummary[];
+  latestAuditTrail: WritebackAuditTrailEntry[];
   stats: {
     proposalCount: number;
     pendingApprovalCount: number;
