@@ -1975,6 +1975,30 @@ export interface WritebackDestinationSummary {
   latestAt: number | null;
 }
 
+export interface WritebackTargetObservabilitySummary {
+  targetKey: string;
+  targetType: "github_repo" | "slack_channel" | "external_target" | "unknown";
+  targetLabel: string;
+  destinationType: ExternalActionDestination;
+  repoPrivate: boolean | null;
+  proposalCount: number;
+  completedCount: number;
+  completedNoopCount: number;
+  failedCount: number;
+  blockedCount: number;
+  mutationAttemptedCount: number;
+  duplicateAvoidedCount: number;
+  staleApprovalCount: number;
+  stalePreviewCount: number;
+  needsReviewCount: number;
+  adapters: Partial<Record<WritebackAdapterKey, number>>;
+  executionStatuses: Partial<Record<ExternalActionExecutionStatus, number>>;
+  reviewStatuses: Partial<Record<WritebackExecutionReviewStatus, number>>;
+  latestAt: number | null;
+  latestExternalUrl: string | null;
+  latestTargetSummary: string | null;
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2274,6 +2298,7 @@ export interface CompanyBrainWritebackSafetyDashboard {
   items: WritebackSafetyQueueItem[];
   adapterSummaries: WritebackAdapterSummary[];
   destinationSummaries: WritebackDestinationSummary[];
+  targetObservabilitySummaries: WritebackTargetObservabilitySummary[];
   operatingLoopMetrics: WritebackOperatingLoopMetrics;
   evidencePacketIndex: WritebackEvidencePacketIndexItem[];
   evidenceIntegrityGaps: WritebackEvidenceIntegrityGap[];

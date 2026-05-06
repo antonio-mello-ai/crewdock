@@ -3007,6 +3007,16 @@ function buildBriefingSections(args: {
         `${blockedWritebackItems.length} blocked by safety; ${writebackLoopMetrics.counts.staleApproval} stale approvals; ${writebackLoopMetrics.counts.stalePreview} stale previews; ${writebackLoopMetrics.counts.mutationAttempted} mutation attempts.`,
         `${integritySummary.total} evidence integrity gaps; ${integritySummary.criticalCount} critical; ${integritySummary.warnCount} warn.`,
         `${remediationSummary.total} remediation suggestions; ${remediationSummary.humanReviewCount} need human review; ${remediationSummary.newProposalCount} suggest new proposal.`,
+        ...writebackSafetyDashboard.targetObservabilitySummaries
+          .slice(0, 3)
+          .map((target) =>
+            formatEntityLine({
+              prefix: "target",
+              title: target.targetLabel,
+              status: `${target.completedCount}/${target.proposalCount} completed`,
+              detail: `needs_review=${target.needsReviewCount}; stale=${target.staleApprovalCount + target.stalePreviewCount}`,
+            })
+          ),
         ...pendingWritebackProposals.slice(0, 4).map((proposal) =>
           formatEntityLine({
             prefix: "pending",
@@ -4223,6 +4233,149 @@ function buildWritebackDestinationSummaries(
   return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
 }
 
+function incrementSummaryCount<T extends string>(
+  counts: Partial<Record<T, number>>,
+  key: T
+) {
+  counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function writebackTargetObservabilityBase(proposal: ExternalActionProposal) {
+  const githubStatus = githubStatusWritebackEvidence(proposal);
+  if (proposal.destinationType === "github") {
+    try {
+      const target = parseGitHubIssueOrPullRef(proposal.destinationRef ?? "");
+      return {
+        targetKey: `github:${target.fullName}`,
+        targetType: "github_repo" as const,
+        targetLabel: target.fullName,
+      };
+    } catch {
+      const repo = githubStatus?.repo ?? metadataString(proposal.payload.repo);
+      if (repo) {
+        return {
+          targetKey: `github:${repo}`,
+          targetType: "github_repo" as const,
+          targetLabel: repo,
+        };
+      }
+    }
+  }
+  if (proposal.destinationType === "slack") {
+    try {
+      const target = parseSlackThreadRef(proposal.destinationRef ?? "");
+      return {
+        targetKey: `slack:${target.channelId}`,
+        targetType: "slack_channel" as const,
+        targetLabel: target.channelId,
+      };
+    } catch {
+      // Fall through to raw destination.
+    }
+  }
+  const raw = proposal.destinationRef?.trim();
+  if (raw) {
+    return {
+      targetKey: `${proposal.destinationType}:${raw}`,
+      targetType: "external_target" as const,
+      targetLabel: raw,
+    };
+  }
+  return {
+    targetKey: `${proposal.destinationType}:unknown`,
+    targetType: "unknown" as const,
+    targetLabel: "unknown",
+  };
+}
+
+function isStaleApprovedWithoutPreview(
+  proposal: ExternalActionProposal,
+  review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"],
+  generatedAt: number
+) {
+  return (
+    proposal.approvalStatus === "approved" &&
+    proposal.approvedAt !== null &&
+    review.previewAt === null &&
+    generatedAt - proposal.approvedAt > WRITEBACK_PREVIEW_STALE_MS
+  );
+}
+
+function buildWritebackTargetObservabilitySummaries(
+  proposals: ExternalActionProposal[],
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >,
+  generatedAt: number
+): CompanyBrainWritebackSafetyDashboard["targetObservabilitySummaries"] {
+  const summaries = new Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["targetObservabilitySummaries"][number]
+  >();
+  for (const proposal of proposals) {
+    const base = writebackTargetObservabilityBase(proposal);
+    const review = reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
+    const latestAudit = latestExternalActionAudit(proposal);
+    const latestAt = latestAudit?.at ?? proposal.updatedAt;
+    const githubStatus = githubStatusWritebackEvidence(proposal);
+    const existing =
+      summaries.get(base.targetKey) ?? {
+        targetKey: base.targetKey,
+        targetType: base.targetType,
+        targetLabel: base.targetLabel,
+        destinationType: proposal.destinationType,
+        repoPrivate: null,
+        proposalCount: 0,
+        completedCount: 0,
+        completedNoopCount: 0,
+        failedCount: 0,
+        blockedCount: 0,
+        mutationAttemptedCount: 0,
+        duplicateAvoidedCount: 0,
+        staleApprovalCount: 0,
+        stalePreviewCount: 0,
+        needsReviewCount: 0,
+        adapters: {},
+        executionStatuses: {},
+        reviewStatuses: {},
+        latestAt: null,
+        latestExternalUrl: null,
+        latestTargetSummary: null,
+      };
+
+    existing.proposalCount += 1;
+    if (isCompletedExternalWriteback(proposal)) existing.completedCount += 1;
+    if (hasCompletedNoopAudit(proposal)) existing.completedNoopCount += 1;
+    if (proposal.executionStatus === "failed") existing.failedCount += 1;
+    if (review.status === "blocked") existing.blockedCount += 1;
+    if (hasExternalMutationAttemptAudit(proposal)) {
+      existing.mutationAttemptedCount += 1;
+    }
+    if (hasDuplicateAvoidanceAudit(proposal)) existing.duplicateAvoidedCount += 1;
+    if (isStaleApprovedWithoutPreview(proposal, review, generatedAt)) {
+      existing.staleApprovalCount += 1;
+    }
+    if (review.flags.includes("stale_preview")) existing.stalePreviewCount += 1;
+    if (review.status !== "completed" && review.status !== "duplicate_prevented") {
+      existing.needsReviewCount += 1;
+    }
+    if (githubStatus?.repoPrivate !== null && githubStatus?.repoPrivate !== undefined) {
+      existing.repoPrivate = githubStatus.repoPrivate;
+    }
+    incrementSummaryCount(existing.adapters, writebackAdapterKey(proposal));
+    incrementSummaryCount(existing.executionStatuses, proposal.executionStatus);
+    incrementSummaryCount(existing.reviewStatuses, review.status);
+    if (existing.latestAt === null || latestAt >= existing.latestAt) {
+      existing.latestAt = latestAt;
+      existing.latestExternalUrl = proposal.externalUrl;
+      existing.latestTargetSummary = writebackTargetSummary(proposal);
+    }
+    summaries.set(base.targetKey, existing);
+  }
+  return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
+}
+
 function durationBetween(start: number | null | undefined, end: number | null | undefined) {
   if (
     typeof start !== "number" ||
@@ -5423,6 +5576,11 @@ function buildWritebackSafetyDashboard(
     items,
     adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
     destinationSummaries: buildWritebackDestinationSummaries(proposals, reviews),
+    targetObservabilitySummaries: buildWritebackTargetObservabilitySummaries(
+      proposals,
+      reviews,
+      generatedAt
+    ),
     operatingLoopMetrics: buildWritebackOperatingLoopMetrics(data, reviews, generatedAt),
     evidencePacketIndex: buildWritebackEvidencePacketIndex(
       data,

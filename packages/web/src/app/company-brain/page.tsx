@@ -2361,6 +2361,64 @@ export default function CompanyBrainPage() {
                       ))}
                   </div>
                 ) : null}
+                {writebackSafetyDashboard.targetObservabilitySummaries.length ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <p className="text-xs font-medium text-neutral-300">
+                      Target observability
+                    </p>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      {writebackSafetyDashboard.targetObservabilitySummaries
+                        .slice(0, 4)
+                        .map((target) => (
+                          <div
+                            key={target.targetKey}
+                            className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate font-medium text-neutral-300">
+                                {target.targetLabel}
+                              </p>
+                              <StatusBadge value={target.targetType} />
+                              {target.repoPrivate !== null ? (
+                                <StatusBadge
+                                  value={target.repoPrivate ? "private" : "public"}
+                                />
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-neutral-600">
+                              total {target.proposalCount} · done{" "}
+                              {target.completedCount} · noop{" "}
+                              {target.completedNoopCount}
+                            </p>
+                            <p className="mt-1 text-neutral-600">
+                              mutation {target.mutationAttemptedCount} · failed{" "}
+                              {target.failedCount} · duplicate{" "}
+                              {target.duplicateAvoidedCount}
+                            </p>
+                            <p className="mt-1 text-neutral-600">
+                              review {target.needsReviewCount} · stale approval{" "}
+                              {target.staleApprovalCount} · stale preview{" "}
+                              {target.stalePreviewCount}
+                            </p>
+                            <p className="mt-1 truncate text-neutral-700">
+                              adapters{" "}
+                              {Object.entries(target.adapters)
+                                .map(([adapter, count]) => `${adapter}:${count}`)
+                                .join(", ") || "none"}
+                            </p>
+                            {target.latestTargetSummary ? (
+                              <p className="mt-1 truncate text-neutral-700">
+                                latest {target.latestTargetSummary} ·{" "}
+                                {target.latestAt
+                                  ? formatTimeAgo(target.latestAt)
+                                  : "never"}
+                              </p>
+                            ) : null}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs font-medium text-neutral-300">
