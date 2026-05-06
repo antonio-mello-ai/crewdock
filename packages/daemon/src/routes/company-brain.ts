@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { setDefaultResultOrder } from "node:dns";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
@@ -37,6 +38,9 @@ import type {
   ExternalActionExecutionStatus,
   ExternalActionKind,
   ExternalActionProposal,
+  GitHubCommentWritebackResponse,
+  GitHubCommentWritebackTarget,
+  ExecuteExternalActionProposalRequest,
   ExtractArtifactInsightsRequest,
   ExtractSignalGuidanceRequest,
   GuidanceAudience,
@@ -85,6 +89,12 @@ import {
 } from "../db/schema.js";
 
 const app = new Hono();
+
+try {
+  setDefaultResultOrder("ipv4first");
+} catch {
+  // Ignore runtimes that do not support changing DNS result order.
+}
 
 function now() {
   return Date.now();
@@ -428,6 +438,16 @@ interface GitHubNotificationPayload {
   };
 }
 
+interface GitHubIssueCommentPayload {
+  id: number;
+  body: string | null;
+  html_url: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+  user: { login: string } | null;
+}
+
 function parseGitHubRepo(repo: string) {
   const normalized = repo
     .trim()
@@ -441,24 +461,187 @@ function parseGitHubRepo(repo: string) {
   return { owner, name, fullName: `${owner}/${name}` };
 }
 
-async function githubApi<T>(path: string, params: Record<string, string> = {}) {
+async function githubApiRequest<T>(
+  path: string,
+  args: {
+    method?: string;
+    params?: Record<string, string>;
+    body?: unknown;
+    requireToken?: boolean;
+  } = {}
+) {
   const token = getSecretEnv("GITHUB_TOKEN") ?? getSecretEnv("GH_TOKEN");
+  if (args.requireToken && !token) {
+    throw new Error("GITHUB_TOKEN or GH_TOKEN is required for GitHub writeback");
+  }
   const url = new URL(`https://api.github.com${path}`);
-  for (const [key, value] of Object.entries(params)) {
+  for (const [key, value] of Object.entries(args.params ?? {})) {
     url.searchParams.set(key, value);
   }
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "aios-runtime-company-brain",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  const method = args.method ?? "GET";
+  const maxAttempts = method === "GET" ? 3 : 1;
+  let res: Response | null = null;
+  let lastFetchError: unknown = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      res = await fetch(url, {
+        method,
+        headers: {
+          Accept: "application/vnd.github+json",
+          "Content-Type": "application/json",
+          "User-Agent": "aios-runtime-company-brain",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: args.body === undefined ? undefined : JSON.stringify(args.body),
+      });
+      break;
+    } catch (err) {
+      lastFetchError = err;
+      if (attempt < maxAttempts) {
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 400 * attempt));
+      }
+    }
+  }
+  if (!res) {
+    const message = lastFetchError instanceof Error ? lastFetchError.message : "fetch failed";
+    throw new Error(`GitHub API fetch failed: ${message}`);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`GitHub API failed ${res.status}: ${text.slice(0, 300)}`);
   }
+  if (res.status === 204) return {} as T;
   return (await res.json()) as T;
+}
+
+async function githubApi<T>(path: string, params: Record<string, string> = {}) {
+  return githubApiRequest<T>(path, { params });
+}
+
+function parseGitHubIssueOrPullRef(ref: string): GitHubCommentWritebackTarget {
+  const value = ref.trim();
+  const urlMatch = value.match(
+    /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/(issues|pull)\/(\d+)(?:[/?#].*)?$/
+  );
+  if (urlMatch) {
+    const [, owner, repo, kind, number] = urlMatch;
+    return {
+      owner,
+      repo,
+      fullName: `${owner}/${repo}`,
+      number: Number(number),
+      kind: kind === "pull" ? "pull" : "issue",
+      url: `https://github.com/${owner}/${repo}/${kind}/${number}`,
+    };
+  }
+
+  const fullRefMatch = value.match(/^([^/\s#]+)\/([^/\s#]+)#(\d+)$/);
+  if (fullRefMatch) {
+    const [, owner, repo, number] = fullRefMatch;
+    return {
+      owner,
+      repo,
+      fullName: `${owner}/${repo}`,
+      number: Number(number),
+      kind: "issue_or_pull",
+      url: `https://github.com/${owner}/${repo}/issues/${number}`,
+    };
+  }
+
+  const defaultOwner =
+    getSecretEnv("AIOS_GITHUB_DEFAULT_OWNER") ?? getSecretEnv("GITHUB_DEFAULT_OWNER");
+  const repoRefMatch = value.match(/^([^/\s#]+)#(\d+)$/);
+  if (repoRefMatch && defaultOwner) {
+    const [, repo, number] = repoRefMatch;
+    return {
+      owner: defaultOwner,
+      repo,
+      fullName: `${defaultOwner}/${repo}`,
+      number: Number(number),
+      kind: "issue_or_pull",
+      url: `https://github.com/${defaultOwner}/${repo}/issues/${number}`,
+    };
+  }
+
+  throw new Error(
+    "destinationRef must be owner/repo#number, repo#number with AIOS_GITHUB_DEFAULT_OWNER, or a GitHub issue/PR URL"
+  );
+}
+
+function isGitHubCommentAction(actionType: ExternalActionKind) {
+  return actionType === "comment" || actionType === "github_comment";
+}
+
+function encodeMarkerValue(value: string) {
+  return Buffer.from(value, "utf8").toString("base64url");
+}
+
+function githubCommentWritebackMarker(proposal: ExternalActionProposal) {
+  return `<!-- aios-writeback proposal_id=${encodeMarkerValue(
+    proposal.id
+  )} idempotency_key=${encodeMarkerValue(proposal.idempotencyKey)} -->`;
+}
+
+function externalActionPayloadBody(proposal: ExternalActionProposal) {
+  const body = proposal.payload.body;
+  if (typeof body !== "string" || !body.trim()) {
+    throw new Error("payload.body is required for GitHub comment writeback");
+  }
+  return body.trim();
+}
+
+function buildGitHubCommentWritebackPreview(proposal: ExternalActionProposal) {
+  if (!proposal.destinationRef?.trim()) {
+    throw new Error("destinationRef is required for GitHub comment writeback");
+  }
+  if (!proposal.idempotencyKey.trim()) {
+    throw new Error("idempotencyKey is required for GitHub comment writeback");
+  }
+  const target = parseGitHubIssueOrPullRef(proposal.destinationRef);
+  const marker = githubCommentWritebackMarker(proposal);
+  const body = `${externalActionPayloadBody(proposal)}\n\n${marker}`;
+  return { target, marker, body };
+}
+
+function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal) {
+  if (proposal.approvalStatus !== "approved") {
+    throw new Error("proposal must be approved before GitHub writeback");
+  }
+  if (!["not_started", "dry_run"].includes(proposal.executionStatus)) {
+    throw new Error("proposal executionStatus must be not_started or dry_run");
+  }
+  if (proposal.destinationType !== "github") {
+    throw new Error("proposal destinationType must be github");
+  }
+  if (!isGitHubCommentAction(proposal.actionType)) {
+    throw new Error("proposal actionType must be comment");
+  }
+  if (proposal.riskClass !== "B") {
+    throw new Error("proposal riskClass must be B");
+  }
+  if (proposal.actionPolicy !== "writeback_allowed") {
+    throw new Error("proposal actionPolicy must be writeback_allowed");
+  }
+  return buildGitHubCommentWritebackPreview(proposal);
+}
+
+async function fetchGitHubIssueComments(args: GitHubCommentWritebackTarget) {
+  const comments: GitHubIssueCommentPayload[] = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const current = await githubApiRequest<GitHubIssueCommentPayload[]>(
+      `/repos/${args.owner}/${args.repo}/issues/${args.number}/comments`,
+      {
+        requireToken: true,
+        params: {
+          per_page: "100",
+          page: String(page),
+        },
+      }
+    );
+    comments.push(...current);
+    if (current.length < 100) break;
+  }
+  return comments;
 }
 
 async function fetchGitHubIssues(repo: string, state: string, limit: number) {
@@ -2124,7 +2307,7 @@ function externalActionPolicy(args: {
   const { destinationType, actionType, riskClass, actionPolicy } = args;
   const isExternal = destinationType === "github" || destinationType === "slack";
   const isLowRiskExternal =
-    actionType === "github_comment" || actionType === "slack_thread_reply";
+    isGitHubCommentAction(actionType) || actionType === "slack_thread_reply";
 
   if (riskClass === "C") {
     return {
@@ -2157,7 +2340,7 @@ function externalActionPolicy(args: {
       approvalRequired: true,
       executionStatus: allowed ? "not_started" : "blocked",
       policySummary: allowed
-        ? "Risk B permits low-risk external comments or replies only after human approval. Writeback execution is disabled in v0."
+        ? "Risk B permits low-risk external comments or replies only after human approval and adapter-specific execution gates."
         : "Risk B requires a low-risk external comment/reply plus request_human/writeback_allowed policy.",
     };
   }
@@ -2178,7 +2361,7 @@ function defaultExternalActionPayload(args: {
   if (args.actionType === "slack_thread_reply") {
     return { text: args.guidanceAction };
   }
-  if (args.actionType === "github_comment") {
+  if (isGitHubCommentAction(args.actionType)) {
     return { body: args.guidanceAction };
   }
   return { body: args.guidanceAction };
@@ -5422,7 +5605,7 @@ app.post("/external-action-proposals/from-guidance", async (c) => {
         ? "slack_thread_reply"
         : destinationType === "internal"
           ? "draft"
-          : "github_comment");
+          : "comment");
     const riskClass = body.riskClass ?? "B";
     const actionPolicy = body.actionPolicy ?? "request_human";
     const visibility: Visibility = body.visibility ?? guidance.visibility;
@@ -5587,6 +5770,7 @@ app.put("/external-action-proposals/:id", async (c) => {
         approvedAt: timestamp,
         rejectionReason: null,
         executionStatus: "not_started" as const,
+        errorSummary: null,
         auditTrail,
         updatedAt: timestamp,
       };
@@ -5634,6 +5818,218 @@ app.put("/external-action-proposals/:id", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "update_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/github-comment/preview", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteExternalActionProposalRequest>()
+      .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, id))
+      .get();
+    if (!existing) throw new Error("external action proposal not found");
+
+    const { target, marker, body: commentBody } = validateGitHubCommentWritebackProposal(
+      existing
+    );
+    const actor = body.actor?.trim() || null;
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: "github_comment_previewed",
+      note: "Dry-run generated the GitHub issue/PR comment body without calling GitHub.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target,
+          idempotencyKey: existing.idempotencyKey,
+          bodyLength: commentBody.length,
+          bodyHash: stableHash(commentBody),
+        },
+        response: {
+          dryRun: true,
+          externalCall: false,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "dry_run" as const,
+      errorSummary: null,
+      auditTrail,
+      updatedAt: now(),
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+
+    const proposal = { ...existing, ...update };
+    const result: GitHubCommentWritebackResponse = {
+      proposal,
+      target,
+      body: commentBody,
+      marker,
+      idempotencyKey: proposal.idempotencyKey,
+      dryRun: true,
+      status: "dry_run",
+      reusedExisting: false,
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "preview_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const body = (await c.req
+    .json<ExecuteExternalActionProposalRequest>()
+    .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+  const actor = body.actor?.trim() || null;
+  const existing = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, id))
+    .get();
+  if (!existing) {
+    return c.json(
+      { error: "execution_failed", message: "external action proposal not found" },
+      404
+    );
+  }
+
+  try {
+    if (
+      ["completed", "executed"].includes(existing.executionStatus) &&
+      existing.externalId &&
+      existing.externalUrl
+    ) {
+      const { target, marker, body: commentBody } =
+        buildGitHubCommentWritebackPreview(existing);
+      const result: GitHubCommentWritebackResponse = {
+        proposal: existing,
+        target,
+        body: commentBody,
+        marker,
+        idempotencyKey: existing.idempotencyKey,
+        dryRun: false,
+        status: "already_completed",
+        reusedExisting: true,
+        externalId: existing.externalId,
+        externalUrl: existing.externalUrl,
+      };
+      return c.json({ data: result });
+    }
+
+    const { target, marker, body: commentBody } =
+      validateGitHubCommentWritebackProposal(existing);
+    const comments = await fetchGitHubIssueComments(target);
+    const priorComment = comments.find((comment) => comment.body?.includes(marker));
+    const comment =
+      priorComment ??
+      (await githubApiRequest<GitHubIssueCommentPayload>(
+        `/repos/${target.owner}/${target.repo}/issues/${target.number}/comments`,
+        {
+          method: "POST",
+          requireToken: true,
+          body: { body: commentBody },
+        }
+      ));
+    const timestamp = now();
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: priorComment ? "github_comment_reused" : "github_comment_posted",
+      note: priorComment
+        ? "Found an existing GitHub comment with the proposal idempotency marker; no duplicate was posted."
+        : "Posted approved GitHub issue/PR comment.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target,
+          idempotencyKey: existing.idempotencyKey,
+          bodyLength: commentBody.length,
+          bodyHash: stableHash(commentBody),
+        },
+        response: {
+          reusedExisting: Boolean(priorComment),
+          commentId: String(comment.id),
+          commentUrl: comment.html_url,
+          user: comment.user?.login ?? null,
+          createdAt: comment.created_at,
+          updatedAt: comment.updated_at,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "completed" as const,
+      externalId: String(comment.id),
+      externalUrl: comment.html_url,
+      errorSummary: null,
+      auditTrail,
+      updatedAt: timestamp,
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    const proposal = { ...existing, ...update };
+    const result: GitHubCommentWritebackResponse = {
+      proposal,
+      target,
+      body: commentBody,
+      marker,
+      idempotencyKey: proposal.idempotencyKey,
+      dryRun: false,
+      status: "completed",
+      reusedExisting: Boolean(priorComment),
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: "github_comment_failed",
+      note: message,
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          actionType: existing.actionType,
+          riskClass: existing.riskClass,
+          actionPolicy: existing.actionPolicy,
+          approvalStatus: existing.approvalStatus,
+          executionStatus: existing.executionStatus,
+          idempotencyKey: existing.idempotencyKey,
+        },
+        response: {
+          error: message,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "failed" as const,
+      errorSummary: message,
+      auditTrail,
+      updatedAt: now(),
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    return c.json({ error: "execution_failed", message }, 400);
   }
 });
 

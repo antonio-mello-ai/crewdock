@@ -23,6 +23,7 @@ import {
   useCreateCompanyBrainGoal,
   useCreateCompanyBrainGuidanceItem,
   useCreateCompanyBrainImprovementProposal,
+  useExecuteCompanyBrainGitHubCommentWriteback,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
   useCreateCompanyBrainStrategyTradeoff,
@@ -39,6 +40,7 @@ import {
   useSyncCompanyBrainGitHubNotifications,
   useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
+  usePreviewCompanyBrainGitHubCommentWriteback,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -166,7 +168,7 @@ const externalActionDestinations: ExternalActionDestination[] = [
   "unknown",
 ];
 const externalActionKinds: ExternalActionKind[] = [
-  "github_comment",
+  "comment",
   "slack_thread_reply",
   "draft",
   "unknown",
@@ -254,6 +256,10 @@ export default function CompanyBrainPage() {
     useCreateCompanyBrainExternalActionProposalFromGuidance();
   const updateExternalActionProposal =
     useUpdateCompanyBrainExternalActionProposal();
+  const previewGitHubCommentWriteback =
+    usePreviewCompanyBrainGitHubCommentWriteback();
+  const executeGitHubCommentWriteback =
+    useExecuteCompanyBrainGitHubCommentWriteback();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -428,10 +434,10 @@ export default function CompanyBrainPage() {
   const [writebackForm, setWritebackForm] = useState({
     guidanceItemId: "",
     destinationType: "github" as ExternalActionDestination,
-    actionType: "github_comment" as ExternalActionKind,
+    actionType: "comment" as ExternalActionKind,
     destinationRef: "",
     riskClass: "B" as RiskClass,
-    actionPolicy: "request_human" as ActionPolicy,
+    actionPolicy: "writeback_allowed" as ActionPolicy,
     requestedBy: "Antonio",
   });
 
@@ -905,6 +911,36 @@ export default function CompanyBrainPage() {
             ? "Approved in Company Brain UI. Execution remains disabled in Writeback Governance v0."
             : undefined,
       },
+    });
+  };
+
+  const canRunGitHubCommentWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    (proposal.actionType === "comment" || proposal.actionType === "github_comment") &&
+    proposal.approvalStatus === "approved" &&
+    proposal.riskClass === "B" &&
+    proposal.actionPolicy === "writeback_allowed" &&
+    ["not_started", "dry_run"].includes(proposal.executionStatus);
+
+  const previewGitHubCommentProposal = (id: string) => {
+    previewGitHubCommentWriteback.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const executeGitHubCommentProposal = (id: string) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Post this approved GitHub issue/PR comment now?")
+    ) {
+      return;
+    }
+    executeGitHubCommentWriteback.mutate({
+      id,
+      body: { actor: "Antonio" },
     });
   };
 
@@ -1442,7 +1478,7 @@ export default function CompanyBrainPage() {
                               ? "slack_thread_reply"
                               : destinationType === "internal"
                                 ? "draft"
-                                : "github_comment",
+                                : "comment",
                         });
                       }}
                     >
@@ -1552,6 +1588,17 @@ export default function CompanyBrainPage() {
                   )}
                   Create proposal
                 </Button>
+                {previewGitHubCommentWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {previewGitHubCommentWriteback.data.data.target.fullName}#
+                      {previewGitHubCommentWriteback.data.data.target.number}
+                    </p>
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-neutral-300">
+                      {previewGitHubCommentWriteback.data.data.body}
+                    </pre>
+                  </div>
+                ) : null}
               </form>
               <div className="divide-y divide-neutral-800/40">
                 {externalActionProposals.length === 0 ? (
@@ -1584,6 +1631,16 @@ export default function CompanyBrainPage() {
                                 {proposal.destinationRef}
                               </p>
                             ) : null}
+                            {proposal.externalUrl ? (
+                              <a
+                                href={proposal.externalUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 block truncate text-xs text-neutral-400 underline-offset-4 hover:underline"
+                              >
+                                {proposal.externalUrl}
+                              </a>
+                            ) : null}
                             {lastAudit ? (
                               <p className="mt-2 text-xs text-neutral-600">
                                 {lastAudit.event} · {formatTimeAgo(lastAudit.at)}
@@ -1591,6 +1648,32 @@ export default function CompanyBrainPage() {
                             ) : null}
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                previewGitHubCommentWriteback.isPending ||
+                                !canRunGitHubCommentWriteback(proposal)
+                              }
+                              onClick={() => previewGitHubCommentProposal(proposal.id)}
+                            >
+                              <FileText className="h-4 w-4" />
+                              Preview
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                executeGitHubCommentWriteback.isPending ||
+                                !canRunGitHubCommentWriteback(proposal)
+                              }
+                              onClick={() => executeGitHubCommentProposal(proposal.id)}
+                            >
+                              <GitPullRequest className="h-4 w-4" />
+                              Execute
+                            </Button>
                             <Button
                               type="button"
                               size="sm"

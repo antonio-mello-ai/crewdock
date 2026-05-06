@@ -821,7 +821,51 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-writeback-governance-
 - Proposta A internal draft: `BpSp0VlcbPQ-`, `approvalStatus=pending`, `executionStatus=not_started`.
 - Summary retornou `externalActionProposalCount=4`, `pending=1`, `approved=1`, `blocked=1`; todos os `externalIds` permaneceram `null`.
 
-Proximo corte recomendado: GitHub comment writeback v0, somente comentario aprovado em issue/PR, com idempotency key, dry-run/preview, audit trail e `action_policy`/`risk_class` obrigatorios. Ainda nao fazer close issue, label, assign, mark notification read, merge, deploy ou qualquer acao destrutiva/status-changing.
+## Slice GitHub Comment Writeback v0
+
+Objetivo: executar o primeiro writeback externo real de forma minima e governada: somente comentario em issue/PR GitHub, a partir de `ExternalActionProposal` aprovada, com preview, idempotencia e audit trail.
+
+Implementado em 2026-05-06:
+
+1. `ExternalActionKind` passa a aceitar `comment` como action canonica para GitHub comment, mantendo `github_comment` como legado compatível.
+2. `ExternalActionExecutionStatus` inclui `completed`.
+3. Tipos `ExecuteExternalActionProposalRequest`, `GitHubCommentWritebackTarget` e `GitHubCommentWritebackResponse` em `packages/shared/src/types.ts`.
+4. Daemon adiciona:
+   - `POST /api/company-brain/external-action-proposals/:id/github-comment/preview`
+   - `POST /api/company-brain/external-action-proposals/:id/github-comment/execute`
+5. Preview valida proposal e retorna o corpo exato do comentario com marker HTML invisivel, sem chamar GitHub; registra `executionStatus=dry_run` e audit event `github_comment_previewed`.
+6. Execute real exige todos os gates:
+   - `approvalStatus=approved`
+   - `executionStatus=not_started` ou `dry_run`
+   - `destinationType=github`
+   - `actionType=comment` ou legado `github_comment`
+   - `riskClass=B`
+   - `actionPolicy=writeback_allowed`
+   - `idempotencyKey` presente
+   - `destinationRef` como `owner/repo#number`, `repo#number` com owner default ou URL GitHub issue/PR
+   - `payload.body` nao vazio
+7. Execute usa `GITHUB_TOKEN` ou `GH_TOKEN`, busca comentarios existentes pelo marker antes de postar e nunca tenta label/assign/close/reopen/merge/deploy/notification read.
+8. Sucesso registra `executionStatus=completed`, `externalId`, `externalUrl` e audit event `github_comment_posted` ou `github_comment_reused`.
+9. Erro registra `executionStatus=failed`, `errorSummary` e audit event `github_comment_failed`.
+10. UI `/company-brain` adiciona botoes Preview e Execute no painel Writeback Governance, com confirmacao no browser antes da execucao real.
+11. MCP tools adicionadas:
+    - `preview_company_brain_github_comment_writeback`
+    - `execute_company_brain_github_comment_writeback`
+12. Client GitHub do daemon usa DNS `ipv4first` e retry apenas em GET/read; POST nao faz retry automatico para evitar comentario duplicado se a resposta cair apos mutacao.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-github-comment-writeback-dogfood.sqlite`, daemon em `127.0.0.1:43125`, contra `antonio-mello-ai/crewdock#3`:
+
+- Guidance aceita criada para dogfood.
+- Proposal executada: `hTZmyt_cHq00`.
+- Preview retornou `dry_run`, body com marker `aios-writeback`, `externalId=null`.
+- Houve falhas transientes iniciais de rede para GitHub; cada tentativa registrou `github_comment_failed` e `errorSummary=fetch failed`.
+- Retry com client `ipv4first` concluiu com `executionStatus=completed`.
+- Comentario criado: `externalId=4390632745`, `externalUrl=https://github.com/antonio-mello-ai/crewdock/issues/3#issuecomment-4390632745`.
+- Segunda execucao da mesma proposal retornou `already_completed` e nao postou de novo.
+- Verificacao GitHub API confirmou comment `4390632745` com marker `aios-writeback`.
+- Caminho proibido validado: proposal sem aprovacao retornou 400 `proposal must be approved before GitHub writeback`, ficou `executionStatus=failed` e sem `externalId/externalUrl`.
+
+Proximo corte recomendado: Slack thread reply writeback v0, somente para proposal aprovada, thread existente, preview antes, idempotencia, audit trail e `actionPolicy=writeback_allowed`; nao postar mensagem fora de thread e nao executar risk C/unknown.
 
 ## Dogfood ERP
 

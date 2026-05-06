@@ -28,6 +28,7 @@ import type {
   CreateAlignmentFindingRequest,
   CreateDecisionRequest,
   CreateExternalActionProposalRequest,
+  ExecuteExternalActionProposalRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateImprovementProposalRequest,
@@ -66,6 +67,7 @@ import type {
   Artifact,
   Decision,
   ExternalActionProposal,
+  GitHubCommentWritebackResponse,
   Goal,
   GuidanceItem,
   ImprovementProposal,
@@ -791,6 +793,38 @@ export function useUpdateCompanyBrainExternalActionProposal() {
       api(`/api/company-brain/external-action-proposals/${id}`, {
         method: "PUT",
         body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function usePreviewCompanyBrainGitHubCommentWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubCommentWritebackResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/external-action-proposals/${id}/github-comment/preview`, {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useExecuteCompanyBrainGitHubCommentWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubCommentWritebackResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/external-action-proposals/${id}/github-comment/execute`, {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });

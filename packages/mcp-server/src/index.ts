@@ -1279,8 +1279,8 @@ server.registerTool(
         .default("github"),
       destinationRef: z.string().optional(),
       actionType: z
-        .enum(["github_comment", "slack_thread_reply", "draft", "unknown"])
-        .default("github_comment"),
+        .enum(["comment", "github_comment", "slack_thread_reply", "draft", "unknown"])
+        .default("comment"),
       payload: z.record(z.string(), z.unknown()).optional(),
       riskClass: z.enum(["A", "B", "C", "unknown"]).default("B"),
       actionPolicy: z
@@ -1316,7 +1316,7 @@ server.registerTool(
   {
     title: "Review Company Brain writeback proposal",
     description:
-      "Approve or reject an internal writeback proposal. Approval records HITL state only; external execution remains disabled in Writeback Governance v0.",
+      "Approve or reject an internal writeback proposal. Approval records HITL state; adapter-specific execute tools still enforce risk, policy and idempotency gates.",
     inputSchema: {
       id: z.string().min(1),
       approvalStatus: z.enum(["approved", "rejected"]),
@@ -1331,6 +1331,52 @@ server.registerTool(
       {
         method: "PUT",
         body: JSON.stringify(body),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "preview_company_brain_github_comment_writeback",
+  {
+    title: "Preview GitHub comment writeback",
+    description:
+      "Dry-run an approved Company Brain GitHub comment proposal. Returns the exact issue/PR comment body and target without calling GitHub.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-comment/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "execute_company_brain_github_comment_writeback",
+  {
+    title: "Execute GitHub comment writeback",
+    description:
+      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed. This is the only GitHub writeback action exposed here; it does not label, assign, close, merge, deploy, or mark notifications read.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-comment/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
       }
     );
     return formatJsonResult(result.data);

@@ -410,6 +410,7 @@ export type ExternalActionDestination =
   | "internal"
   | "unknown";
 export type ExternalActionKind =
+  | "comment"
   | "github_comment"
   | "slack_thread_reply"
   | "draft"
@@ -424,6 +425,7 @@ export type ExternalActionExecutionStatus =
   | "blocked"
   | "dry_run"
   | "queued"
+  | "completed"
   | "executed"
   | "failed"
   | "cancelled";
@@ -1162,6 +1164,32 @@ export interface UpdateExternalActionProposalRequest {
   actor?: string | null;
   rejectionReason?: string | null;
   note?: string | null;
+}
+
+export interface ExecuteExternalActionProposalRequest {
+  actor?: string | null;
+}
+
+export interface GitHubCommentWritebackTarget {
+  owner: string;
+  repo: string;
+  fullName: string;
+  number: number;
+  kind: "issue" | "pull" | "issue_or_pull";
+  url: string;
+}
+
+export interface GitHubCommentWritebackResponse {
+  proposal: ExternalActionProposal;
+  target: GitHubCommentWritebackTarget;
+  body: string;
+  marker: string;
+  idempotencyKey: string;
+  dryRun: boolean;
+  status: "dry_run" | "completed" | "already_completed" | "failed";
+  reusedExisting: boolean;
+  externalId: string | null;
+  externalUrl: string | null;
 }
 
 export interface AgentContext {
