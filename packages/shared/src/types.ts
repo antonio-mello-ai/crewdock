@@ -1912,6 +1912,7 @@ export interface WritebackAuditReview {
   payloadHashCurrent: string;
   idempotencyKey: string;
   destinationRef: string | null;
+  targetSummary: string | null;
 }
 
 export interface WritebackSafetyQueueItem {
@@ -2237,6 +2238,7 @@ export interface WritebackEvidencePacketIndexItem {
   hasWorkItem: boolean;
   hasWorkflowRun: boolean;
   payloadHashCurrent: string;
+  targetSummary: string | null;
   externalUrl: string | null;
   exportPath: string;
   updatedAt: number;

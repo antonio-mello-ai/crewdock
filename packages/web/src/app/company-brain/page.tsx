@@ -2636,6 +2636,11 @@ export default function CompanyBrainPage() {
                             {item.destinationType} · {item.actionType} ·{" "}
                             {item.auditEvent ?? "no_audit_event"}
                           </p>
+                          {item.auditReview.targetSummary ? (
+                            <p className="mt-1 truncate text-neutral-600">
+                              target {item.auditReview.targetSummary}
+                            </p>
+                          ) : null}
                           <p className="mt-1 truncate text-neutral-700">
                             events {item.auditReview.eventCount} · actor{" "}
                             {item.auditReview.latestActor ?? "none"} · key{" "}
@@ -3138,6 +3143,15 @@ export default function CompanyBrainPage() {
                       {getWritebackEvidencePacket.data.data.externalRefs.externalUrl ??
                         "no external url"}
                     </p>
+                    {getWritebackEvidencePacket.data.data.auditReview.targetSummary ? (
+                      <p className="mt-1 truncate text-xs text-neutral-600">
+                        target{" "}
+                        {
+                          getWritebackEvidencePacket.data.data.auditReview
+                            .targetSummary
+                        }
+                      </p>
+                    ) : null}
                     <a
                       href={companyBrainWritebackEvidencePacketJsonUrl(
                         getWritebackEvidencePacket.data.data.proposal.id

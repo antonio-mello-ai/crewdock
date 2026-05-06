@@ -109,6 +109,8 @@ Status Evidence Remediation Suggestions v0 em 2026-05-06: gaps de integridade ag
 
 Status GitHub Status Executor v0 em 2026-05-06: `github_status` agora tem executor real restrito a repo privado interno allowlisted, Risk B, `writeback_allowed`, HITL approval/rationale, preview apos aprovacao, Retry Safety `ready_to_execute`, SHA explicito, contexto `aios/dogfood-status` e state `success`. O executor valida repo privado, consulta statuses atuais, evita duplicacao por status compativel, grava `github_status_set` ou `github_status_completed_noop`, externalId/externalUrl e audit trail. `github_check` segue sem executor real.
 
+Status Writeback Target Summary v0 em 2026-05-06: Safety Dashboard, Evidence Packet e Evidence Packet Index agora expõem `targetSummary` derivado/read-only para tornar proposals legiveis por alvo sem abrir o JSON completo. Para `github_status`, o resumo mostra repo, SHA curto, contexto e state; UI mostra o alvo no indice e no packet carregado.
+
 Proximo corte planejado: melhorias read-only/audit/export/observability para status writeback e evidence packets; parar antes de qualquer nova mutacao externa, novo alvo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy ou repo/canal publico.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
@@ -151,6 +153,7 @@ Proximo corte planejado: melhorias read-only/audit/export/observability para sta
 - [x] **Writeback Evidence Integrity Gaps v0** — detectar gaps de links, audit events, hashes, idempotency, refs externas, stale review, rationale e provenance em Safety Dashboard/Evidence Packet/API/UI/MCP/briefing
 - [x] **Evidence Remediation Suggestions v0** — sugerir correcoes read-only para gaps de evidence/provenance/audit com human review/new proposal flags e sem mutacao externa
 - [x] **GitHub status executor real v0** — criar somente commit status allowlisted em repo privado interno com SHA/context/state aprovados, preview, Retry Safety, idempotencia, audit e reexecute `already_completed`
+- [x] **Writeback target summary v0** — expor resumo read-only do alvo em audit review/evidence packet/index/UI para status, check, label, comment e Slack thread
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

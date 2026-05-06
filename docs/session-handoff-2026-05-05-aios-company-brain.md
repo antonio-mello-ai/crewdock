@@ -1682,6 +1682,25 @@ Dogfood real validado em DB temporario `/tmp/aios-runtime-github-status-executor
 
 Proximo corte recomendado: melhorias read-only/audit/export/observability para status writeback e evidence packets. Parar antes de qualquer nova mutacao externa, novo alvo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy ou repo/canal publico.
 
+## Slice Writeback Target Summary v0
+
+Objetivo: melhorar observability read-only de writeback, especialmente status/check, sem nova mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. `WritebackAuditReview` agora inclui `targetSummary` derivado.
+2. `WritebackEvidencePacketIndexItem` tambem inclui `targetSummary`.
+3. Para `github_status/github_check`, o resumo usa `repo | sha curto ou PR | context/name | state/conclusion`.
+4. Para label/comment/thread, o resumo usa destino normalizado e action principal.
+5. UI `/company-brain` mostra o target summary no Evidence Packet Index e no card de Evidence Packet carregado.
+6. API/summary/MCP recebem o campo por meio das estruturas existentes, sem nova rota e sem chamada externa.
+
+Dogfood read-only validado no DB temporario do status executor `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43147`:
+
+- Safety Dashboard para proposal `35xo7wHd9CBV`: `targetSummary=antonio-mello-ai/felhen | b9e1057f4498 | aios/dogfood-status | success`, `executionEvent=github_status_set`, `mutationAttempted=true`.
+- Evidence Packet de `35xo7wHd9CBV`: mesmo `targetSummary`, `executionReview=completed`, `gaps=0`.
+- Summary/Evidence Packet Index de `35xo7wHd9CBV`: `targetSummary` presente, `reviewStatus=completed`, `externalUrl` preservada.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -1800,7 +1819,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0 e GitHub Status Executor v0. O proximo corte recomendado e melhoria read-only/audit/export/observability para status writeback e evidence packets. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0 e Writeback Target Summary v0. O proximo corte recomendado e melhoria read-only/audit/export/observability para status writeback e evidence packets. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

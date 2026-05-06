@@ -3825,6 +3825,72 @@ function isCompletedExternalWriteback(proposal: ExternalActionProposal) {
   );
 }
 
+function writebackTargetSummary(proposal: ExternalActionProposal) {
+  if (proposal.destinationType === "github" && isGitHubStatusCheckAction(proposal.actionType)) {
+    const repo =
+      typeof proposal.payload.repo === "string" && proposal.payload.repo.trim()
+        ? proposal.payload.repo.trim()
+        : "unknown_repo";
+    const sha =
+      typeof proposal.payload.sha === "string" && proposal.payload.sha.trim()
+        ? proposal.payload.sha.trim().slice(0, 12)
+        : null;
+    const pullNumber =
+      typeof proposal.payload.pullNumber === "number"
+        ? `PR #${proposal.payload.pullNumber}`
+        : typeof proposal.payload.pull_number === "number"
+          ? `PR #${proposal.payload.pull_number}`
+          : null;
+    const context =
+      typeof proposal.payload.context === "string" && proposal.payload.context.trim()
+        ? proposal.payload.context.trim()
+        : typeof proposal.payload.name === "string" && proposal.payload.name.trim()
+          ? proposal.payload.name.trim()
+          : proposal.actionType;
+    const state =
+      typeof proposal.payload.state === "string" && proposal.payload.state.trim()
+        ? proposal.payload.state.trim()
+        : typeof proposal.payload.conclusion === "string" &&
+            proposal.payload.conclusion.trim()
+          ? proposal.payload.conclusion.trim()
+          : null;
+    return [repo, sha ?? pullNumber ?? "unknown_ref", context, state]
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
+    try {
+      const preview = buildGitHubLabelProposalPreview(proposal);
+      return `${preview.target.fullName}#${preview.target.number} | label:${preview.labels.join(
+        ","
+      )} | ${preview.mode}`;
+    } catch {
+      return proposal.destinationRef;
+    }
+  }
+
+  if (proposal.destinationType === "github" && isGitHubCommentAction(proposal.actionType)) {
+    try {
+      const target = parseGitHubIssueOrPullRef(proposal.destinationRef ?? "");
+      return `${target.fullName}#${target.number} | comment`;
+    } catch {
+      return proposal.destinationRef;
+    }
+  }
+
+  if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
+    try {
+      const target = parseSlackThreadRef(proposal.destinationRef ?? "");
+      return `${target.channelId} | thread:${target.threadTs}`;
+    } catch {
+      return proposal.destinationRef;
+    }
+  }
+
+  return proposal.destinationRef;
+}
+
 function buildWritebackAuditReview(
   proposal: ExternalActionProposal,
   executionReview: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
@@ -3854,6 +3920,7 @@ function buildWritebackAuditReview(
     payloadHashCurrent: executionReview.payloadHashCurrent,
     idempotencyKey: proposal.idempotencyKey,
     destinationRef: proposal.destinationRef,
+    targetSummary: writebackTargetSummary(proposal),
   };
 }
 
@@ -5162,6 +5229,7 @@ function buildWritebackEvidencePacketIndex(
           ? workflowRunIds.has(proposal.workflowRunId)
           : false,
         payloadHashCurrent: review.payloadHashCurrent,
+        targetSummary: writebackTargetSummary(proposal),
         externalUrl: proposal.externalUrl,
         exportPath: `/api/company-brain/external-action-proposals/${proposal.id}/evidence-packet?download=1`,
         updatedAt: proposal.updatedAt,
