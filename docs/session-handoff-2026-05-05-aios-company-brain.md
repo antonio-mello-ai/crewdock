@@ -34,6 +34,8 @@ Ler nesta ordem:
 
 Observacao: os docs estrategicos AIOS no repo `corp` foram consolidados no commit `41b14d2 docs: consolidate aios yc thesis roadmap`. Mesmo assim, verificar `git -C ../../../../corp status -sb` antes de assumir que nao houve mudanca posterior.
 
+Atualizacao: em 2026-05-05 23h BRT, o `corp` foi lido novamente em `8dc6298 docs: add aios operating watchers`. Esse commit adiciona o **Watcher / Operating Loop Layer** como camada P0 entre Source e Artifact/Event. O proximo corte do `aios-runtime` deve seguir esse direcional antes de Drift/Guidance completo.
+
 ## Decisoes travadas
 
 - O produto AIOS / Company Brain vive neste repo, `aios-runtime`.
@@ -125,6 +127,7 @@ Ainda nao existem:
 - agent context generator;
 - improvement proposals;
 - conectores Slack/GitHub/docs com envelope comum;
+- Watcher / Operating Loop Layer;
 - adoption dashboard para enxergar quais frentes estao em closed loop.
 
 Parciais que precisam evoluir:
@@ -132,6 +135,35 @@ Parciais que precisam evoluir:
 - Strategy layer ainda nao tem tradeoffs/decisions.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
 - MCP cobre sources/artifacts/work items/runs, mas ainda nao cobre guidance/signals.
+
+## Proximo Slice - Watcher / Operating Loop Layer
+
+Objetivo: transformar o Company Brain de base consultavel em loop operacional que observa fontes e workflows sem depender de uma sessao interativa aberta.
+
+Fonte de produto: `corp/docs/action/aios-product-roadmap.md`, secao `Watcher / Operating Loop Layer`, e `corp/docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`, gaps/entregaveis de Watcher.
+
+Implementar no menor corte util:
+
+1. Tipos compartilhados `Watcher` e `WatcherRun` em `packages/shared/src/types.ts`.
+2. Tabelas `cb_watchers` e `cb_watcher_runs` em `packages/daemon/src/db/schema.ts` e migration inline idempotente em `packages/daemon/src/db/client.ts`.
+3. Campos minimos:
+   - `Watcher`: `id`, `title`, `description`, `source_ids`, `trigger_type`, `schedule`, `event_filter`, `scope_query`, `owner`, `owner_type`, `target_workflow_blueprint_id`, `risk_class`, `action_policy`, `status`, `last_run_at`, `next_run_at`, `failure_policy`, `output_policy`, `visibility`.
+   - `WatcherRun`: `id`, `watcher_id`, `started_at`, `finished_at`, `status`, `artifacts_created`, `signals_created`, `work_items_created`, `guidance_created`, `error_summary`, `provenance`.
+4. Rotas REST em `/api/company-brain/watchers` e `/api/company-brain/watcher-runs`.
+5. Expor status basico de watchers no `/api/company-brain/summary` e na UI `/company-brain`, preferencialmente como Source Health / Operating Loops.
+6. Criar watcher manual/simulado para PR/CI ou GitHub Issues. O primeiro run pode ser manual, mas precisa registrar output real no Company Brain.
+7. Garantir que o watcher consiga gerar ao menos `Artifact` e `WorkItem` com `provenance`, `risk_class` e `action_policy`. Se `Signal` ainda nao existir, registrar a ausencia como residual e criar `Signal` logo em seguida.
+8. Nao implementar writeback externo automatico neste corte. Todo watcher pode observar/registrar; comentar, abrir issue fora do AIOS, responder ou acionar agente depende de `action_policy` e HITL.
+
+Aceite do proximo slice:
+
+- Build passa.
+- Schema e migrations continuam idempotentes.
+- Existe pelo menos um `Watcher` cadastrado para PR/CI ou GitHub Issues.
+- Existe pelo menos um `WatcherRun` manual/simulado com `status`, timestamps, contadores de outputs e provenance.
+- Company Brain summary mostra watchers ativos, ultimo run e erro/freshness basico.
+- Um watcher gera artifact/work item real no envelope comum, com source/provenance/risk/action policy.
+- Nenhum writeback externo acontece sem policy explicita.
 
 ## Dogfood ERP
 
@@ -249,14 +281,14 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos o Slice 1 de Company Brain foundation, sem recriar o kernel do zero.
+Objetivo da sessao: implementar o proximo slice do Company Brain, **Watcher / Operating Loop Layer**, sem recriar o kernel do Slice 1.
 
-Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e se o dogfood local ainda esta em DB temporario. Depois priorize o proximo corte validavel:
-- criar importer manual/local docs usando o envelope de `Artifact`;
-- criar GitHub Issues adapter real ou comando de sync para `WorkItem`;
-- criar `Decision`/`Signal`/`AlignmentFinding`/`GuidanceItem`;
-- evoluir `/company-brain` para Source Health e Adoption Dashboard;
-- persistir dogfood em ambiente escolhido ou documentar seed/manual import reproduzivel.
+Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
+- adicionar `Watcher` e `WatcherRun` em tipos/schema/API;
+- expor watchers no Company Brain summary e UI;
+- criar watcher manual/simulado para PR/CI ou GitHub Issues;
+- garantir que watcher run gere Artifact/WorkItem com provenance, risk_class e action_policy;
+- registrar residual de `Signal` se ainda nao for implementado no mesmo corte.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.
 
