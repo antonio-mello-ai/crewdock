@@ -10,6 +10,7 @@ import type {
   CreateDecisionRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
+  CreateImprovementProposalRequest,
   CreateMilestoneRequest,
   CreateSignalRequest,
   CreateSourceRequest,
@@ -23,6 +24,7 @@ import type {
   SignalSeverity,
   RunWatcherRequest,
   UpdateGuidanceItemRequest,
+  UpdateImprovementProposalRequest,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
@@ -34,6 +36,7 @@ import {
   cbDecisions,
   cbGoals,
   cbGuidanceItems,
+  cbImprovementProposals,
   cbMilestones,
   cbSignals,
   cbSources,
@@ -285,6 +288,12 @@ function listAll() {
     .orderBy(desc(cbAgentContexts.updatedAt))
     .limit(100)
     .all();
+  const improvementProposals = db
+    .select()
+    .from(cbImprovementProposals)
+    .orderBy(desc(cbImprovementProposals.updatedAt))
+    .limit(100)
+    .all();
 
   return {
     sources,
@@ -304,6 +313,7 @@ function listAll() {
     alignmentFindings,
     guidanceItems,
     agentContexts,
+    improvementProposals,
   };
 }
 
@@ -364,6 +374,10 @@ app.get("/summary", (c) => {
         agentContextCount: data.agentContexts.length,
         readyAgentContextCount: data.agentContexts.filter((context) =>
           ["ready", "active"].includes(context.status)
+        ).length,
+        improvementProposalCount: data.improvementProposals.length,
+        promotionCandidateCount: data.improvementProposals.filter((proposal) =>
+          ["candidate", "approved"].includes(proposal.promotionStatus)
         ).length,
       },
     },
@@ -1094,6 +1108,146 @@ app.post("/agent-contexts/generate", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "generate_failed", message }, 400);
+  }
+});
+
+app.get("/improvement-proposals", (c) => {
+  const data = getDb()
+    .select()
+    .from(cbImprovementProposals)
+    .orderBy(desc(cbImprovementProposals.updatedAt))
+    .limit(100)
+    .all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/improvement-proposals", async (c) => {
+  try {
+    const body = await c.req.json<CreateImprovementProposalRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const signalIds = body.signalIds ?? [];
+    for (const id of signalIds) {
+      const row = db.select().from(cbSignals).where(eq(cbSignals.id, id)).get();
+      if (!row) throw new Error(`signalIds contains unknown signal ${id}`);
+    }
+    const alignmentFindingIds = body.alignmentFindingIds ?? [];
+    for (const id of alignmentFindingIds) {
+      const row = db
+        .select()
+        .from(cbAlignmentFindings)
+        .where(eq(cbAlignmentFindings.id, id))
+        .get();
+      if (!row) throw new Error(`alignmentFindingIds contains unknown finding ${id}`);
+    }
+    const guidanceItemIds = body.guidanceItemIds ?? [];
+    for (const id of guidanceItemIds) {
+      const row = db.select().from(cbGuidanceItems).where(eq(cbGuidanceItems.id, id)).get();
+      if (!row) throw new Error(`guidanceItemIds contains unknown guidance item ${id}`);
+    }
+    const agentContextIds = body.agentContextIds ?? [];
+    for (const id of agentContextIds) {
+      const row = db.select().from(cbAgentContexts).where(eq(cbAgentContexts.id, id)).get();
+      if (!row) throw new Error(`agentContextIds contains unknown agent context ${id}`);
+    }
+
+    const row = {
+      id: nanoid(12),
+      title: requireText(body.title, "title"),
+      hypothesis: requireText(body.hypothesis, "hypothesis"),
+      area: body.area ?? "unknown",
+      owner: body.owner ?? null,
+      ownerType: body.ownerType ?? "unknown",
+      signalIds,
+      alignmentFindingIds,
+      guidanceItemIds,
+      agentContextIds,
+      sourceArtifactIds: body.sourceArtifactIds ?? [],
+      workItemIds: body.workItemIds ?? [],
+      priorityIds: body.priorityIds ?? [],
+      goalIds: body.goalIds ?? [],
+      changeClass: body.changeClass ?? "unknown",
+      patchRef: body.patchRef ?? null,
+      validationPlan: body.validationPlan ?? null,
+      impactReview: body.impactReview ?? null,
+      status: body.status ?? "proposed",
+      promotionStatus: body.promotionStatus ?? "not_ready",
+      visibility: body.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        rawRef:
+          signalIds[0] ??
+          guidanceItemIds[0] ??
+          agentContextIds[0] ??
+          body.sourceArtifactIds?.[0],
+        artifactId: body.sourceArtifactIds?.[0],
+        createdFrom: "api:improvement_proposal",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "needs_review",
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbImprovementProposals).values(row).run();
+    for (const artifactId of row.sourceArtifactIds) {
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId,
+          targetType: "improvement_proposal",
+          targetId: row.id,
+          relationship: "source_for_improvement",
+          confidence: 1,
+          rationale: "ImprovementProposal created with this artifact as evidence.",
+          createdAt: timestamp,
+        })
+        .run();
+    }
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.put("/improvement-proposals/:id", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = await c.req.json<UpdateImprovementProposalRequest>();
+    const existing = db
+      .select()
+      .from(cbImprovementProposals)
+      .where(eq(cbImprovementProposals.id, id))
+      .get();
+    if (!existing) throw new Error("improvement proposal not found");
+    const timestamp = now();
+    const update = {
+      patchRef: body.patchRef !== undefined ? body.patchRef : existing.patchRef,
+      validationPlan:
+        body.validationPlan !== undefined
+          ? body.validationPlan
+          : existing.validationPlan,
+      impactReview:
+        body.impactReview !== undefined ? body.impactReview : existing.impactReview,
+      status: body.status ?? existing.status,
+      promotionStatus: body.promotionStatus ?? existing.promotionStatus,
+      updatedAt: timestamp,
+    };
+    db.update(cbImprovementProposals)
+      .set(update)
+      .where(eq(cbImprovementProposals.id, id))
+      .run();
+    return c.json({
+      data: {
+        ...existing,
+        ...update,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "update_failed", message }, 400);
   }
 });
 

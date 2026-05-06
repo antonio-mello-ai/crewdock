@@ -341,6 +341,33 @@ CREATE TABLE IF NOT EXISTS cb_agent_contexts (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_improvement_proposals (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  hypothesis TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT 'unknown',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  signal_ids TEXT NOT NULL DEFAULT '[]',
+  alignment_finding_ids TEXT NOT NULL DEFAULT '[]',
+  guidance_item_ids TEXT NOT NULL DEFAULT '[]',
+  agent_context_ids TEXT NOT NULL DEFAULT '[]',
+  source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+  work_item_ids TEXT NOT NULL DEFAULT '[]',
+  priority_ids TEXT NOT NULL DEFAULT '[]',
+  goal_ids TEXT NOT NULL DEFAULT '[]',
+  change_class TEXT NOT NULL DEFAULT 'unknown',
+  patch_ref TEXT,
+  validation_plan TEXT,
+  impact_review TEXT,
+  status TEXT NOT NULL DEFAULT 'proposed',
+  promotion_status TEXT NOT NULL DEFAULT 'not_ready',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cb_workflow_blueprints (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -479,6 +506,8 @@ CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_status ON cb_guidance_items(sta
 CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_finding_id ON cb_guidance_items(finding_id);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_contexts_target_agent ON cb_agent_contexts(target_agent);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_contexts_status ON cb_agent_contexts(status);
+CREATE INDEX IF NOT EXISTS idx_cb_improvement_proposals_status ON cb_improvement_proposals(status);
+CREATE INDEX IF NOT EXISTS idx_cb_improvement_proposals_promotion ON cb_improvement_proposals(promotion_status);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_blueprints_area ON cb_workflow_blueprints(workflow_area);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_status ON cb_workflow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_work_item_id ON cb_workflow_runs(work_item_id);

@@ -29,6 +29,7 @@ import type {
   CreateDecisionRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
+  CreateImprovementProposalRequest,
   CreateSignalRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
@@ -39,12 +40,14 @@ import type {
   RunWatcherRequest,
   RunWatcherResponse,
   UpdateGuidanceItemRequest,
+  UpdateImprovementProposalRequest,
   AlignmentFinding,
   AgentContext,
   Artifact,
   Decision,
   Goal,
   GuidanceItem,
+  ImprovementProposal,
   Signal,
   Source,
   StrategicPriority,
@@ -580,6 +583,38 @@ export function useUpdateCompanyBrainGuidanceItem() {
   >({
     mutationFn: ({ id, body }) =>
       api(`/api/company-brain/guidance-items/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainImprovementProposal() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ImprovementProposal>,
+    Error,
+    CreateImprovementProposalRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/improvement-proposals", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useUpdateCompanyBrainImprovementProposal() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ImprovementProposal>,
+    Error,
+    { id: string; body: UpdateImprovementProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/improvement-proposals/${id}`, {
         method: "PUT",
         body: JSON.stringify(body),
       }),

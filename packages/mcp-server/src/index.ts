@@ -275,7 +275,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, agent contexts, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, agent contexts, improvement proposals, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -702,6 +702,100 @@ server.registerTool(
   async ({ id, ...body }) => {
     const result = await daemonFetch<{ data: unknown }>(
       `/api/company-brain/guidance-items/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_improvement_proposal",
+  {
+    title: "Create Company Brain improvement proposal",
+    description:
+      "Create an AutoImprove proposal from signals, findings, guidance, agent context or artifacts. This records a proposal only; it does not apply or promote changes externally.",
+    inputSchema: {
+      title: z.string().min(1),
+      hypothesis: z.string().min(1),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("unknown"),
+      owner: z.string().optional(),
+      signalIds: z.array(z.string()).default([]),
+      alignmentFindingIds: z.array(z.string()).default([]),
+      guidanceItemIds: z.array(z.string()).default([]),
+      agentContextIds: z.array(z.string()).default([]),
+      sourceArtifactIds: z.array(z.string()).default([]),
+      workItemIds: z.array(z.string()).default([]),
+      priorityIds: z.array(z.string()).default([]),
+      goalIds: z.array(z.string()).default([]),
+      changeClass: z.enum(["A", "B", "C", "unknown"]).default("unknown"),
+      patchRef: z.string().optional(),
+      validationPlan: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/improvement-proposals",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          ownerType: input.owner ? "human" : "unknown",
+          status: "proposed",
+          promotionStatus: "not_ready",
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "review_improvement_proposal",
+  {
+    title: "Review Company Brain improvement proposal",
+    description:
+      "Update proposal validation, impact review and promotion status internally. This does not perform external promotion or apply patches.",
+    inputSchema: {
+      id: z.string().min(1),
+      patchRef: z.string().optional(),
+      validationPlan: z.string().optional(),
+      impactReview: z.string().optional(),
+      status: z
+        .enum([
+          "proposed",
+          "in_validation",
+          "validated",
+          "rejected",
+          "promoted",
+          "archived",
+        ])
+        .optional(),
+      promotionStatus: z
+        .enum(["not_ready", "candidate", "approved", "rejected", "promoted"])
+        .optional(),
+    },
+  },
+  async ({ id, ...body }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/improvement-proposals/${id}`,
       {
         method: "PUT",
         body: JSON.stringify(body),

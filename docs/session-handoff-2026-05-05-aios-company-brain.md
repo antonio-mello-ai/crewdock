@@ -125,7 +125,6 @@ Ainda nao existem:
 
 - drift/alignment findings;
 - guidance items;
-- improvement proposals;
 - conectores Slack/GitHub/docs com envelope comum;
 - adoption dashboard para enxergar quais frentes estao em closed loop.
 
@@ -133,7 +132,7 @@ Parciais que precisam evoluir:
 
 - Strategy layer ainda nao tem tradeoffs completos; `Decision v0` ja existe.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/decisions/signals/alignment findings/guidance/agent contexts/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
+- MCP cobre sources/artifacts/decisions/signals/alignment findings/guidance/agent contexts/improvement proposals/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
 
 ## Slice Watcher / Operating Loop Layer
 
@@ -219,7 +218,7 @@ Dogfood local Closed Loop v0 validado em DB temporario `/tmp/aios-runtime-loop-d
 Proximos cortes recomendados:
 
 - Melhorar Drift/Alignment alem da heuristica v0, incluindo `drift` e `contradiction` a partir de regras de strategy/decision.
-- Adicionar `ImprovementProposal`.
+- Adicionar importer local docs/corp e adapters reais.
 - Depois disso, avaliar adapters/read-only reais e writeback gated, sem auto-writeback por default.
 
 ## Slice Guidance Feedback v0
@@ -246,7 +245,6 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- `ImprovementProposal v0`.
 - Importer local docs/corp.
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
@@ -320,7 +318,39 @@ Dogfood local AgentContext v0 validado em DB temporario `/tmp/aios-runtime-agent
 
 Proximos cortes recomendados:
 
-- `ImprovementProposal v0`.
+- Importer local docs/corp.
+- GitHub Issues sync adapter real sem writeback automatico agressivo.
+- Adoption Dashboard.
+
+## Slice ImprovementProposal v0
+
+Objetivo: fechar o primeiro loop AutoImprove interno, transformando signals/guidance/context em propostas revisaveis sem auto-apply.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `ImprovementProposal`, `CreateImprovementProposalRequest` e `UpdateImprovementProposalRequest` em `packages/shared/src/types.ts`.
+2. Tabela `cb_improvement_proposals` com `signal_ids`, `alignment_finding_ids`, `guidance_item_ids`, `agent_context_ids`, `source_artifact_ids`, `work_item_ids`, `priority_ids`, `goal_ids`, `hypothesis`, `change_class`, `patch_ref`, `validation_plan`, `impact_review`, `status`, `promotion_status`, visibility/provenance e timestamps.
+3. Rotas:
+   - `GET/POST /api/company-brain/improvement-proposals`
+   - `PUT /api/company-brain/improvement-proposals/:id`
+4. `summary` inclui `improvementProposals`, `improvementProposalCount` e `promotionCandidateCount`.
+5. UI `/company-brain` tem formulario de Improvement Proposal, metrica de Proposals, painel e acoes internas `Candidate`/`Reject`.
+6. MCP tools `create_improvement_proposal` e `review_improvement_proposal`.
+7. Nenhum auto-apply e nenhum promote/writeback externo.
+
+Dogfood local ImprovementProposal v0 validado em DB temporario `/tmp/aios-runtime-improvement-dogfood.sqlite`, daemon em `127.0.0.1:43107`:
+
+- Signal real gerado por watcher: `92DBNa4QUPuS`.
+- Guidance gerado por watcher: `K-vaZVKTdLXY`.
+- AgentContext gerado: `7odXqQj2cfAi`.
+- ImprovementProposal criado: `rQWfvX7aCJz5`, `status=proposed`, `promotionStatus=not_ready`, `changeClass=B`.
+- Review interno via API: `status=validated`, `promotionStatus=candidate`, `impactReview="Dogfood validated proposal lifecycle without auto-apply or external promotion."`.
+- Summary retornou `improvementProposalCount=1`, `promotionCandidateCount=1`, `signalCount=1`, `agentContextCount=1`, `watcherErrorCount=0`.
+
+Proximos cortes recomendados:
+
 - Importer local docs/corp.
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
@@ -398,6 +428,8 @@ Objetos fora do Slice 1 original / pendencias posteriores:
 - `Signal` (implementado no Closed Loop v0; hardening e extractors reais ficam pendentes)
 - `AlignmentFinding` (implementado no Closed Loop v0; drift/contradiction mais ricos ficam pendentes)
 - `GuidanceItem` (implementado no Closed Loop v0; feedback/update implementado no Guidance Feedback v0)
+- `AgentContext` (implementado no AgentContext v0; export/uso por agentes reais fica pendente)
+- `ImprovementProposal` (implementado no ImprovementProposal v0; promote/writeback real fica pendente)
 
 Se o diff crescer, deixar extractors/importers reais para cortes posteriores.
 
@@ -415,7 +447,7 @@ Se o diff crescer, deixar extractors/importers reais para cortes posteriores.
 - Pelo menos um `WorkflowRun` pode apontar para issue ERP real: validado com issue #33.
 - O sistema consegue apontar work item sem prioridade/meta como `unlinked`: validado com issue #32.
 - UI mostra Strategy Map, Evidence Inbox, Unlinked Work e Workflow Runs em `/company-brain`.
-- MCP consegue listar/criar summary, sources, artifacts, signals, alignment findings, guidance, work items, workflow runs e watchers.
+- MCP consegue listar/criar summary, sources, artifacts, decisions, signals, alignment findings, guidance, agent contexts, improvement proposals, work items, workflow runs e watchers.
 
 ## Cuidados tecnicos
 

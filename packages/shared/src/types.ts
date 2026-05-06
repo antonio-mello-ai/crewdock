@@ -377,6 +377,20 @@ export type AgentContextValidationStatus =
   | "validated"
   | "rejected"
   | "needs_review";
+export type ImprovementChangeClass = "A" | "B" | "C" | "unknown";
+export type ImprovementProposalStatus =
+  | "proposed"
+  | "in_validation"
+  | "validated"
+  | "rejected"
+  | "promoted"
+  | "archived";
+export type PromotionStatus =
+  | "not_ready"
+  | "candidate"
+  | "approved"
+  | "rejected"
+  | "promoted";
 
 export interface Provenance {
   sourceId?: string;
@@ -841,6 +855,65 @@ export interface GenerateAgentContextRequest {
   visibility?: Visibility;
 }
 
+export interface ImprovementProposal {
+  id: string;
+  title: string;
+  hypothesis: string;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  signalIds: string[];
+  alignmentFindingIds: string[];
+  guidanceItemIds: string[];
+  agentContextIds: string[];
+  sourceArtifactIds: string[];
+  workItemIds: string[];
+  priorityIds: string[];
+  goalIds: string[];
+  changeClass: ImprovementChangeClass;
+  patchRef: string | null;
+  validationPlan: string | null;
+  impactReview: string | null;
+  status: ImprovementProposalStatus;
+  promotionStatus: PromotionStatus;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateImprovementProposalRequest {
+  title: string;
+  hypothesis: string;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  signalIds?: string[];
+  alignmentFindingIds?: string[];
+  guidanceItemIds?: string[];
+  agentContextIds?: string[];
+  sourceArtifactIds?: string[];
+  workItemIds?: string[];
+  priorityIds?: string[];
+  goalIds?: string[];
+  changeClass?: ImprovementChangeClass;
+  patchRef?: string | null;
+  validationPlan?: string | null;
+  impactReview?: string | null;
+  status?: ImprovementProposalStatus;
+  promotionStatus?: PromotionStatus;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
+export interface UpdateImprovementProposalRequest {
+  patchRef?: string | null;
+  validationPlan?: string | null;
+  impactReview?: string | null;
+  status?: ImprovementProposalStatus;
+  promotionStatus?: PromotionStatus;
+}
+
 export interface WorkflowBlueprintStage {
   key: string;
   title: string;
@@ -1073,6 +1146,7 @@ export interface CompanyBrainSummary {
   alignmentFindings: AlignmentFinding[];
   guidanceItems: GuidanceItem[];
   agentContexts: AgentContext[];
+  improvementProposals: ImprovementProposal[];
   stats: {
     sourceCount: number;
     artifactCount: number;
@@ -1096,6 +1170,8 @@ export interface CompanyBrainSummary {
     openGuidanceCount: number;
     agentContextCount: number;
     readyAgentContextCount: number;
+    improvementProposalCount: number;
+    promotionCandidateCount: number;
   };
 }
 

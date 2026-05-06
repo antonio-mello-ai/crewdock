@@ -17,6 +17,9 @@ import type {
   Provenance,
   ReviewStatus,
   RiskClass,
+  ImprovementChangeClass,
+  ImprovementProposalStatus,
+  PromotionStatus,
   SignalEntityType,
   SignalScope,
   SignalSeverity,
@@ -393,6 +396,51 @@ export const cbAgentContexts = sqliteTable("cb_agent_contexts", {
     .$type<AgentContextValidationStatus>()
     .notNull()
     .default("unvalidated"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbImprovementProposals = sqliteTable("cb_improvement_proposals", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  hypothesis: text("hypothesis").notNull(),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("unknown"),
+  owner: text("owner"),
+  ownerType: text("owner_type").$type<OwnerType>().notNull().default("unknown"),
+  signalIds: text("signal_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  alignmentFindingIds: text("alignment_finding_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  guidanceItemIds: text("guidance_item_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  agentContextIds: text("agent_context_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  sourceArtifactIds: text("source_artifact_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  workItemIds: text("work_item_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  priorityIds: text("priority_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  goalIds: text("goal_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  changeClass: text("change_class").$type<ImprovementChangeClass>().notNull().default("unknown"),
+  patchRef: text("patch_ref"),
+  validationPlan: text("validation_plan"),
+  impactReview: text("impact_review"),
+  status: text("status")
+    .$type<ImprovementProposalStatus>()
+    .notNull()
+    .default("proposed"),
+  promotionStatus: text("promotion_status")
+    .$type<PromotionStatus>()
+    .notNull()
+    .default("not_ready"),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),

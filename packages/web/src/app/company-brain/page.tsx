@@ -19,6 +19,7 @@ import {
   useCreateCompanyBrainArtifact,
   useCreateCompanyBrainDecision,
   useCreateCompanyBrainGoal,
+  useCreateCompanyBrainImprovementProposal,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
   useCreateCompanyBrainWatcher,
@@ -27,6 +28,7 @@ import {
   useGenerateCompanyBrainAgentContext,
   useRunCompanyBrainWatcher,
   useUpdateCompanyBrainGuidanceItem,
+  useUpdateCompanyBrainImprovementProposal,
 } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,6 +46,7 @@ import type {
   WorkItemStatus,
   ActionPolicy,
   AgentContextType,
+  ImprovementChangeClass,
 } from "@aios/shared";
 
 const areas: CompanyBrainArea[] = [
@@ -91,6 +94,8 @@ const agentContextTypes: AgentContextType[] = [
   "playbook",
   "constraints",
 ];
+
+const improvementChangeClasses: ImprovementChangeClass[] = ["A", "B", "C", "unknown"];
 
 const workStatuses: WorkItemStatus[] = [
   "new",
@@ -162,6 +167,8 @@ export default function CompanyBrainPage() {
   const createGoal = useCreateCompanyBrainGoal();
   const createDecision = useCreateCompanyBrainDecision();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
+  const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
+  const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
   const createWorkItem = useCreateCompanyBrainWorkItem();
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
@@ -184,6 +191,7 @@ export default function CompanyBrainPage() {
   const alignmentFindings = summary?.alignmentFindings ?? [];
   const guidanceItems = summary?.guidanceItems ?? [];
   const agentContexts = summary?.agentContexts ?? [];
+  const improvementProposals = summary?.improvementProposals ?? [];
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -266,6 +274,21 @@ export default function CompanyBrainPage() {
     guidanceItemId: "",
     workItemId: "",
     sourceArtifactId: "",
+  });
+
+  const [improvementForm, setImprovementForm] = useState({
+    title: "AutoImprove proposal from accepted guidance",
+    hypothesis:
+      "If accepted guidance is converted into a reviewed proposal, future agents can validate impact before promotion.",
+    changeClass: "B" as ImprovementChangeClass,
+    signalId: "",
+    findingId: "",
+    guidanceItemId: "",
+    agentContextId: "",
+    priorityId: "",
+    goalId: "",
+    validationPlan:
+      "Validate with API dogfood, build, diff check, and human review before any promotion.",
   });
 
   const [workItemForm, setWorkItemForm] = useState({
@@ -391,6 +414,52 @@ export default function CompanyBrainPage() {
     });
   };
 
+  const handleCreateImprovementProposal = (event: FormEvent) => {
+    event.preventDefault();
+    createImprovementProposal.mutate({
+      title: improvementForm.title,
+      hypothesis: improvementForm.hypothesis,
+      area: "platform",
+      owner: "Antonio",
+      ownerType: "human",
+      signalIds: improvementForm.signalId ? [improvementForm.signalId] : [],
+      alignmentFindingIds: improvementForm.findingId
+        ? [improvementForm.findingId]
+        : [],
+      guidanceItemIds: improvementForm.guidanceItemId
+        ? [improvementForm.guidanceItemId]
+        : [],
+      agentContextIds: improvementForm.agentContextId
+        ? [improvementForm.agentContextId]
+        : [],
+      priorityIds: improvementForm.priorityId ? [improvementForm.priorityId] : [],
+      goalIds: improvementForm.goalId ? [improvementForm.goalId] : [],
+      changeClass: improvementForm.changeClass,
+      validationPlan: improvementForm.validationPlan,
+      status: "proposed",
+      promotionStatus: "not_ready",
+      visibility: "internal",
+    });
+  };
+
+  const reviewImprovementProposal = (
+    id: string,
+    status: "validated" | "rejected",
+    promotionStatus: "candidate" | "rejected"
+  ) => {
+    updateImprovementProposal.mutate({
+      id,
+      body: {
+        status,
+        promotionStatus,
+        impactReview:
+          status === "validated"
+            ? "Marked as validation candidate in Company Brain UI."
+            : "Rejected in Company Brain UI before promotion.",
+      },
+    });
+  };
+
   const handleCreateWorkItem = (event: FormEvent) => {
     event.preventDefault();
     createWorkItem.mutate({
@@ -491,7 +560,7 @@ export default function CompanyBrainPage() {
             Strategy, goals, evidence, work items, workflow runs and gates.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-9">
           <Metric icon={Database} label="Sources" value={summary?.stats.sourceCount ?? 0} />
           <Metric icon={Target} label="Goals" value={summary?.stats.goalCount ?? 0} />
           <Metric
@@ -519,6 +588,11 @@ export default function CompanyBrainPage() {
             icon={FileText}
             label="Contexts"
             value={summary?.stats.agentContextCount ?? 0}
+          />
+          <Metric
+            icon={Workflow}
+            label="Proposals"
+            value={summary?.stats.improvementProposalCount ?? 0}
           />
         </div>
       </div>
@@ -1269,6 +1343,119 @@ export default function CompanyBrainPage() {
               />
             </KernelForm>
 
+            <KernelForm
+              title="Improvement proposal"
+              icon={Workflow}
+              onSubmit={handleCreateImprovementProposal}
+            >
+              <FieldLabel>Title</FieldLabel>
+              <Input
+                value={improvementForm.title}
+                onChange={(event) =>
+                  setImprovementForm({
+                    ...improvementForm,
+                    title: event.target.value,
+                  })
+                }
+              />
+              <FieldLabel>Hypothesis</FieldLabel>
+              <textarea
+                value={improvementForm.hypothesis}
+                onChange={(event) =>
+                  setImprovementForm({
+                    ...improvementForm,
+                    hypothesis: event.target.value,
+                  })
+                }
+                className="min-h-20 rounded-md border border-neutral-800 bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <FieldLabel>Signal</FieldLabel>
+              <Select
+                value={improvementForm.signalId}
+                onChange={(event) =>
+                  setImprovementForm({
+                    ...improvementForm,
+                    signalId: event.target.value,
+                  })
+                }
+              >
+                <option value="">no signal</option>
+                {signals.map((signal) => (
+                  <option key={signal.id} value={signal.id}>
+                    {signal.summary}
+                  </option>
+                ))}
+              </Select>
+              <FieldLabel>Guidance</FieldLabel>
+              <Select
+                value={improvementForm.guidanceItemId}
+                onChange={(event) =>
+                  setImprovementForm({
+                    ...improvementForm,
+                    guidanceItemId: event.target.value,
+                  })
+                }
+              >
+                <option value="">no guidance</option>
+                {guidanceItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Agent context</FieldLabel>
+                  <Select
+                    value={improvementForm.agentContextId}
+                    onChange={(event) =>
+                      setImprovementForm({
+                        ...improvementForm,
+                        agentContextId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no context</option>
+                    {agentContexts.map((context) => (
+                      <option key={context.id} value={context.id}>
+                        {context.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Class</FieldLabel>
+                  <Select
+                    value={improvementForm.changeClass}
+                    onChange={(event) =>
+                      setImprovementForm({
+                        ...improvementForm,
+                        changeClass: event.target.value as ImprovementChangeClass,
+                      })
+                    }
+                  >
+                    {improvementChangeClasses.map((changeClass) => (
+                      <option key={changeClass} value={changeClass}>
+                        {changeClass}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <FieldLabel>Validation plan</FieldLabel>
+              <textarea
+                value={improvementForm.validationPlan}
+                onChange={(event) =>
+                  setImprovementForm({
+                    ...improvementForm,
+                    validationPlan: event.target.value,
+                  })
+                }
+                className="min-h-20 rounded-md border border-neutral-800 bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <SubmitButton pending={createImprovementProposal.isPending} />
+            </KernelForm>
+
             <KernelForm title="Work item" icon={GitPullRequest} onSubmit={handleCreateWorkItem}>
               <FieldLabel>Title</FieldLabel>
               <Input
@@ -1786,6 +1973,80 @@ export default function CompanyBrainPage() {
                         <StatusBadge value={context.status} />
                         <StatusBadge value={context.validationStatus} />
                       </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Workflow className="h-4 w-4 text-neutral-500" />
+                <h2 className="text-sm font-semibold text-neutral-200">
+                  Improvement Proposals
+                </h2>
+              </div>
+            </div>
+            <div className="divide-y divide-neutral-800/40">
+              {improvementProposals.length === 0 ? (
+                <EmptyState label="No improvement proposals registered" />
+              ) : (
+                improvementProposals.slice(0, 6).map((proposal) => (
+                  <div key={proposal.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-neutral-200">
+                          {proposal.title}
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-600">
+                          class {proposal.changeClass} ·{" "}
+                          {proposal.signalIds.length} signals ·{" "}
+                          {proposal.agentContextIds.length} contexts
+                        </p>
+                        <p className="mt-2 line-clamp-2 text-sm text-neutral-500">
+                          {proposal.hypothesis}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <StatusBadge value={proposal.status} />
+                        <StatusBadge value={proposal.promotionStatus} />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={updateImprovementProposal.isPending}
+                        onClick={() =>
+                          reviewImprovementProposal(
+                            proposal.id,
+                            "validated",
+                            "candidate"
+                          )
+                        }
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Candidate
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={updateImprovementProposal.isPending}
+                        onClick={() =>
+                          reviewImprovementProposal(
+                            proposal.id,
+                            "rejected",
+                            "rejected"
+                          )
+                        }
+                      >
+                        <AlertTriangle className="h-4 w-4" />
+                        Reject
+                      </Button>
                     </div>
                   </div>
                 ))
