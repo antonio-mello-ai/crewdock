@@ -39,6 +39,8 @@ import type {
   GenerateAgentContextRequest,
   RunWatcherRequest,
   RunWatcherResponse,
+  SyncGitHubIssuesRequest,
+  SyncGitHubIssuesResponse,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   AlignmentFinding,
@@ -451,6 +453,22 @@ export function useCreateCompanyBrainArtifact() {
   return useMutation<ApiResponse<Artifact>, Error, CreateArtifactRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/artifacts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useSyncCompanyBrainGitHubIssues() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<SyncGitHubIssuesResponse>,
+    Error,
+    SyncGitHubIssuesRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/adapters/github/issues/sync", {
         method: "POST",
         body: JSON.stringify(body),
       }),

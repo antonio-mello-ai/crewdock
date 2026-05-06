@@ -120,19 +120,20 @@ Agora existem:
 - UI `/company-brain` com Strategy Map, Evidence Inbox, Unlinked Work e Workflow Runs;
 - MCP tools `get_company_brain_summary`, `create_company_brain_source`, `create_company_brain_artifact`, `create_company_brain_work_item` e `create_company_brain_workflow_run`.
 - Watcher / Operating Loop Layer v0 com `Watcher`, `WatcherRun`, seed `watcher-github-issues-manual-v0`, summary/API/UI/MCP e run manual que cria artifact/work item interno com provenance.
+- Closed Loop v0 com `Signal`, `AlignmentFinding` e `GuidanceItem`, incluindo feedback/update interno.
+- `Decision`, `AgentContext` e `ImprovementProposal` v0.
+- Importers/adapters read-only para local docs e GitHub Issues, ambos com provenance e sem writeback externo.
 
 Ainda nao existem:
 
-- drift/alignment findings;
-- guidance items;
-- conectores Slack/GitHub com envelope comum;
+- conector Slack com envelope comum;
 - adoption dashboard para enxergar quais frentes estao em closed loop.
 
 Parciais que precisam evoluir:
 
 - Strategy layer ainda nao tem tradeoffs completos; `Decision v0` ja existe.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/local docs importer/decisions/signals/alignment findings/guidance/agent contexts/improvement proposals/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
+- MCP cobre sources/artifacts/local docs importer/GitHub Issues sync adapter/decisions/signals/alignment findings/guidance/agent contexts/improvement proposals/work items/runs/watchers; writeback externo segue fora do core v0.
 
 ## Slice Watcher / Operating Loop Layer
 
@@ -245,7 +246,6 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
 ## Slice Decision v0
@@ -279,7 +279,6 @@ Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-
 Proximos cortes recomendados:
 
 - `ImprovementProposal v0`.
-- GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
 ## Slice AgentContext v0
@@ -317,7 +316,6 @@ Dogfood local AgentContext v0 validado em DB temporario `/tmp/aios-runtime-agent
 Proximos cortes recomendados:
 
 - Importer local docs/corp.
-- GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
 ## Slice ImprovementProposal v0
@@ -349,7 +347,6 @@ Dogfood local ImprovementProposal v0 validado em DB temporario `/tmp/aios-runtim
 
 Proximos cortes recomendados:
 
-- GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
 ## Slice Local Docs Importer v0
@@ -378,9 +375,39 @@ Dogfood local Local Docs Importer v0 validado em DB temporario `/tmp/aios-runtim
 - Ambos com provenance `createdFrom=importer:local_docs`.
 - Summary retornou `sourceCount=1`, `artifactCount=2`.
 
+## Slice GitHub Issues Sync Adapter v0
+
+Objetivo: substituir o watcher manual/simulado como unica entrada de issues por um adapter read-only real que normaliza GitHub Issues no envelope operacional do Company Brain, sem mutar GitHub.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `SyncGitHubIssuesRequest` e `SyncGitHubIssuesResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/adapters/github/issues/sync`.
+3. Fetch real via GitHub REST API, com `GITHUB_TOKEN` opcional no daemon para repos privados/limites maiores.
+4. Cria ou reutiliza `Source` `github_issue` por repo.
+5. Cria `Artifact` por issue com `artifactType=github_issue`, `raw_ref`, `content_ref`, hash estavel, labels/datas em metadata e provenance `createdFrom=adapter:github_issues`.
+6. Cria `WorkItem` canonico opcional por issue com `external_provider=github`, `external_id=<owner/repo>#<number>`, status canonico, labels, source/artifact link e provenance `createdFrom=adapter:github_issues:work_item`.
+7. Dedupe por `raw_ref` de artifact e por `external_provider/external_id` de work item.
+8. Atualiza source health/freshness.
+9. UI `/company-brain` tem formulario manual `GitHub sync` para repo/state/limit/links.
+10. MCP tool `sync_company_brain_github_issues`.
+11. Nenhum writeback externo: nao abre issue, nao comenta, nao fecha, nao altera labels.
+
+Dogfood local GitHub Issues Sync Adapter v0 validado em DB temporario `/tmp/aios-runtime-github-issues-dogfood.sqlite`, daemon em `127.0.0.1:43109`, usando `GITHUB_TOKEN="$(gh auth token)"` somente no ambiente do daemon:
+
+- Repo sincronizado: `antonio-mello-ai/crewdock`, `state=all`, `limit=5`.
+- Source criado: `0y03DE8QZdtn`, `name=CrewDock GitHub Issues read-only sync`, `sourceType=github_issue`, `healthStatus=healthy`.
+- Issues vistas: `5`.
+- Artifacts criados: `5`, incluindo `KGexPA-RtWkM` para `https://github.com/antonio-mello-ai/crewdock/issues/24`.
+- WorkItems internos criados: `5`, incluindo `9ux9bJNK7CSE` com `externalId=antonio-mello-ai/crewdock#24`.
+- ArtifactLinks criados: `5`, relationship `synced_from_github_issue`.
+- Summary retornou `sourceCount=1`, `artifactCount=5`, `workItemCount=5`, `unlinkedWorkItemCount=5`, `watcherErrorCount=0`.
+- Segunda sincronizacao do mesmo repo retornou `issuesSeen=5`, `artifactsCreated=0`, `workItemsCreated=0`, validando dedupe.
+
 Proximos cortes recomendados:
 
-- GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
 ## Dogfood ERP
@@ -501,13 +528,12 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Watcher v0, focado em `Signal`, `AlignmentFinding` e `GuidanceItem`, sem recriar o kernel do Slice 1 nem a camada de Watchers.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos GitHub Issues Sync Adapter v0, focado em `AIOS Adoption Dashboard v0`, sem recriar o kernel, watchers ou adapters ja entregues.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- adicionar `Signal` com o envelope do AutoImprove Core;
-- adicionar `AlignmentFinding` minimo para classificar evidence/work items contra priorities/goals;
-- adicionar `GuidanceItem` minimo gerado de watcher/artifact/finding;
-- permitir que watcher run gere Signal/Guidance quando houver policy adequada;
+- mostrar quais frentes/projetos tem sources, artifacts, work items, workflow runs, signals/guidance e improvement proposals;
+- destacar work items sem priority/goal, gates pendentes, SLA at-risk/breached e sources sem freshness;
+- expor a visao em summary/API/UI/MCP se necessario, reaproveitando dados existentes antes de criar schema novo;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

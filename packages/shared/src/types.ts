@@ -489,6 +489,27 @@ export interface ImportLocalDocsResponse {
   artifactsCreated: Artifact[];
 }
 
+export interface SyncGitHubIssuesRequest {
+  repo: string;
+  state?: "open" | "closed" | "all";
+  limit?: number;
+  sourceId?: string | null;
+  sourceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+  createWorkItems?: boolean;
+  priorityId?: string | null;
+  goalId?: string | null;
+}
+
+export interface SyncGitHubIssuesResponse {
+  source: Source;
+  artifactsCreated: Artifact[];
+  workItemsCreated: WorkItem[];
+  issuesSeen: number;
+}
+
 export interface StrategicPriority {
   id: string;
   title: string;

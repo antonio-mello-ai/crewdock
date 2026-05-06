@@ -26,6 +26,7 @@ import type {
   ImportLocalDocsRequest,
   SignalSeverity,
   RunWatcherRequest,
+  SyncGitHubIssuesRequest,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   WorkflowBlueprintStage,
@@ -107,6 +108,61 @@ function summarizeDoc(content: string) {
     .join(" ")
     .replaceAll(/[#*_`]/g, "")
     .slice(0, 500);
+}
+
+interface GitHubIssuePayload {
+  id: number;
+  number: number;
+  title: string;
+  body: string | null;
+  state: "open" | "closed";
+  html_url: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  labels: Array<{ name: string }>;
+  user: { login: string } | null;
+  pull_request?: unknown;
+}
+
+function parseGitHubRepo(repo: string) {
+  const normalized = repo
+    .trim()
+    .replace(/^https:\/\/github.com\//, "")
+    .replace(/\/issues\/?$/, "")
+    .replace(/\.git$/, "");
+  const [owner, name] = normalized.split("/");
+  if (!owner || !name) {
+    throw new Error("repo must be owner/name or a github.com repository URL");
+  }
+  return { owner, name, fullName: `${owner}/${name}` };
+}
+
+async function fetchGitHubIssues(repo: string, state: string, limit: number) {
+  const parsed = parseGitHubRepo(repo);
+  const token = process.env.GITHUB_TOKEN;
+  const url = new URL(
+    `https://api.github.com/repos/${parsed.owner}/${parsed.name}/issues`
+  );
+  url.searchParams.set("state", state);
+  url.searchParams.set("per_page", String(Math.max(1, Math.min(limit, 100))));
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "aios-runtime-company-brain",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`GitHub issues fetch failed ${res.status}: ${text.slice(0, 300)}`);
+  }
+  const issues = (await res.json()) as GitHubIssuePayload[];
+  return {
+    repo: parsed,
+    issues: issues.filter((issue) => !issue.pull_request),
+  };
 }
 
 function requireText(value: unknown, field: string) {
@@ -630,6 +686,202 @@ app.post("/importers/local-docs", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "import_failed", message }, 400);
+  }
+});
+
+app.post("/adapters/github/issues/sync", async (c) => {
+  try {
+    const body = await c.req.json<SyncGitHubIssuesRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const { repo, issues } = await fetchGitHubIssues(
+      requireText(body.repo, "repo"),
+      body.state ?? "open",
+      body.limit ?? 25
+    );
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? `${repo.fullName} GitHub Issues`,
+        sourceType: "github_issue" as const,
+        area: body.area ?? "development",
+        externalRef: `https://github.com/${repo.fullName}/issues`,
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          adapter: "github_issues",
+          repo: repo.fullName,
+          readOnly: true,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const existingArtifacts = db.select().from(cbArtifacts).all();
+    const existingWorkItems = db.select().from(cbWorkItems).all();
+    const artifactsCreated = [];
+    const workItemsCreated = [];
+
+    for (const issue of issues) {
+      const rawRef = issue.html_url;
+      let artifact = existingArtifacts.find((item) => item.rawRef === rawRef);
+      if (!artifact) {
+        const issuePayload = JSON.stringify({
+          id: issue.id,
+          number: issue.number,
+          title: issue.title,
+          state: issue.state,
+          body: issue.body,
+          labels: issue.labels.map((label) => label.name),
+          updated_at: issue.updated_at,
+        });
+        artifact = {
+          id: nanoid(12),
+          sourceId: source.id,
+          artifactType: "github_issue",
+          area: body.area ?? source.area,
+          title: `#${issue.number} ${issue.title}`,
+          summary: issue.body?.trim().slice(0, 500) ?? null,
+          contentRef: issue.url,
+          rawRef,
+          author: issue.user?.login ?? null,
+          occurredAt: Date.parse(issue.updated_at || issue.created_at),
+          ingestedAt: timestamp,
+          hash: stableHash(issuePayload),
+          visibility: body.visibility ?? source.visibility,
+          provenance: {
+            sourceId: source.id,
+            rawRef,
+            createdFrom: "adapter:github_issues",
+            confidence: 1,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: body.visibility ?? source.visibility,
+            notes: "read_only=true",
+          },
+          humanReviewStatus: "pending" as const,
+          confidence: 1,
+          metadata: {
+            adapter: "github_issues",
+            readOnly: true,
+            repo: repo.fullName,
+            githubIssueId: issue.id,
+            number: issue.number,
+            state: issue.state,
+            labels: issue.labels.map((label) => label.name),
+            createdAt: issue.created_at,
+            updatedAt: issue.updated_at,
+            closedAt: issue.closed_at,
+          },
+        };
+        db.insert(cbArtifacts).values(artifact).run();
+        existingArtifacts.push(artifact);
+        artifactsCreated.push(artifact);
+      }
+
+      if (body.createWorkItems ?? true) {
+        const externalId = `${repo.fullName}#${issue.number}`;
+        const existing = existingWorkItems.find(
+          (item) =>
+            item.externalProvider === "github" && item.externalId === externalId
+        );
+        if (!existing) {
+          const workItem = {
+            id: nanoid(12),
+            title: `#${issue.number} ${issue.title}`,
+            description: issue.body?.trim().slice(0, 1000) ?? null,
+            area: body.area ?? source.area,
+            owner: body.owner ?? null,
+            ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+            status: issue.state === "closed" ? ("done" as const) : ("triage" as const),
+            priorityId: body.priorityId ?? null,
+            goalId: body.goalId ?? null,
+            milestoneId: null,
+            externalProvider: "github",
+            externalId,
+            externalUrl: rawRef,
+            riskClass: "unknown" as const,
+            dueAt: null,
+            blockedReason: null,
+            labels: ["github_issue", ...issue.labels.map((label) => label.name)],
+            sourceId: source.id,
+            artifactId: artifact.id,
+            visibility: body.visibility ?? source.visibility,
+            provenance: {
+              sourceId: source.id,
+              rawRef,
+              artifactId: artifact.id,
+              createdFrom: "adapter:github_issues:work_item",
+              confidence: 1,
+              extractedAt: timestamp,
+              humanReviewStatus: "pending" as const,
+              visibility: body.visibility ?? source.visibility,
+              notes: "read_only=true",
+            },
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          db.insert(cbWorkItems).values(workItem).run();
+          existingWorkItems.push(workItem);
+          workItemsCreated.push(workItem);
+          db.insert(cbArtifactLinks)
+            .values({
+              id: nanoid(12),
+              artifactId: artifact.id,
+              targetType: "work_item",
+              targetId: workItem.id,
+              relationship: "synced_from_github_issue",
+              confidence: 1,
+              rationale: "Read-only GitHub Issues adapter created canonical WorkItem.",
+              createdAt: timestamp,
+            })
+            .run();
+        }
+      }
+    }
+
+    const updatedSource = {
+      ...source,
+      lastSyncAt: timestamp,
+      healthStatus: "healthy" as const,
+      syncError: null,
+      updatedAt: timestamp,
+    };
+    db.update(cbSources)
+      .set({
+        lastSyncAt: updatedSource.lastSyncAt,
+        healthStatus: updatedSource.healthStatus,
+        syncError: updatedSource.syncError,
+        updatedAt: updatedSource.updatedAt,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          source: updatedSource,
+          artifactsCreated,
+          workItemsCreated,
+          issuesSeen: issues.length,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "sync_failed", message }, 400);
   }
 });
 

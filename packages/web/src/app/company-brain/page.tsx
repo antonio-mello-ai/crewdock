@@ -27,6 +27,7 @@ import {
   useCreateCompanyBrainWorkItem,
   useGenerateCompanyBrainAgentContext,
   useRunCompanyBrainWatcher,
+  useSyncCompanyBrainGitHubIssues,
   useUpdateCompanyBrainGuidanceItem,
   useUpdateCompanyBrainImprovementProposal,
 } from "@/hooks/use-api";
@@ -111,6 +112,8 @@ const workStatuses: WorkItemStatus[] = [
 const riskClasses: RiskClass[] = ["A", "B", "C", "unknown"];
 const slaStatuses: SlaStatus[] = ["not_set", "on_track", "at_risk", "breached"];
 const signalSeverities: SignalSeverity[] = ["info", "warn", "critical"];
+const githubIssueStates = ["open", "closed", "all"] as const;
+type GitHubIssueState = (typeof githubIssueStates)[number];
 const actionPolicies: ActionPolicy[] = [
   "observe_only",
   "create_artifacts",
@@ -173,6 +176,7 @@ export default function CompanyBrainPage() {
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
   const runWatcher = useRunCompanyBrainWatcher();
+  const syncGitHubIssues = useSyncCompanyBrainGitHubIssues();
   const updateGuidance = useUpdateCompanyBrainGuidanceItem();
 
   const summary = data?.data;
@@ -334,6 +338,17 @@ export default function CompanyBrainPage() {
     goalId: "",
     signalSeverity: "warn" as SignalSeverity,
     createWorkItem: true,
+  });
+
+  const [githubSyncForm, setGithubSyncForm] = useState({
+    repo: "antonio-mello-ai/crewdock",
+    state: "open" as GitHubIssueState,
+    limit: "5",
+    sourceName: "CrewDock GitHub Issues read-only sync",
+    owner: "Felhen",
+    priorityId: "",
+    goalId: "",
+    createWorkItems: true,
   });
 
   const handleCreateSource = (event: FormEvent) => {
@@ -531,6 +546,22 @@ export default function CompanyBrainPage() {
         workItemTitle: watcherRunForm.title,
         externalUrl: watcherRunForm.rawRef || null,
       },
+    });
+  };
+
+  const handleSyncGitHubIssues = (event: FormEvent) => {
+    event.preventDefault();
+    syncGitHubIssues.mutate({
+      repo: githubSyncForm.repo,
+      state: githubSyncForm.state,
+      limit: Number(githubSyncForm.limit) || 5,
+      sourceName: githubSyncForm.sourceName || undefined,
+      area: "development",
+      owner: githubSyncForm.owner || undefined,
+      createWorkItems: githubSyncForm.createWorkItems,
+      priorityId: githubSyncForm.priorityId || null,
+      goalId: githubSyncForm.goalId || null,
+      visibility: "internal",
     });
   };
 
@@ -816,7 +847,7 @@ export default function CompanyBrainPage() {
             </KernelForm>
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-2">
+          <section className="grid gap-4 lg:grid-cols-3">
             <KernelForm title="Watcher" icon={Workflow} onSubmit={handleCreateWatcher}>
               <FieldLabel>Title</FieldLabel>
               <Input
@@ -1055,6 +1086,120 @@ export default function CompanyBrainPage() {
                 pending={runWatcher.isPending}
                 disabled={!watcherRunForm.watcherId}
               />
+            </KernelForm>
+
+            <KernelForm
+              title="GitHub sync"
+              icon={GitPullRequest}
+              onSubmit={handleSyncGitHubIssues}
+            >
+              <FieldLabel>Repository</FieldLabel>
+              <Input
+                value={githubSyncForm.repo}
+                onChange={(event) =>
+                  setGithubSyncForm({
+                    ...githubSyncForm,
+                    repo: event.target.value,
+                  })
+                }
+              />
+              <FieldLabel>Source name</FieldLabel>
+              <Input
+                value={githubSyncForm.sourceName}
+                onChange={(event) =>
+                  setGithubSyncForm({
+                    ...githubSyncForm,
+                    sourceName: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>State</FieldLabel>
+                  <Select
+                    value={githubSyncForm.state}
+                    onChange={(event) =>
+                      setGithubSyncForm({
+                        ...githubSyncForm,
+                        state: event.target.value as GitHubIssueState,
+                      })
+                    }
+                  >
+                    {githubIssueStates.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Limit</FieldLabel>
+                  <Input
+                    value={githubSyncForm.limit}
+                    onChange={(event) =>
+                      setGithubSyncForm({
+                        ...githubSyncForm,
+                        limit: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Priority</FieldLabel>
+                  <Select
+                    value={githubSyncForm.priorityId}
+                    onChange={(event) =>
+                      setGithubSyncForm({
+                        ...githubSyncForm,
+                        priorityId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">unlinked</option>
+                    {priorities.map((priority) => (
+                      <option key={priority.id} value={priority.id}>
+                        {priority.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Goal</FieldLabel>
+                  <Select
+                    value={githubSyncForm.goalId}
+                    onChange={(event) =>
+                      setGithubSyncForm({
+                        ...githubSyncForm,
+                        goalId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">unlinked</option>
+                    {goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={githubSyncForm.createWorkItems}
+                  onChange={(event) =>
+                    setGithubSyncForm({
+                      ...githubSyncForm,
+                      createWorkItems: event.target.checked,
+                    })
+                  }
+                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                />
+                Create internal WorkItems
+              </label>
+              <SubmitButton pending={syncGitHubIssues.isPending} />
             </KernelForm>
           </section>
 
