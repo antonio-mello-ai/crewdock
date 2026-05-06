@@ -542,12 +542,21 @@ export interface SyncSlackChannelRequest {
   limit?: number;
   oldest?: string | null;
   latest?: string | null;
+  incremental?: boolean;
+  includeThreads?: boolean;
+  threadLimit?: number;
 }
 
 export interface SyncSlackChannelResponse {
   source: Source;
   artifactsCreated: Artifact[];
   messagesSeen: number;
+  threadsSeen: number;
+  repliesSeen: number;
+  incremental: boolean;
+  includeThreads: boolean;
+  oldestUsed: string | null;
+  latestTs: string | null;
   channel: {
     id: string;
     name: string | null;

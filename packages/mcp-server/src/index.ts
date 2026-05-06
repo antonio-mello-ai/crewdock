@@ -592,7 +592,7 @@ server.registerTool(
   {
     title: "Sync Slack channel into Company Brain",
     description:
-      "Read recent messages from a Slack channel using SLACK_BOT_TOKEN and import them as read-only Company Brain artifacts with provenance. Does not post or mutate Slack.",
+      "Read recent and incremental Slack channel messages, optionally including thread replies, using SLACK_BOT_TOKEN and import them as read-only Company Brain artifacts with provenance. Does not post or mutate Slack.",
     inputSchema: {
       channelId: z.string().optional(),
       channelName: z.string().optional(),
@@ -602,6 +602,9 @@ server.registerTool(
       limit: z.number().int().positive().max(200).default(25),
       oldest: z.string().optional(),
       latest: z.string().optional(),
+      incremental: z.boolean().default(true),
+      includeThreads: z.boolean().default(true),
+      threadLimit: z.number().int().min(0).max(50).default(10),
       area: z
         .enum([
           "strategy",

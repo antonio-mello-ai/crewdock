@@ -138,6 +138,12 @@ function parseSlackTimestamp(ts: string | null | undefined) {
   return secondsNumber * 1000 + (Number.isFinite(fractionMs) ? fractionMs : 0);
 }
 
+function slackTimestampFromMs(ms: number) {
+  const seconds = Math.floor(ms / 1000);
+  const millis = Math.max(0, Math.floor(ms % 1000));
+  return `${seconds}.${String(millis).padStart(3, "0")}`;
+}
+
 function summarizeSlackText(text: string) {
   return text.replace(/\s+/g, " ").trim().slice(0, 500);
 }
@@ -208,9 +214,15 @@ interface SlackMessagePayload {
   bot_id?: string;
   ts?: string;
   thread_ts?: string;
+  reply_count?: number;
+  latest_reply?: string;
 }
 
 interface SlackConversationHistoryResponse extends SlackApiEnvelope {
+  messages?: SlackMessagePayload[];
+}
+
+interface SlackConversationRepliesResponse extends SlackApiEnvelope {
   messages?: SlackMessagePayload[];
 }
 
@@ -2763,18 +2775,6 @@ app.post("/adapters/slack/channel/sync", async (c) => {
       channelId: body.channelId,
       channelName: body.channelName,
     });
-    const limit = Math.max(1, Math.min(body.limit ?? 25, 200));
-    const history = await slackApi<SlackConversationHistoryResponse>(
-      token,
-      "conversations.history",
-      {
-        channel: channel.id,
-        limit,
-        oldest: body.oldest,
-        latest: body.latest,
-        inclusive: true,
-      }
-    );
     const workspaceName = body.workspaceName?.trim() || auth.team || "slack";
     const workspaceId = auth.team_id ?? null;
     const channelName = channel.name ?? body.channelName ?? channel.id;
@@ -2824,17 +2824,93 @@ app.post("/adapters/slack/channel/sync", async (c) => {
       db.insert(cbSources).values(source).run();
     }
 
+    const limit = Math.max(1, Math.min(body.limit ?? 25, 200));
+    const threadLimit = Math.max(0, Math.min(body.threadLimit ?? 10, 50));
+    const incremental = body.incremental !== false;
+    const includeThreads = body.includeThreads === true;
+    const oldestUsed =
+      body.oldest ??
+      (incremental && source.lastSyncAt
+        ? slackTimestampFromMs(Math.max(0, source.lastSyncAt - 1000))
+        : null);
+    const history = await slackApi<SlackConversationHistoryResponse>(
+      token,
+      "conversations.history",
+      {
+        channel: channel.id,
+        limit,
+        oldest: oldestUsed,
+        latest: body.latest,
+        inclusive: false,
+      }
+    );
     const existingArtifacts = db.select().from(cbArtifacts).all();
-    const artifactsCreated = [];
+    const knownThreadTs = new Set<string>();
+    for (const artifact of existingArtifacts) {
+      if (artifact.sourceId !== source.id) continue;
+      const metadata = artifact.metadata ?? {};
+      if (metadata.channelId !== channel.id) continue;
+      const threadTs =
+        typeof metadata.threadTs === "string" ? metadata.threadTs : null;
+      if (threadTs) knownThreadTs.add(threadTs);
+    }
+
     const messages = history.messages ?? [];
-    for (const message of messages) {
+    const threadRoots = new Set<string>();
+    const imports = new Map<
+      string,
+      { message: SlackMessagePayload; isThreadReply: boolean; parentTs: string | null }
+    >();
+    const addMessage = (
+      message: SlackMessagePayload,
+      isThreadReply: boolean,
+      parentTs: string | null
+    ) => {
+      if (!message.ts) return;
+      imports.set(message.ts, { message, isThreadReply, parentTs });
+      const threadTs = message.thread_ts ?? null;
+      if (threadTs) threadRoots.add(threadTs);
+      if ((message.reply_count ?? 0) > 0 || message.latest_reply) {
+        threadRoots.add(threadTs ?? message.ts);
+      }
+    };
+    for (const message of messages) addMessage(message, false, null);
+    if (includeThreads) {
+      for (const threadTs of knownThreadTs) threadRoots.add(threadTs);
+      for (const threadTs of Array.from(threadRoots).slice(0, threadLimit)) {
+        const replies = await slackApi<SlackConversationRepliesResponse>(
+          token,
+          "conversations.replies",
+          {
+            channel: channel.id,
+            ts: threadTs,
+            limit: 200,
+            oldest: oldestUsed,
+            latest: body.latest,
+            inclusive: false,
+          }
+        );
+        for (const reply of replies.messages ?? []) {
+          if (!reply.ts || reply.ts === threadTs) continue;
+          addMessage(reply, true, threadTs);
+        }
+      }
+    }
+
+    const artifactsCreated = [];
+    let latestTs: string | null = null;
+    let repliesSeen = 0;
+    for (const { message, isThreadReply, parentTs } of imports.values()) {
       const text = summarizeSlackText(message.text ?? "");
       if (!message.ts || !text) continue;
       const permalink = await fetchSlackPermalink(token, channel.id, message.ts);
       const rawRef =
         permalink ?? `slack://${workspaceId ?? workspaceName}/${channel.id}/${message.ts}`;
+      if (!latestTs || Number(message.ts) > Number(latestTs)) latestTs = message.ts;
+      if (isThreadReply) repliesSeen += 1;
       if (existingArtifacts.some((artifact) => artifact.rawRef === rawRef)) continue;
       const occurredAt = parseSlackTimestamp(message.ts) ?? timestamp;
+      const threadTs = message.thread_ts ?? parentTs;
       const payload = JSON.stringify({
         workspaceName,
         workspaceId,
@@ -2844,7 +2920,11 @@ app.post("/adapters/slack/channel/sync", async (c) => {
         username: message.username ?? null,
         botId: message.bot_id ?? null,
         ts: message.ts,
-        threadTs: message.thread_ts ?? null,
+        threadTs,
+        isThreadReply,
+        parentTs,
+        replyCount: message.reply_count ?? 0,
+        latestReply: message.latest_reply ?? null,
         subtype: message.subtype ?? null,
         text,
       });
@@ -2855,7 +2935,7 @@ app.post("/adapters/slack/channel/sync", async (c) => {
         sourceId: source.id,
         artifactType: "slack_message",
         area: body.area ?? source.area,
-        title: `Slack #${channelName}: ${text.slice(0, 80)}`,
+        title: `Slack #${channelName}${isThreadReply ? " thread" : ""}: ${text.slice(0, 80)}`,
         summary: text,
         contentRef: permalink ?? rawRef,
         rawRef,
@@ -2890,7 +2970,11 @@ app.post("/adapters/slack/channel/sync", async (c) => {
           username: message.username ?? null,
           botId: message.bot_id ?? null,
           ts: message.ts,
-          threadTs: message.thread_ts ?? null,
+          threadTs,
+          isThreadReply,
+          parentTs,
+          replyCount: message.reply_count ?? 0,
+          latestReply: message.latest_reply ?? null,
           subtype: message.subtype ?? null,
           permalink,
         },
@@ -2900,11 +2984,32 @@ app.post("/adapters/slack/channel/sync", async (c) => {
       artifactsCreated.push(artifact);
     }
 
+    const previousLatestTs =
+      typeof source.metadata?.latestTs === "string" ? source.metadata.latestTs : null;
+    const updatedMetadata = {
+      ...(source.metadata ?? {}),
+      adapter: "slack_channel",
+      workspaceName,
+      workspaceId,
+      channelId: channel.id,
+      channelName,
+      readOnly: true,
+      actionPolicy: "observe_only",
+      incremental,
+      includeThreads,
+      threadLimit,
+      oldestUsed,
+      latestTs: latestTs ?? previousLatestTs,
+      lastMessagesSeen: imports.size,
+      lastRepliesSeen: repliesSeen,
+      syncedAt: timestamp,
+    };
     const updatedSource = {
       ...source,
       lastSyncAt: timestamp,
       healthStatus: "healthy" as const,
       syncError: null,
+      metadata: updatedMetadata,
       updatedAt: timestamp,
     };
     db.update(cbSources)
@@ -2912,6 +3017,7 @@ app.post("/adapters/slack/channel/sync", async (c) => {
         lastSyncAt: updatedSource.lastSyncAt,
         healthStatus: updatedSource.healthStatus,
         syncError: updatedSource.syncError,
+        metadata: updatedSource.metadata,
         updatedAt: updatedSource.updatedAt,
       })
       .where(eq(cbSources.id, source.id))
@@ -2922,7 +3028,13 @@ app.post("/adapters/slack/channel/sync", async (c) => {
         data: {
           source: updatedSource,
           artifactsCreated,
-          messagesSeen: messages.length,
+          messagesSeen: imports.size,
+          threadsSeen: includeThreads ? Math.min(threadRoots.size, threadLimit) : 0,
+          repliesSeen,
+          incremental,
+          includeThreads,
+          oldestUsed,
+          latestTs: updatedMetadata.latestTs,
           channel: {
             id: channel.id,
             name: channelName,

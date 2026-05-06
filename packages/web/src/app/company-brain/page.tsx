@@ -463,6 +463,9 @@ export default function CompanyBrainPage() {
     workspaceName: "Felhen",
     channelName: "aios-runtime",
     limit: "10",
+    threadLimit: "10",
+    incremental: true,
+    includeThreads: true,
   });
 
   const handleCreateSource = (event: FormEvent) => {
@@ -744,6 +747,9 @@ export default function CompanyBrainPage() {
       workspaceName: slackSyncForm.workspaceName || undefined,
       channelName: slackSyncForm.channelName || undefined,
       limit: Number(slackSyncForm.limit) || 10,
+      threadLimit: Number(slackSyncForm.threadLimit) || 10,
+      incremental: slackSyncForm.incremental,
+      includeThreads: slackSyncForm.includeThreads,
       area: "operations",
       owner: "Felhen",
       visibility: "internal",
@@ -1923,6 +1929,46 @@ export default function CompanyBrainPage() {
                   })
                 }
               />
+              <FieldLabel>Thread limit</FieldLabel>
+              <Input
+                value={slackSyncForm.threadLimit}
+                onChange={(event) =>
+                  setSlackSyncForm({
+                    ...slackSyncForm,
+                    threadLimit: event.target.value,
+                  })
+                }
+              />
+              <div className="grid gap-2 text-xs text-neutral-400">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={slackSyncForm.incremental}
+                    onChange={(event) =>
+                      setSlackSyncForm({
+                        ...slackSyncForm,
+                        incremental: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Incremental
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={slackSyncForm.includeThreads}
+                    onChange={(event) =>
+                      setSlackSyncForm({
+                        ...slackSyncForm,
+                        includeThreads: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                  />
+                  Include threads
+                </label>
+              </div>
               <SubmitButton
                 pending={syncSlackChannel.isPending}
                 disabled={!slackSyncForm.channelName.trim()}

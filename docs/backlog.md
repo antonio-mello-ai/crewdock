@@ -39,13 +39,15 @@ Status Slack Ingestao v0 em 2026-05-06: importer manual/read-only para mensagens
 
 Status Slack API Adapter v0 em 2026-05-06: adapter real/read-only implementado via API/UI/MCP usando `SLACK_BOT_TOKEN`, lendo mensagens recentes de canal selecionado e gerando `Source` + `Artifact` `slack_message` com `createdFrom=adapter:slack_channel`, metadata, raw_ref, hash, provenance e `actionPolicy=observe_only`. Dogfood validado em `#aios-runtime`, sem writeback externo automatico.
 
+Status Slack Threads/Incremental Sync v0 em 2026-05-06: adapter Slack evoluido para sync incremental por source (`lastSyncAt` -> `oldest`), opcao thread-aware com `includeThreads/threadLimit`, artifacts para replies com metadata de thread e resposta API/MCP/UI com `threadsSeen`, `repliesSeen`, `oldestUsed`, `latestTs`, `incremental` e `includeThreads`. Read-only e sem postar/mutar Slack.
+
 Status Demo Felhen v0.1 em 2026-05-06: runner interno/API/UI/MCP implementado para criar uma cadeia demonstravel strategy -> goal -> evidence -> work item -> workflow run -> signal -> finding -> guidance -> improvement proposal, com Adoption Dashboard em `improving` e Source Health healthy.
 
 Status AIOS Briefing Watcher v0 em 2026-05-06: seed `watcher-aios-briefing-v0` implementado sobre a camada existente de Watcher/WatcherRun, com `actionPolicy=observe_only`. O run gera Artifact interno `aios_briefing` com secoes estruturadas de decisions, tradeoffs, guidance aberta, findings, source health, adoption dashboard, work sem priority/goal, gates/SLA e proximos passos; emite Signals opcionais apenas para gaps claros com envelope AutoImprove e expose o ultimo briefing em summary/API/UI/MCP. Sem Slack/GitHub/writeback externo.
 
 Status Review Cohesion v0 em 2026-05-06: fila unificada derivada para Decision/Signal/AlignmentFinding/Guidance candidates implementada em summary/API/UI/MCP. O corte mostra decisions propostas, signals sem finding, findings sem guidance e guidance aberta com feedback pendente, com next action, severity, provenance e acoes internas de review/extracao/feedback. Sem writeback externo.
 
-Proximos cortes planejados em ordem: Slack threads/incremental sync; GitHub PR/CI watcher real; GitHub notifications watcher; writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
+Proximos cortes planejados em ordem: GitHub PR/CI watcher real; GitHub notifications watcher; writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -78,6 +80,7 @@ Proximos cortes planejados em ordem: Slack threads/incremental sync; GitHub PR/C
 - [x] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
 - [x] **GitHub Issues sync adapter v0** — sincronizar issues reais do GitHub em modo read-only para `Source`, `Artifact` e `WorkItem` canonico com dedupe, links, source health e provenance
 - [x] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente. Implementado como importer manual e adapter real de canal Slack.
+- [x] **Slack threads/incremental sync v0** — usar cursor incremental por source e importar replies de threads como artifacts read-only com provenance e metadata de thread
 - [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
 - [x] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
 - [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates

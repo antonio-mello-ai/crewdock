@@ -557,6 +557,29 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-slack-channel-sync-do
 
 Boundary: o Slack App tem escopos amplos para evitar bloqueio operacional, mas o runtime continua sem writeback automatico. Escrita externa deve entrar em corte separado com `action_policy`, HITL/gates e aceite explicito.
 
+## Slice Slack Threads/Incremental Sync v0
+
+Objetivo: evoluir o Slack adapter real de leitura recente para sincronizacao incremental e thread-aware, ainda read-only e sem postar/mutar Slack.
+
+Implementado em 2026-05-06:
+
+1. `SyncSlackChannelRequest` aceita `incremental`, `includeThreads` e `threadLimit`.
+2. Sync incremental usa `Source.lastSyncAt` para montar `oldest` quando o request nao fornece cursor manual.
+3. `includeThreads=true` busca replies via `conversations.replies` para roots vistos no historico e roots ja conhecidos nos artifacts do source.
+4. Replies viram artifacts `slack_message` com `isThreadReply`, `parentTs`, `threadTs`, `replyCount`, `latestReply`, permalink, provenance e `actionPolicy=observe_only`.
+5. Source metadata registra `incremental`, `includeThreads`, `threadLimit`, `oldestUsed`, `latestTs`, `lastMessagesSeen`, `lastRepliesSeen` e `syncedAt`.
+6. Resposta API/MCP expõe `threadsSeen`, `repliesSeen`, `oldestUsed`, `latestTs`, `incremental` e `includeThreads`.
+7. UI `/company-brain` adiciona controles `Incremental`, `Include threads` e `Thread limit` no formulario Slack sync.
+8. Nenhum writeback externo automatico foi implementado.
+
+Dogfood real validado em DB temporario `/tmp/aios-runtime-slack-incremental-dogfood.sqlite`, daemon em `127.0.0.1:43121`, canal `#aios-runtime`:
+
+- Primeira sync: `artifactsCreated=5`, `messagesSeen=5`, `threadsSeen=0`, `repliesSeen=0`, `includeThreads=true`, `incremental=true`, `latestTs=1778072936.876349`.
+- Source: `d4jbDItryxdm`, `healthStatus=healthy`, metadata `actionPolicy=observe_only`.
+- Segunda sync incremental com mesmo source: `artifactsCreated=0`, `messagesSeen=0`, `oldestUsed=1778077098.338`, `latestTs` preservado.
+
+Proximo corte recomendado: GitHub PR/CI watcher real, depois GitHub notifications watcher e somente depois writeback controlado com `action_policy`, `risk_class`, HITL e audit trail.
+
 ## Slice Strategy Tradeoff v0
 
 Objetivo: tornar tradeoffs, constraints, non-goals, riscos, dependencias e principios objetos explicitos do Company Brain, ligados a priority/decision/evidence em vez de texto solto em roadmap.
@@ -830,10 +853,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Review Cohesion v0. O corte recomendado e Slack threads/incremental sync, mantendo qualquer writeback externo bloqueado.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Slack Threads/Incremental Sync v0. O corte recomendado e GitHub PR/CI watcher real, mantendo qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- sincronizar threads/incremental Slack em modo read-only;
+- criar watcher real de GitHub PR/CI em modo read-only;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
