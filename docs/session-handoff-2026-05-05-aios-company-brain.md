@@ -681,7 +681,36 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-aios-briefing-dogfood
 - Gap signals emitidos: `5`, todos com `metadata.autoImproveEnvelope`.
 - Summary retornou `lastBriefing.artifactId=KFbXLc23I8-2`, igual ao endpoint `/api/company-brain/briefing`.
 
-Proximo corte recomendado: Review cohesion para Decision/Signal/Guidance candidates, depois Slack threads/incremental sync, GitHub PR/CI watcher real, GitHub notifications watcher e somente depois writeback controlado com `action_policy`, `risk_class`, HITL e audit trail.
+## Slice Review Cohesion v0
+
+Objetivo: unificar a revisao operacional de candidates gerados pelo Company Brain sem criar writeback externo nem recriar os objetos existentes.
+
+Implementado em 2026-05-06:
+
+1. Tipos `CompanyBrainReviewItemKind`, `CompanyBrainReviewQueueItem` e `CompanyBrainReviewCohesion` em `packages/shared/src/types.ts`.
+2. Helper derivado `buildReviewCohesion` no daemon, sem nova tabela, usando `Decision`, `Signal`, `AlignmentFinding` e `GuidanceItem` existentes.
+3. `GET /api/company-brain/review-cohesion` e campo `reviewCohesion` em `/api/company-brain/summary`.
+4. A fila mostra:
+   - `decision_candidate`: decisions `proposed`;
+   - `signal_needs_finding`: signals sem `AlignmentFinding`;
+   - `finding_needs_guidance`: findings sem `GuidanceItem`;
+   - `guidance_needs_feedback`: guidance `new/open` com `feedbackStatus=pending`.
+5. Cada item inclui target, status, severity, area, links internos, next action e provenance.
+6. UI `/company-brain` adiciona painel Review Cohesion com contadores e acoes internas: aceitar/rejeitar decision, extrair guidance de signal, criar guidance interna para finding e aceitar/concluir guidance.
+7. MCP tool `get_company_brain_review_cohesion`.
+8. Nenhum writeback externo automatico foi implementado.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-review-cohesion-dogfood.sqlite`, daemon em `127.0.0.1:43120`:
+
+- Fila inicial: `totalItemCount=4`, cobrindo os quatro kinds esperados.
+- Decision aceita internamente: `A7Fm2EaHUDNM`.
+- Signal extraido para finding/guidance: `fr9YHWu4E7l4`.
+- Guidance criada a partir de finding: `9qfq9Y4W4IjP`.
+- Guidance pendente, guidance extraida e guidance criada foram concluidas por API.
+- Fila final: `totalItemCount=0`.
+- Summary retornou `reviewQueueItemCount=0`.
+
+Proximo corte recomendado: Slack threads/incremental sync, depois GitHub PR/CI watcher real, GitHub notifications watcher e somente depois writeback controlado com `action_policy`, `risk_class`, HITL e audit trail.
 
 ## Dogfood ERP
 
@@ -801,10 +830,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos AIOS Briefing Watcher v0. O corte recomendado e Review cohesion para Decision/Signal/Guidance candidates, mantendo qualquer writeback externo bloqueado.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Review Cohesion v0. O corte recomendado e Slack threads/incremental sync, mantendo qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- consolidar review/status/cohesion de candidates;
+- sincronizar threads/incremental Slack em modo read-only;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.

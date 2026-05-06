@@ -275,12 +275,28 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: latest briefing, sources, source health, artifacts, extractors, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: latest briefing, review cohesion queue, sources, source health, artifacts, extractors, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
     const result = await daemonFetch<{ data: unknown }>(
       "/api/company-brain/summary"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_review_cohesion",
+  {
+    title: "Get Company Brain review cohesion queue",
+    description:
+      "Return the unified observe-only review queue for Decision, Signal, AlignmentFinding and Guidance candidates, including next actions and provenance.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/review-cohesion"
     );
     return formatJsonResult(result.data);
   }

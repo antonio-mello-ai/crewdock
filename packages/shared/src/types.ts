@@ -1511,6 +1511,48 @@ export interface CompanyBrainBriefingSnapshot {
   provenance: Provenance | null;
 }
 
+export type CompanyBrainReviewItemKind =
+  | "decision_candidate"
+  | "signal_needs_finding"
+  | "finding_needs_guidance"
+  | "guidance_needs_feedback";
+
+export interface CompanyBrainReviewQueueItem {
+  id: string;
+  kind: CompanyBrainReviewItemKind;
+  targetType: "decision" | "signal" | "alignment_finding" | "guidance_item";
+  targetId: string;
+  title: string;
+  rationale: string | null;
+  status: string;
+  severity: SignalSeverity | null;
+  area: CompanyBrainArea;
+  sourceId: string | null;
+  artifactId: string | null;
+  signalId: string | null;
+  findingId: string | null;
+  guidanceItemId: string | null;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  updatedAt: number;
+  nextAction: string;
+  provenance: Provenance | null;
+}
+
+export interface CompanyBrainReviewCohesion {
+  generatedAt: number;
+  items: CompanyBrainReviewQueueItem[];
+  stats: {
+    totalItemCount: number;
+    pendingDecisionCount: number;
+    signalsWithoutFindingCount: number;
+    findingsWithoutGuidanceCount: number;
+    guidanceNeedingFeedbackCount: number;
+    overdueGuidanceCount: number;
+    criticalItemCount: number;
+  };
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -1534,6 +1576,7 @@ export interface CompanyBrainSummary {
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
+  reviewCohesion: CompanyBrainReviewCohesion;
   stats: {
     sourceCount: number;
     artifactCount: number;
@@ -1561,6 +1604,7 @@ export interface CompanyBrainSummary {
     readyAgentContextCount: number;
     improvementProposalCount: number;
     promotionCandidateCount: number;
+    reviewQueueItemCount: number;
   };
 }
 

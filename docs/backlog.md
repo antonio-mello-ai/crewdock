@@ -43,7 +43,9 @@ Status Demo Felhen v0.1 em 2026-05-06: runner interno/API/UI/MCP implementado pa
 
 Status AIOS Briefing Watcher v0 em 2026-05-06: seed `watcher-aios-briefing-v0` implementado sobre a camada existente de Watcher/WatcherRun, com `actionPolicy=observe_only`. O run gera Artifact interno `aios_briefing` com secoes estruturadas de decisions, tradeoffs, guidance aberta, findings, source health, adoption dashboard, work sem priority/goal, gates/SLA e proximos passos; emite Signals opcionais apenas para gaps claros com envelope AutoImprove e expose o ultimo briefing em summary/API/UI/MCP. Sem Slack/GitHub/writeback externo.
 
-Proximos cortes planejados em ordem: Review cohesion para Decision/Signal/Guidance candidates; Slack threads/incremental sync; GitHub PR/CI watcher real; GitHub notifications watcher; writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
+Status Review Cohesion v0 em 2026-05-06: fila unificada derivada para Decision/Signal/AlignmentFinding/Guidance candidates implementada em summary/API/UI/MCP. O corte mostra decisions propostas, signals sem finding, findings sem guidance e guidance aberta com feedback pendente, com next action, severity, provenance e acoes internas de review/extracao/feedback. Sem writeback externo.
+
+Proximos cortes planejados em ordem: Slack threads/incremental sync; GitHub PR/CI watcher real; GitHub notifications watcher; writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -56,6 +58,7 @@ Proximos cortes planejados em ordem: Review cohesion para Decision/Signal/Guidan
 - [x] **Decision/Signal extractor v0** — transformar artifacts reais em candidatos de decision/signal com provenance e review pendente, sem auto-approve
 - [x] **Decision candidate review v0** — aceitar/rejeitar/supersedar decisions propostas com provenance de review e sem writeback externo
 - [x] **Signal -> Finding/Guidance extractor v0** — gerar alignment finding e guidance candidatos a partir de signal existente, com provenance e review pendente
+- [x] **Review Cohesion v0** — unificar candidates de decision/signal/finding/guidance em fila derivada com next action, provenance e acoes internas sem writeback externo
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
@@ -75,7 +78,7 @@ Proximos cortes planejados em ordem: Review cohesion para Decision/Signal/Guidan
 - [x] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
 - [x] **GitHub Issues sync adapter v0** — sincronizar issues reais do GitHub em modo read-only para `Source`, `Artifact` e `WorkItem` canonico com dedupe, links, source health e provenance
 - [x] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente. Implementado como importer manual e adapter real de canal Slack.
-- [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
+- [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
 - [x] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
 - [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates
 - [x] **Demo Felhen v0.1** — demonstrar estrategia -> evidencia -> drift/guidance -> workflow run -> learning usando dogfood interno

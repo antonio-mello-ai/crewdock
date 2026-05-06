@@ -10,6 +10,8 @@ import type {
   CompanyBrainAdoptionDashboard,
   CompanyBrainBriefingSection,
   CompanyBrainBriefingSnapshot,
+  CompanyBrainReviewCohesion,
+  CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -1768,11 +1770,187 @@ function runAiosBriefingWatcher(args: {
   };
 }
 
+function buildReviewCohesion(
+  data: ReturnType<typeof listAll>
+): CompanyBrainReviewCohesion {
+  const generatedAt = now();
+  const items: CompanyBrainReviewQueueItem[] = [];
+  const findingSignalIds = new Set(
+    data.alignmentFindings.flatMap((finding) => finding.signalIds)
+  );
+  const guidanceFindingIds = new Set(
+    data.guidanceItems
+      .map((item) => item.findingId)
+      .filter((id): id is string => typeof id === "string")
+  );
+  const guidanceSignalIds = new Set(
+    data.guidanceItems
+      .map((item) => item.signalId)
+      .filter((id): id is string => typeof id === "string")
+  );
+  const overdueGuidanceIds = new Set(
+    data.guidanceItems
+      .filter(
+        (item) =>
+          ["new", "open"].includes(item.status) &&
+          typeof item.dueAt === "number" &&
+          item.dueAt < generatedAt
+      )
+      .map((item) => item.id)
+  );
+
+  for (const decision of data.decisions) {
+    if (decision.status !== "proposed") continue;
+    items.push({
+      id: `decision_candidate:${decision.id}`,
+      kind: "decision_candidate",
+      targetType: "decision",
+      targetId: decision.id,
+      title: decision.title,
+      rationale: decision.rationale ?? decision.summary,
+      status: decision.status,
+      severity: null,
+      area: decision.area,
+      sourceId: null,
+      artifactId: decision.sourceArtifactIds[0] ?? null,
+      signalId: null,
+      findingId: null,
+      guidanceItemId: null,
+      workItemId: null,
+      workflowRunId: null,
+      updatedAt: decision.updatedAt,
+      nextAction: "Accept, reject or supersede the decision candidate.",
+      provenance: decision.provenance,
+    });
+  }
+
+  for (const signal of data.signals) {
+    if (findingSignalIds.has(signal.id)) continue;
+    items.push({
+      id: `signal_needs_finding:${signal.id}`,
+      kind: "signal_needs_finding",
+      targetType: "signal",
+      targetId: signal.id,
+      title: signal.summary,
+      rationale: "Signal has not been classified into an AlignmentFinding.",
+      status: signal.severity,
+      severity: signal.severity,
+      area: signal.area,
+      sourceId: signal.sourceId,
+      artifactId: signal.artifactId,
+      signalId: signal.id,
+      findingId: null,
+      guidanceItemId: null,
+      workItemId: signal.workItemId,
+      workflowRunId: signal.workflowRunId,
+      updatedAt: signal.updatedAt,
+      nextAction: "Run Signal -> Finding/Guidance extraction.",
+      provenance: signal.provenance,
+    });
+  }
+
+  for (const finding of data.alignmentFindings) {
+    const hasGuidance =
+      guidanceFindingIds.has(finding.id) ||
+      finding.signalIds.some((signalId) => guidanceSignalIds.has(signalId));
+    if (hasGuidance) continue;
+    items.push({
+      id: `finding_needs_guidance:${finding.id}`,
+      kind: "finding_needs_guidance",
+      targetType: "alignment_finding",
+      targetId: finding.id,
+      title: finding.rationale,
+      rationale: finding.suggestedAction,
+      status: finding.classification,
+      severity: finding.severity,
+      area: finding.area,
+      sourceId: null,
+      artifactId: finding.artifactIds[0] ?? null,
+      signalId: finding.signalIds[0] ?? null,
+      findingId: finding.id,
+      guidanceItemId: null,
+      workItemId: finding.workItemId,
+      workflowRunId: finding.workflowRunId,
+      updatedAt: finding.updatedAt,
+      nextAction: "Create a guidance candidate or close the finding as intentionally unowned.",
+      provenance: finding.provenance,
+    });
+  }
+
+  for (const item of data.guidanceItems) {
+    if (!["new", "open"].includes(item.status)) continue;
+    if (item.feedbackStatus !== "pending") continue;
+    items.push({
+      id: `guidance_needs_feedback:${item.id}`,
+      kind: "guidance_needs_feedback",
+      targetType: "guidance_item",
+      targetId: item.id,
+      title: item.title,
+      rationale: item.action,
+      status: `${item.status}/${item.feedbackStatus}`,
+      severity: item.severity,
+      area: item.area,
+      sourceId: null,
+      artifactId: null,
+      signalId: item.signalId,
+      findingId: item.findingId,
+      guidanceItemId: item.id,
+      workItemId: item.workItemId,
+      workflowRunId: item.workflowRunId,
+      updatedAt: item.updatedAt,
+      nextAction: overdueGuidanceIds.has(item.id)
+        ? "Review overdue guidance feedback."
+        : "Accept, complete or ignore guidance feedback.",
+      provenance: item.provenance,
+    });
+  }
+
+  const severityRank = (severity: CompanyBrainReviewQueueItem["severity"]) => {
+    if (severity === "critical") return 3;
+    if (severity === "warn") return 2;
+    if (severity === "info") return 1;
+    return 0;
+  };
+
+  items.sort((a, b) => {
+    const severityDelta = severityRank(b.severity) - severityRank(a.severity);
+    if (severityDelta !== 0) return severityDelta;
+    return b.updatedAt - a.updatedAt;
+  });
+
+  return {
+    generatedAt,
+    items,
+    stats: {
+      totalItemCount: items.length,
+      pendingDecisionCount: items.filter((item) => item.kind === "decision_candidate")
+        .length,
+      signalsWithoutFindingCount: items.filter(
+        (item) => item.kind === "signal_needs_finding"
+      ).length,
+      findingsWithoutGuidanceCount: items.filter(
+        (item) => item.kind === "finding_needs_guidance"
+      ).length,
+      guidanceNeedingFeedbackCount: items.filter(
+        (item) => item.kind === "guidance_needs_feedback"
+      ).length,
+      overdueGuidanceCount: items.filter(
+        (item) =>
+          item.kind === "guidance_needs_feedback" &&
+          item.guidanceItemId !== null &&
+          overdueGuidanceIds.has(item.guidanceItemId)
+      ).length,
+      criticalItemCount: items.filter((item) => item.severity === "critical").length,
+    },
+  };
+}
+
 app.get("/summary", (c) => {
   const data = listAll();
   const adoptionDashboard = buildAdoptionDashboard(data);
   const sourceHealthReport = buildSourceHealthReport(data);
   const lastBriefing = buildLastBriefing(data);
+  const reviewCohesion = buildReviewCohesion(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -1804,6 +1982,7 @@ app.get("/summary", (c) => {
       adoptionDashboard,
       sourceHealthReport,
       lastBriefing,
+      reviewCohesion,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -1840,6 +2019,7 @@ app.get("/summary", (c) => {
         promotionCandidateCount: data.improvementProposals.filter((proposal) =>
           ["candidate", "approved"].includes(proposal.promotionStatus)
         ).length,
+        reviewQueueItemCount: reviewCohesion.stats.totalItemCount,
       },
     },
   });
@@ -1857,6 +2037,11 @@ app.get("/source-health", (c) => {
 
 app.get("/briefing", (c) => {
   const data = buildLastBriefing(listAll());
+  return c.json({ data });
+});
+
+app.get("/review-cohesion", (c) => {
+  const data = buildReviewCohesion(listAll());
   return c.json({ data });
 });
 

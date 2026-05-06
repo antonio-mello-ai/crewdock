@@ -20,6 +20,7 @@ import {
   useCreateCompanyBrainArtifact,
   useCreateCompanyBrainDecision,
   useCreateCompanyBrainGoal,
+  useCreateCompanyBrainGuidanceItem,
   useCreateCompanyBrainImprovementProposal,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
@@ -230,6 +231,7 @@ export default function CompanyBrainPage() {
   const createStrategyTradeoff = useCreateCompanyBrainStrategyTradeoff();
   const extractArtifactInsights = useExtractCompanyBrainArtifactInsights();
   const extractSignalGuidance = useExtractCompanyBrainSignalGuidance();
+  const createGuidanceItem = useCreateCompanyBrainGuidanceItem();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -265,6 +267,7 @@ export default function CompanyBrainPage() {
   const adoptionDashboard = summary?.adoptionDashboard;
   const sourceHealthReport = summary?.sourceHealthReport;
   const lastBriefing = summary?.lastBriefing ?? null;
+  const reviewCohesion = summary?.reviewCohesion;
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -790,6 +793,42 @@ export default function CompanyBrainPage() {
     extractSignalGuidance.mutate({ signalId });
   };
 
+  const handleCreateGuidanceFromFinding = (findingId: string) => {
+    const finding = alignmentFindings.find((item) => item.id === findingId);
+    if (!finding) return;
+    createGuidanceItem.mutate({
+      audience: "human",
+      priorityId: finding.priorityId,
+      goalId: finding.goalId,
+      findingId: finding.id,
+      signalId: finding.signalIds[0] ?? null,
+      workItemId: finding.workItemId,
+      workflowRunId: finding.workflowRunId,
+      area: finding.area,
+      title: `Guidance candidate: ${finding.rationale.slice(0, 90)}`,
+      action:
+        finding.suggestedAction ??
+        "Review this finding, confirm ownership and decide the next action.",
+      severity: finding.severity,
+      status: "open",
+      feedbackStatus: "pending",
+      generatedFrom: {
+        reviewCohesion: "finding_needs_guidance",
+        findingId: finding.id,
+      },
+      provenance: {
+        rawRef: finding.id,
+        artifactId: finding.artifactIds[0],
+        createdFrom: "review_cohesion:finding_guidance",
+        confidence: finding.confidence,
+        extractedAt: Date.now(),
+        humanReviewStatus: "pending",
+        visibility: finding.visibility,
+      },
+      visibility: finding.visibility,
+    });
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -1051,6 +1090,160 @@ export default function CompanyBrainPage() {
               <EmptyState label="No AIOS briefing generated" />
             )}
           </section>
+
+          {reviewCohesion ? (
+            <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-neutral-500" />
+                    <h2 className="text-sm font-semibold text-neutral-200">
+                      Review Cohesion
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-left sm:w-96">
+                    <MiniMetric
+                      label="queue"
+                      value={reviewCohesion.stats.totalItemCount}
+                    />
+                    <MiniMetric
+                      label="signals"
+                      value={reviewCohesion.stats.signalsWithoutFindingCount}
+                    />
+                    <MiniMetric
+                      label="guidance"
+                      value={reviewCohesion.stats.guidanceNeedingFeedbackCount}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-800/40">
+                {reviewCohesion.items.length === 0 ? (
+                  <EmptyState label="No review candidates waiting" />
+                ) : (
+                  reviewCohesion.items.slice(0, 8).map((item) => (
+                    <div key={item.id} className="px-5 py-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium text-neutral-200">
+                              {item.title}
+                            </p>
+                            <StatusBadge value={item.kind} />
+                            <StatusBadge value={item.status} />
+                            {item.severity ? (
+                              <StatusBadge value={item.severity} />
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-xs text-neutral-600">
+                            {item.area} · {item.nextAction}
+                          </p>
+                          {item.rationale ? (
+                            <p className="mt-2 line-clamp-2 text-xs text-neutral-500">
+                              {item.rationale}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                          {item.kind === "decision_candidate" ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={updateDecision.isPending}
+                                onClick={() =>
+                                  updateDecisionStatus(item.targetId, "accepted")
+                                }
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Accept
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={updateDecision.isPending}
+                                onClick={() =>
+                                  updateDecisionStatus(item.targetId, "rejected")
+                                }
+                              >
+                                <AlertTriangle className="h-4 w-4" />
+                                Reject
+                              </Button>
+                            </>
+                          ) : null}
+                          {item.kind === "signal_needs_finding" && item.signalId ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={extractSignalGuidance.isPending}
+                              onClick={() => handleExtractSignalGuidance(item.signalId!)}
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                              Guidance
+                            </Button>
+                          ) : null}
+                          {item.kind === "finding_needs_guidance" && item.findingId ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={createGuidanceItem.isPending}
+                              onClick={() =>
+                                handleCreateGuidanceFromFinding(item.findingId!)
+                              }
+                            >
+                              <Plus className="h-4 w-4" />
+                              Guidance
+                            </Button>
+                          ) : null}
+                          {item.kind === "guidance_needs_feedback" &&
+                          item.guidanceItemId ? (
+                            <>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={updateGuidance.isPending}
+                                onClick={() =>
+                                  updateGuidanceFeedback(
+                                    item.guidanceItemId!,
+                                    "accepted",
+                                    "accepted"
+                                  )
+                                }
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Accept
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={updateGuidance.isPending}
+                                onClick={() =>
+                                  updateGuidanceFeedback(
+                                    item.guidanceItemId!,
+                                    "done",
+                                    "completed"
+                                  )
+                                }
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                                Done
+                              </Button>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          ) : null}
 
           {sourceHealthReport ? (
             <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
