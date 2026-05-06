@@ -304,6 +304,25 @@ export type WorkflowStepStatus =
   | "blocked"
   | "completed"
   | "skipped";
+export type WatcherTriggerType =
+  | "manual"
+  | "schedule"
+  | "webhook"
+  | "polling"
+  | "event";
+export type WatcherStatus = "active" | "paused" | "error" | "archived";
+export type WatcherRunStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+export type ActionPolicy =
+  | "observe_only"
+  | "create_artifacts"
+  | "create_work_items"
+  | "request_human"
+  | "writeback_allowed";
 
 export interface Provenance {
   sourceId?: string;
@@ -652,6 +671,90 @@ export interface ArtifactLink {
   createdAt: number;
 }
 
+export interface Watcher {
+  id: string;
+  title: string;
+  description: string | null;
+  sourceIds: string[];
+  triggerType: WatcherTriggerType;
+  schedule: string | null;
+  eventFilter: string | null;
+  scopeQuery: string | null;
+  owner: string | null;
+  ownerType: OwnerType;
+  targetWorkflowBlueprintId: string | null;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  status: WatcherStatus;
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+  failurePolicy: string | null;
+  outputPolicy: string | null;
+  visibility: Visibility;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateWatcherRequest {
+  title: string;
+  description?: string | null;
+  sourceIds?: string[];
+  triggerType?: WatcherTriggerType;
+  schedule?: string | null;
+  eventFilter?: string | null;
+  scopeQuery?: string | null;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  targetWorkflowBlueprintId?: string | null;
+  riskClass?: RiskClass;
+  actionPolicy?: ActionPolicy;
+  status?: WatcherStatus;
+  nextRunAt?: number | null;
+  failurePolicy?: string | null;
+  outputPolicy?: string | null;
+  visibility?: Visibility;
+}
+
+export interface WatcherRun {
+  id: string;
+  watcherId: string;
+  startedAt: number;
+  finishedAt: number | null;
+  status: WatcherRunStatus;
+  triggerRef: string | null;
+  sourceIds: string[];
+  artifactsCreated: string[];
+  signalsCreated: string[];
+  workItemsCreated: string[];
+  guidanceCreated: string[];
+  workflowRunsLinked: string[];
+  errorSummary: string | null;
+  actionPolicy: ActionPolicy;
+  riskClass: RiskClass;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RunWatcherRequest {
+  sourceId?: string;
+  rawRef?: string;
+  title?: string;
+  summary?: string;
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  createWorkItem?: boolean;
+  workItemTitle?: string | null;
+  externalUrl?: string | null;
+}
+
+export interface RunWatcherResponse {
+  run: WatcherRun;
+  artifact: Artifact;
+  workItemsCreated: WorkItem[];
+  workflowRunsLinked: string[];
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -663,6 +766,8 @@ export interface CompanyBrainSummary {
   workflowRuns: WorkflowRun[];
   workflowSteps: WorkflowStep[];
   artifactLinks: ArtifactLink[];
+  watchers: Watcher[];
+  watcherRuns: WatcherRun[];
   stats: {
     sourceCount: number;
     artifactCount: number;
@@ -673,6 +778,10 @@ export interface CompanyBrainSummary {
     activeWorkflowRunCount: number;
     gateBlockedCount: number;
     slaAtRiskCount: number;
+    watcherCount: number;
+    activeWatcherCount: number;
+    watcherRunCount: number;
+    watcherErrorCount: number;
   };
 }
 

@@ -119,6 +119,7 @@ Agora existem:
 - rota `/api/company-brain/*` com summary e criacao/listagem de sources, artifacts, priorities, goals, milestones, work items, workflow blueprints/runs e artifact links;
 - UI `/company-brain` com Strategy Map, Evidence Inbox, Unlinked Work e Workflow Runs;
 - MCP tools `get_company_brain_summary`, `create_company_brain_source`, `create_company_brain_artifact`, `create_company_brain_work_item` e `create_company_brain_workflow_run`.
+- Watcher / Operating Loop Layer v0 com `Watcher`, `WatcherRun`, seed `watcher-github-issues-manual-v0`, summary/API/UI/MCP e run manual que cria artifact/work item interno com provenance.
 
 Ainda nao existem:
 
@@ -127,43 +128,55 @@ Ainda nao existem:
 - agent context generator;
 - improvement proposals;
 - conectores Slack/GitHub/docs com envelope comum;
-- Watcher / Operating Loop Layer;
 - adoption dashboard para enxergar quais frentes estao em closed loop.
 
 Parciais que precisam evoluir:
 
 - Strategy layer ainda nao tem tradeoffs/decisions.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/work items/runs, mas ainda nao cobre guidance/signals.
+- MCP cobre sources/artifacts/work items/runs/watchers, mas ainda nao cobre guidance/signals.
 
-## Proximo Slice - Watcher / Operating Loop Layer
+## Slice Watcher / Operating Loop Layer
 
 Objetivo: transformar o Company Brain de base consultavel em loop operacional que observa fontes e workflows sem depender de uma sessao interativa aberta.
 
 Fonte de produto: `corp/docs/action/aios-product-roadmap.md`, secao `Watcher / Operating Loop Layer`, e `corp/docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`, gaps/entregaveis de Watcher.
 
+Status em 2026-05-06: implementado no corte v0. O proximo passo natural e criar `Signal`, `AlignmentFinding` e `GuidanceItem` para que watchers deixem de gerar apenas evidence/work items e passem a alimentar drift/guidance.
+
 Implementar no menor corte util:
 
-1. Tipos compartilhados `Watcher` e `WatcherRun` em `packages/shared/src/types.ts`.
-2. Tabelas `cb_watchers` e `cb_watcher_runs` em `packages/daemon/src/db/schema.ts` e migration inline idempotente em `packages/daemon/src/db/client.ts`.
+1. Tipos compartilhados `Watcher` e `WatcherRun` em `packages/shared/src/types.ts`. Implementado.
+2. Tabelas `cb_watchers` e `cb_watcher_runs` em `packages/daemon/src/db/schema.ts` e migration inline idempotente em `packages/daemon/src/db/client.ts`. Implementado.
 3. Campos minimos:
    - `Watcher`: `id`, `title`, `description`, `source_ids`, `trigger_type`, `schedule`, `event_filter`, `scope_query`, `owner`, `owner_type`, `target_workflow_blueprint_id`, `risk_class`, `action_policy`, `status`, `last_run_at`, `next_run_at`, `failure_policy`, `output_policy`, `visibility`.
    - `WatcherRun`: `id`, `watcher_id`, `started_at`, `finished_at`, `status`, `artifacts_created`, `signals_created`, `work_items_created`, `guidance_created`, `error_summary`, `provenance`.
-4. Rotas REST em `/api/company-brain/watchers` e `/api/company-brain/watcher-runs`.
-5. Expor status basico de watchers no `/api/company-brain/summary` e na UI `/company-brain`, preferencialmente como Source Health / Operating Loops.
-6. Criar watcher manual/simulado para PR/CI ou GitHub Issues. O primeiro run pode ser manual, mas precisa registrar output real no Company Brain.
-7. Garantir que o watcher consiga gerar ao menos `Artifact` e `WorkItem` com `provenance`, `risk_class` e `action_policy`. Se `Signal` ainda nao existir, registrar a ausencia como residual e criar `Signal` logo em seguida.
-8. Nao implementar writeback externo automatico neste corte. Todo watcher pode observar/registrar; comentar, abrir issue fora do AIOS, responder ou acionar agente depende de `action_policy` e HITL.
+4. Rotas REST em `/api/company-brain/watchers` e `/api/company-brain/watcher-runs`. Implementado.
+5. Expor status basico de watchers no `/api/company-brain/summary` e na UI `/company-brain`, preferencialmente como Source Health / Operating Loops. Implementado.
+6. Criar watcher manual/simulado para PR/CI ou GitHub Issues. Implementado com seed `watcher-github-issues-manual-v0` e run manual por API/MCP/UI.
+7. Garantir que o watcher consiga gerar ao menos `Artifact` e `WorkItem` com `provenance`, `risk_class` e `action_policy`. Implementado para artifact/work item; `Signal` segue residual.
+8. Nao implementar writeback externo automatico neste corte. Cumprido: run manual registra no AIOS; nao comenta/abre issue externa.
 
 Aceite do proximo slice:
 
-- Build passa.
+- Build passa: `npx turbo build`.
 - Schema e migrations continuam idempotentes.
-- Existe pelo menos um `Watcher` cadastrado para PR/CI ou GitHub Issues.
-- Existe pelo menos um `WatcherRun` manual/simulado com `status`, timestamps, contadores de outputs e provenance.
-- Company Brain summary mostra watchers ativos, ultimo run e erro/freshness basico.
-- Um watcher gera artifact/work item real no envelope comum, com source/provenance/risk/action policy.
+- Existe pelo menos um `Watcher` cadastrado para PR/CI ou GitHub Issues: seed `watcher-github-issues-manual-v0` + dogfood `AIOS GitHub Issues manual watcher`.
+- Existe pelo menos um `WatcherRun` manual/simulado com `status`, timestamps, contadores de outputs e provenance: validado via API local.
+- Company Brain summary mostra watchers ativos, ultimo run e erro/freshness basico: `watcherCount=2`, `activeWatcherCount=2`, `watcherRunCount=1`, `watcherErrorCount=0` no dogfood.
+- Um watcher gera artifact/work item real no envelope comum, com source/provenance/risk/action policy: validado com `crewdock#5`.
 - Nenhum writeback externo acontece sem policy explicita.
+
+Dogfood local Watcher v0 validado em DB temporario `/tmp/aios-runtime-watcher-dogfood.sqlite`, daemon em `127.0.0.1:43102`:
+
+- Source real `AIOS Runtime GitHub Issues`: `IqwpxEBKsKAw`, repo `antonio-mello-ai/crewdock`.
+- Watcher `AIOS GitHub Issues manual watcher`: `1IhRM9qC8sz0`.
+- WatcherRun manual: `FNR3KFJW4om0`.
+- Artifact criado: `QpbIBVz38wOo`, raw_ref `https://github.com/antonio-mello-ai/crewdock/issues/5`.
+- WorkItem interno criado: `cB-i0XBGvuoq`.
+- ArtifactLink: artifact -> work_item com relationship `created_from_watcher`.
+- Source Health atualizado para `healthy`, `lastSyncAt=1778034446868`, `syncError=null`.
+- Run provenance incluiu `createdFrom=watcher:1IhRM9qC8sz0:run`, `action_policy=create_work_items`, `risk_class=B`, `artifactId=QpbIBVz38wOo`.
 
 ## Dogfood ERP
 
@@ -281,14 +294,14 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain, **Watcher / Operating Loop Layer**, sem recriar o kernel do Slice 1.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Watcher v0, focado em `Signal`, `AlignmentFinding` e `GuidanceItem`, sem recriar o kernel do Slice 1 nem a camada de Watchers.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- adicionar `Watcher` e `WatcherRun` em tipos/schema/API;
-- expor watchers no Company Brain summary e UI;
-- criar watcher manual/simulado para PR/CI ou GitHub Issues;
-- garantir que watcher run gere Artifact/WorkItem com provenance, risk_class e action_policy;
-- registrar residual de `Signal` se ainda nao for implementado no mesmo corte.
+- adicionar `Signal` com o envelope do AutoImprove Core;
+- adicionar `AlignmentFinding` minimo para classificar evidence/work items contra priorities/goals;
+- adicionar `GuidanceItem` minimo gerado de watcher/artifact/finding;
+- permitir que watcher run gere Signal/Guidance quando houver policy adequada;
+- manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.
 

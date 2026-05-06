@@ -8,9 +8,11 @@ import type {
   CreateMilestoneRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
+  CreateWatcherRequest,
   CreateWorkflowBlueprintRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  RunWatcherRequest,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
@@ -21,6 +23,8 @@ import {
   cbMilestones,
   cbSources,
   cbStrategicPriorities,
+  cbWatcherRuns,
+  cbWatchers,
   cbWorkflowBlueprints,
   cbWorkflowRuns,
   cbWorkflowSteps,
@@ -93,6 +97,13 @@ function listAll() {
     .orderBy(desc(cbArtifactLinks.createdAt))
     .limit(200)
     .all();
+  const watchers = db.select().from(cbWatchers).orderBy(desc(cbWatchers.updatedAt)).all();
+  const watcherRuns = db
+    .select()
+    .from(cbWatcherRuns)
+    .orderBy(desc(cbWatcherRuns.startedAt))
+    .limit(100)
+    .all();
 
   return {
     sources,
@@ -105,6 +116,8 @@ function listAll() {
     workflowRuns,
     workflowSteps,
     artifactLinks,
+    watchers,
+    watcherRuns,
   };
 }
 
@@ -125,6 +138,9 @@ app.get("/summary", (c) => {
     data.workflowRuns.filter(
       (run) => run.slaStatus === "at_risk" || run.slaStatus === "breached"
     ).length;
+  const watcherErrorCount =
+    data.watchers.filter((watcher) => watcher.status === "error").length +
+    data.watcherRuns.filter((run) => run.status === "failed").length;
 
   return c.json({
     data: {
@@ -139,6 +155,11 @@ app.get("/summary", (c) => {
         activeWorkflowRunCount,
         gateBlockedCount,
         slaAtRiskCount,
+        watcherCount: data.watchers.length,
+        activeWatcherCount: data.watchers.filter((watcher) => watcher.status === "active")
+          .length,
+        watcherRunCount: data.watcherRuns.length,
+        watcherErrorCount,
       },
     },
   });
@@ -582,6 +603,323 @@ app.post("/artifact-links", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/watchers", (c) => {
+  const data = getDb().select().from(cbWatchers).orderBy(desc(cbWatchers.updatedAt)).all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/watchers", async (c) => {
+  try {
+    const body = await c.req.json<CreateWatcherRequest>();
+    const timestamp = now();
+    const row = {
+      id: nanoid(12),
+      title: requireText(body.title, "title"),
+      description: body.description ?? null,
+      sourceIds: body.sourceIds ?? [],
+      triggerType: body.triggerType ?? "manual",
+      schedule: body.schedule ?? null,
+      eventFilter: body.eventFilter ?? null,
+      scopeQuery: body.scopeQuery ?? null,
+      owner: body.owner ?? null,
+      ownerType: body.ownerType ?? "unknown",
+      targetWorkflowBlueprintId: body.targetWorkflowBlueprintId ?? null,
+      riskClass: body.riskClass ?? "unknown",
+      actionPolicy: body.actionPolicy ?? "observe_only",
+      status: body.status ?? "active",
+      lastRunAt: null,
+      nextRunAt: body.nextRunAt ?? null,
+      failurePolicy: body.failurePolicy ?? null,
+      outputPolicy: body.outputPolicy ?? null,
+      visibility: body.visibility ?? "internal",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    getDb().insert(cbWatchers).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/watcher-runs", (c) => {
+  const watcherId = c.req.query("watcherId");
+  let data = getDb()
+    .select()
+    .from(cbWatcherRuns)
+    .orderBy(desc(cbWatcherRuns.startedAt))
+    .limit(100)
+    .all();
+  if (watcherId) data = data.filter((run) => run.watcherId === watcherId);
+  return c.json({ data, total: data.length });
+});
+
+app.get("/watchers/:id/runs", (c) => {
+  const watcherId = c.req.param("id");
+  const data = getDb()
+    .select()
+    .from(cbWatcherRuns)
+    .where(eq(cbWatcherRuns.watcherId, watcherId))
+    .orderBy(desc(cbWatcherRuns.startedAt))
+    .limit(100)
+    .all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/watchers/:id/run", async (c) => {
+  const db = getDb();
+  const watcherId = c.req.param("id");
+  const startedAt = now();
+  const runId = nanoid(12);
+
+  try {
+    const body = await c.req.json<RunWatcherRequest>();
+    const watcher = db.select().from(cbWatchers).where(eq(cbWatchers.id, watcherId)).get();
+    if (!watcher) throw new Error("watcher not found");
+    if (watcher.status !== "active") throw new Error("watcher is not active");
+
+    const sourceIds = Array.from(
+      new Set([body.sourceId, ...watcher.sourceIds].filter((id): id is string => !!id))
+    );
+    const sourceId = sourceIds[0];
+    if (!sourceId) {
+      throw new Error("watcher run requires a sourceId or watcher sourceIds");
+    }
+    const source = db.select().from(cbSources).where(eq(cbSources.id, sourceId)).get();
+    if (!source) throw new Error("sourceId not found");
+
+    const rawRef =
+      body.rawRef ??
+      body.externalUrl ??
+      watcher.scopeQuery ??
+      source.externalRef ??
+      `${watcher.id}:${runId}`;
+    const title = body.title ?? `${watcher.title}: ${source.name}`;
+    const summary =
+      body.summary ??
+      `Manual watcher run for ${watcher.title}. Policy: ${watcher.actionPolicy}.`;
+    const artifactId = nanoid(12);
+    const provenance = {
+      sourceId,
+      rawRef,
+      createdFrom: `watcher:${watcher.id}`,
+      confidence: 1,
+      extractedAt: startedAt,
+      humanReviewStatus: "approved" as const,
+      visibility: watcher.visibility,
+      notes: `action_policy=${watcher.actionPolicy}; risk_class=${watcher.riskClass}`,
+    };
+
+    const artifact = {
+      id: artifactId,
+      sourceId,
+      artifactType: "watcher_observation",
+      area: source.area,
+      title,
+      summary,
+      contentRef: null,
+      rawRef,
+      author: watcher.owner ?? "AIOS watcher",
+      occurredAt: startedAt,
+      ingestedAt: startedAt,
+      hash: stableHash(`${watcher.id}:${runId}:${sourceId}:${rawRef}:${title}`),
+      visibility: watcher.visibility,
+      provenance,
+      humanReviewStatus: "approved" as const,
+      confidence: 1,
+      metadata: {
+        watcherId: watcher.id,
+        watcherRunId: runId,
+        triggerType: watcher.triggerType,
+        scopeQuery: watcher.scopeQuery,
+        actionPolicy: watcher.actionPolicy,
+        riskClass: watcher.riskClass,
+      },
+    };
+    db.insert(cbArtifacts).values(artifact).run();
+
+    const createdWorkItems = [];
+    const linkedWorkItemIds: string[] = [];
+    if (body.workItemId) {
+      linkedWorkItemIds.push(body.workItemId);
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId,
+          targetType: "work_item",
+          targetId: body.workItemId,
+          relationship: "watcher_evidence",
+          confidence: 1,
+          rationale: `Watcher ${watcher.id} linked evidence to existing WorkItem.`,
+          createdAt: startedAt,
+        })
+        .run();
+    }
+
+    if (body.createWorkItem) {
+      const workItem = {
+        id: nanoid(12),
+        title: body.workItemTitle ?? title,
+        description: summary,
+        area: source.area,
+        owner: watcher.owner,
+        ownerType: watcher.ownerType,
+        status: "triage" as const,
+        priorityId: null,
+        goalId: null,
+        milestoneId: null,
+        externalProvider: source.sourceType.startsWith("github") ? "github" : null,
+        externalId: body.rawRef ?? null,
+        externalUrl:
+          body.externalUrl ?? (rawRef.startsWith("http://") || rawRef.startsWith("https://") ? rawRef : null),
+        riskClass: watcher.riskClass,
+        dueAt: null,
+        blockedReason: null,
+        labels: ["watcher", watcher.id],
+        sourceId,
+        artifactId,
+        visibility: watcher.visibility,
+        provenance: {
+          ...provenance,
+          artifactId,
+          createdFrom: `watcher:${watcher.id}:work_item`,
+        },
+        createdAt: startedAt,
+        updatedAt: startedAt,
+      };
+      db.insert(cbWorkItems).values(workItem).run();
+      createdWorkItems.push(workItem);
+      linkedWorkItemIds.push(workItem.id);
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId,
+          targetType: "work_item",
+          targetId: workItem.id,
+          relationship: "created_from_watcher",
+          confidence: 1,
+          rationale: `Watcher ${watcher.id} created internal WorkItem under ${watcher.actionPolicy}.`,
+          createdAt: startedAt,
+        })
+        .run();
+    }
+
+    const workflowRunsLinked = [];
+    if (body.workflowRunId) {
+      workflowRunsLinked.push(body.workflowRunId);
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId,
+          targetType: "workflow_run",
+          targetId: body.workflowRunId,
+          relationship: "watcher_evidence",
+          confidence: 1,
+          rationale: `Watcher ${watcher.id} linked evidence to WorkflowRun.`,
+          createdAt: startedAt,
+        })
+        .run();
+    }
+
+    const finishedAt = now();
+    const run = {
+      id: runId,
+      watcherId: watcher.id,
+      startedAt,
+      finishedAt,
+      status: "completed" as const,
+      triggerRef: rawRef,
+      sourceIds,
+      artifactsCreated: [artifactId],
+      signalsCreated: [],
+      workItemsCreated: createdWorkItems.map((item) => item.id),
+      guidanceCreated: [],
+      workflowRunsLinked,
+      errorSummary: null,
+      actionPolicy: watcher.actionPolicy,
+      riskClass: watcher.riskClass,
+      provenance: {
+        ...provenance,
+        artifactId,
+        createdFrom: `watcher:${watcher.id}:run`,
+      },
+      createdAt: startedAt,
+      updatedAt: finishedAt,
+    };
+    db.insert(cbWatcherRuns).values(run).run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        status: "active",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, watcher.id))
+      .run();
+    db.update(cbSources)
+      .set({
+        lastSyncAt: finishedAt,
+        healthStatus: "healthy",
+        syncError: null,
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbSources.id, sourceId))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          run,
+          artifact,
+          workItemsCreated: createdWorkItems,
+          workflowRunsLinked,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const finishedAt = now();
+    const message = err instanceof Error ? err.message : "Unknown error";
+    db.insert(cbWatcherRuns)
+      .values({
+        id: runId,
+        watcherId,
+        startedAt,
+        finishedAt,
+        status: "failed",
+        triggerRef: null,
+        sourceIds: [],
+        artifactsCreated: [],
+        signalsCreated: [],
+        workItemsCreated: [],
+        guidanceCreated: [],
+        workflowRunsLinked: [],
+        errorSummary: message,
+        actionPolicy: "observe_only",
+        riskClass: "unknown",
+        provenance: {
+          createdFrom: `watcher:${watcherId}:run`,
+          confidence: 1,
+          extractedAt: startedAt,
+          humanReviewStatus: "approved",
+          visibility: "internal",
+        },
+        createdAt: startedAt,
+        updatedAt: finishedAt,
+      })
+      .run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        status: "error",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, watcherId))
+      .run();
+    return c.json({ error: "run_failed", message }, 400);
   }
 });
 

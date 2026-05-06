@@ -1,6 +1,7 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import type {
   CompanyBrainArea,
+  ActionPolicy,
   GateStatus,
   GoalStatus,
   HealthStatus,
@@ -12,6 +13,9 @@ import type {
   SourceStatus,
   SourceType,
   Visibility,
+  WatcherRunStatus,
+  WatcherStatus,
+  WatcherTriggerType,
   WorkItemStatus,
   WorkflowBlueprintStage,
   WorkflowRunStatus,
@@ -338,4 +342,70 @@ export const cbArtifactLinks = sqliteTable("cb_artifact_links", {
   confidence: real("confidence").notNull().default(1),
   rationale: text("rationale"),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
+});
+
+export const cbWatchers = sqliteTable("cb_watchers", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  sourceIds: text("source_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  triggerType: text("trigger_type").$type<WatcherTriggerType>().notNull().default("manual"),
+  schedule: text("schedule"),
+  eventFilter: text("event_filter"),
+  scopeQuery: text("scope_query"),
+  owner: text("owner"),
+  ownerType: text("owner_type").$type<OwnerType>().notNull().default("unknown"),
+  targetWorkflowBlueprintId: text("target_workflow_blueprint_id"),
+  riskClass: text("risk_class").$type<RiskClass>().notNull().default("unknown"),
+  actionPolicy: text("action_policy")
+    .$type<ActionPolicy>()
+    .notNull()
+    .default("observe_only"),
+  status: text("status").$type<WatcherStatus>().notNull().default("active"),
+  lastRunAt: integer("last_run_at", { mode: "number" }),
+  nextRunAt: integer("next_run_at", { mode: "number" }),
+  failurePolicy: text("failure_policy"),
+  outputPolicy: text("output_policy"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbWatcherRuns = sqliteTable("cb_watcher_runs", {
+  id: text("id").primaryKey(),
+  watcherId: text("watcher_id").notNull(),
+  startedAt: integer("started_at", { mode: "number" }).notNull(),
+  finishedAt: integer("finished_at", { mode: "number" }),
+  status: text("status").$type<WatcherRunStatus>().notNull().default("running"),
+  triggerRef: text("trigger_ref"),
+  sourceIds: text("source_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  artifactsCreated: text("artifacts_created", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  signalsCreated: text("signals_created", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  workItemsCreated: text("work_items_created", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  guidanceCreated: text("guidance_created", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  workflowRunsLinked: text("workflow_runs_linked", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  errorSummary: text("error_summary"),
+  actionPolicy: text("action_policy")
+    .$type<ActionPolicy>()
+    .notNull()
+    .default("observe_only"),
+  riskClass: text("risk_class").$type<RiskClass>().notNull().default("unknown"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });

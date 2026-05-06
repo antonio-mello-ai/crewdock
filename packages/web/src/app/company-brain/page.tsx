@@ -20,8 +20,10 @@ import {
   useCreateCompanyBrainGoal,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
+  useCreateCompanyBrainWatcher,
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
+  useRunCompanyBrainWatcher,
 } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +37,7 @@ import type {
   SlaStatus,
   SourceType,
   WorkItemStatus,
+  ActionPolicy,
 } from "@aios/shared";
 
 const areas: CompanyBrainArea[] = [
@@ -80,6 +83,13 @@ const workStatuses: WorkItemStatus[] = [
 
 const riskClasses: RiskClass[] = ["A", "B", "C", "unknown"];
 const slaStatuses: SlaStatus[] = ["not_set", "on_track", "at_risk", "breached"];
+const actionPolicies: ActionPolicy[] = [
+  "observe_only",
+  "create_artifacts",
+  "create_work_items",
+  "request_human",
+  "writeback_allowed",
+];
 
 function toDateInput(value: number | null | undefined) {
   if (!value) return "";
@@ -124,6 +134,8 @@ export default function CompanyBrainPage() {
   const createGoal = useCreateCompanyBrainGoal();
   const createWorkItem = useCreateCompanyBrainWorkItem();
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
+  const createWatcher = useCreateCompanyBrainWatcher();
+  const runWatcher = useRunCompanyBrainWatcher();
 
   const summary = data?.data;
   const sources = summary?.sources ?? [];
@@ -134,6 +146,8 @@ export default function CompanyBrainPage() {
   const blueprints = summary?.workflowBlueprints ?? [];
   const runs = summary?.workflowRuns ?? [];
   const steps = summary?.workflowSteps ?? [];
+  const watchers = summary?.watchers ?? [];
+  const watcherRuns = summary?.watcherRuns ?? [];
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -215,6 +229,25 @@ export default function CompanyBrainPage() {
     dueAt: "",
   });
 
+  const [watcherForm, setWatcherForm] = useState({
+    title: "GitHub Issues manual watcher",
+    sourceId: "",
+    scopeQuery: "repo:antonio-mello-ai/erp-desmanches state:open",
+    actionPolicy: "create_work_items" as ActionPolicy,
+    riskClass: "B" as RiskClass,
+  });
+
+  const [watcherRunForm, setWatcherRunForm] = useState({
+    watcherId: "watcher-github-issues-manual-v0",
+    sourceId: "",
+    rawRef: "",
+    title: "Manual GitHub issue watcher observation",
+    summary: "Manual watcher run created an artifact and optional internal work item.",
+    workItemId: "",
+    workflowRunId: "",
+    createWorkItem: true,
+  });
+
   const handleCreateSource = (event: FormEvent) => {
     event.preventDefault();
     createSource.mutate(sourceForm);
@@ -280,6 +313,47 @@ export default function CompanyBrainPage() {
       gateStatus: "pending",
       slaStatus: "on_track",
       visibility: "internal",
+    });
+  };
+
+  const handleCreateWatcher = (event: FormEvent) => {
+    event.preventDefault();
+    createWatcher.mutate({
+      title: watcherForm.title,
+      description:
+        "Manual/simulated watcher for GitHub Issues and PR/CI evidence.",
+      sourceIds: watcherForm.sourceId ? [watcherForm.sourceId] : [],
+      triggerType: "manual",
+      eventFilter: "github.issue|github.pull_request|github.check_run",
+      scopeQuery: watcherForm.scopeQuery,
+      owner: "Felhen",
+      ownerType: "team",
+      targetWorkflowBlueprintId: "development-blueprint-v0",
+      riskClass: watcherForm.riskClass,
+      actionPolicy: watcherForm.actionPolicy,
+      status: "active",
+      failurePolicy: "record_error_no_writeback",
+      outputPolicy: "artifact_and_internal_work_item",
+      visibility: "internal",
+    });
+  };
+
+  const handleRunWatcher = (event: FormEvent) => {
+    event.preventDefault();
+    if (!watcherRunForm.watcherId) return;
+    runWatcher.mutate({
+      watcherId: watcherRunForm.watcherId,
+      body: {
+        sourceId: watcherRunForm.sourceId || undefined,
+        rawRef: watcherRunForm.rawRef || undefined,
+        title: watcherRunForm.title,
+        summary: watcherRunForm.summary,
+        workItemId: watcherRunForm.workItemId || null,
+        workflowRunId: watcherRunForm.workflowRunId || null,
+        createWorkItem: watcherRunForm.createWorkItem,
+        workItemTitle: watcherRunForm.title,
+        externalUrl: watcherRunForm.rawRef || null,
+      },
     });
   };
 
@@ -526,6 +600,190 @@ export default function CompanyBrainPage() {
                 </div>
               </div>
               <SubmitButton pending={createGoal.isPending} />
+            </KernelForm>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-2">
+            <KernelForm title="Watcher" icon={Workflow} onSubmit={handleCreateWatcher}>
+              <FieldLabel>Title</FieldLabel>
+              <Input
+                value={watcherForm.title}
+                onChange={(event) =>
+                  setWatcherForm({ ...watcherForm, title: event.target.value })
+                }
+              />
+              <FieldLabel>Source</FieldLabel>
+              <Select
+                value={watcherForm.sourceId}
+                onChange={(event) =>
+                  setWatcherForm({ ...watcherForm, sourceId: event.target.value })
+                }
+              >
+                <option value="">select at run time</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name}
+                  </option>
+                ))}
+              </Select>
+              <FieldLabel>Scope query</FieldLabel>
+              <Input
+                value={watcherForm.scopeQuery}
+                onChange={(event) =>
+                  setWatcherForm({
+                    ...watcherForm,
+                    scopeQuery: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Policy</FieldLabel>
+                  <Select
+                    value={watcherForm.actionPolicy}
+                    onChange={(event) =>
+                      setWatcherForm({
+                        ...watcherForm,
+                        actionPolicy: event.target.value as ActionPolicy,
+                      })
+                    }
+                  >
+                    {actionPolicies.map((policy) => (
+                      <option key={policy} value={policy}>
+                        {policy}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Risk</FieldLabel>
+                  <Select
+                    value={watcherForm.riskClass}
+                    onChange={(event) =>
+                      setWatcherForm({
+                        ...watcherForm,
+                        riskClass: event.target.value as RiskClass,
+                      })
+                    }
+                  >
+                    {riskClasses.map((risk) => (
+                      <option key={risk} value={risk}>
+                        {risk}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <SubmitButton pending={createWatcher.isPending} />
+            </KernelForm>
+
+            <KernelForm title="Watcher run" icon={GitPullRequest} onSubmit={handleRunWatcher}>
+              <FieldLabel>Watcher</FieldLabel>
+              <Select
+                value={watcherRunForm.watcherId}
+                onChange={(event) =>
+                  setWatcherRunForm({
+                    ...watcherRunForm,
+                    watcherId: event.target.value,
+                  })
+                }
+              >
+                <option value="">select watcher</option>
+                {watchers.map((watcher) => (
+                  <option key={watcher.id} value={watcher.id}>
+                    {watcher.title}
+                  </option>
+                ))}
+              </Select>
+              <FieldLabel>Source</FieldLabel>
+              <Select
+                value={watcherRunForm.sourceId}
+                onChange={(event) =>
+                  setWatcherRunForm({
+                    ...watcherRunForm,
+                    sourceId: event.target.value,
+                  })
+                }
+              >
+                <option value="">watcher default</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name}
+                  </option>
+                ))}
+              </Select>
+              <FieldLabel>Raw ref</FieldLabel>
+              <Input
+                value={watcherRunForm.rawRef}
+                onChange={(event) =>
+                  setWatcherRunForm({ ...watcherRunForm, rawRef: event.target.value })
+                }
+              />
+              <FieldLabel>Title</FieldLabel>
+              <Input
+                value={watcherRunForm.title}
+                onChange={(event) =>
+                  setWatcherRunForm({ ...watcherRunForm, title: event.target.value })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Work item link</FieldLabel>
+                  <Select
+                    value={watcherRunForm.workItemId}
+                    onChange={(event) =>
+                      setWatcherRunForm({
+                        ...watcherRunForm,
+                        workItemId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">create or no link</option>
+                    {workItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Workflow run</FieldLabel>
+                  <Select
+                    value={watcherRunForm.workflowRunId}
+                    onChange={(event) =>
+                      setWatcherRunForm({
+                        ...watcherRunForm,
+                        workflowRunId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no run link</option>
+                    {runs.map((run) => (
+                      <option key={run.id} value={run.id}>
+                        {run.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={watcherRunForm.createWorkItem}
+                  onChange={(event) =>
+                    setWatcherRunForm({
+                      ...watcherRunForm,
+                      createWorkItem: event.target.checked,
+                    })
+                  }
+                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                />
+                Create internal WorkItem
+              </label>
+              <SubmitButton
+                pending={runWatcher.isPending}
+                disabled={!watcherRunForm.watcherId}
+              />
             </KernelForm>
           </section>
 
@@ -964,6 +1222,71 @@ export default function CompanyBrainPage() {
                   })
                 )}
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <Workflow className="h-4 w-4 text-neutral-500" />
+                <h2 className="text-sm font-semibold text-neutral-200">
+                  Operating Loops
+                </h2>
+              </div>
+            </div>
+            <div className="divide-y divide-neutral-800/40">
+              {watchers.length === 0 ? (
+                <EmptyState label="No watchers registered" />
+              ) : (
+                watchers.map((watcher) => {
+                  const lastRun = watcherRuns.find(
+                    (run) => run.watcherId === watcher.id
+                  );
+                  return (
+                    <div key={watcher.id} className="px-5 py-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium text-neutral-200">
+                              {watcher.title}
+                            </p>
+                            <StatusBadge value={watcher.status} />
+                            <Badge
+                              variant="outline"
+                              className="border-neutral-800 text-neutral-500"
+                            >
+                              {watcher.triggerType}
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className="border-neutral-800 text-neutral-500"
+                            >
+                              {watcher.actionPolicy}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-xs text-neutral-600">
+                            {watcher.scopeQuery ?? "no scope"} · risk{" "}
+                            {watcher.riskClass}
+                          </p>
+                        </div>
+                        <div className="text-left lg:text-right">
+                          <p className="text-xs text-neutral-500">
+                            last run{" "}
+                            {watcher.lastRunAt
+                              ? formatTimeAgo(watcher.lastRunAt)
+                              : "never"}
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-600">
+                            {lastRun
+                              ? `${lastRun.artifactsCreated.length} artifacts · ${lastRun.workItemsCreated.length} work items`
+                              : "no outputs yet"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </section>
         </div>

@@ -520,6 +520,86 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "create_company_brain_watcher",
+  {
+    title: "Register Company Brain watcher",
+    description:
+      "Register a watcher/operating loop with source scope, risk class and action policy. Watchers observe sources and produce Company Brain evidence without requiring an interactive session.",
+    inputSchema: {
+      title: z.string().min(1),
+      description: z.string().optional(),
+      sourceIds: z.array(z.string()).default([]),
+      triggerType: z
+        .enum(["manual", "schedule", "webhook", "polling", "event"])
+        .default("manual"),
+      schedule: z.string().optional(),
+      eventFilter: z.string().optional(),
+      scopeQuery: z.string().optional(),
+      owner: z.string().optional(),
+      targetWorkflowBlueprintId: z.string().optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).default("unknown"),
+      actionPolicy: z
+        .enum([
+          "observe_only",
+          "create_artifacts",
+          "create_work_items",
+          "request_human",
+          "writeback_allowed",
+        ])
+        .default("observe_only"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/watchers",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          ownerType: input.owner ? "human" : "unknown",
+          status: "active",
+          failurePolicy: "record_error_no_writeback",
+          outputPolicy: "artifact_and_internal_work_item",
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "run_company_brain_watcher",
+  {
+    title: "Run Company Brain watcher manually",
+    description:
+      "Run a watcher manually/simulated. The run creates a watcher observation Artifact and can link or create an internal WorkItem under the watcher's action policy.",
+    inputSchema: {
+      watcherId: z.string().default("watcher-github-issues-manual-v0"),
+      sourceId: z.string().optional(),
+      rawRef: z.string().optional(),
+      title: z.string().optional(),
+      summary: z.string().optional(),
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      createWorkItem: z.boolean().default(false),
+      workItemTitle: z.string().optional(),
+      externalUrl: z.string().optional(),
+    },
+  },
+  async ({ watcherId, ...body }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/watchers/${watcherId}/run`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------

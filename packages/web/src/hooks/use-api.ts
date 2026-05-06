@@ -27,12 +27,16 @@ import type {
   CreateGoalRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
+  CreateWatcherRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  RunWatcherRequest,
+  RunWatcherResponse,
   Artifact,
   Goal,
   Source,
   StrategicPriority,
+  Watcher,
   WorkflowRun,
   WorkItem,
 } from "@aios/shared";
@@ -484,6 +488,34 @@ export function useCreateCompanyBrainWorkflowRun() {
   return useMutation<ApiResponse<WorkflowRun>, Error, CreateWorkflowRunRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/workflow-runs", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainWatcher() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Watcher>, Error, CreateWatcherRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/watchers", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useRunCompanyBrainWatcher() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<RunWatcherResponse>,
+    Error,
+    { watcherId: string; body: RunWatcherRequest }
+  >({
+    mutationFn: ({ watcherId, body }) =>
+      api(`/api/company-brain/watchers/${watcherId}/run`, {
         method: "POST",
         body: JSON.stringify(body),
       }),

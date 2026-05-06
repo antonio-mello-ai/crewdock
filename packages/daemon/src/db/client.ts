@@ -301,6 +301,51 @@ CREATE TABLE IF NOT EXISTS cb_artifact_links (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_watchers (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  source_ids TEXT NOT NULL DEFAULT '[]',
+  trigger_type TEXT NOT NULL DEFAULT 'manual',
+  schedule TEXT,
+  event_filter TEXT,
+  scope_query TEXT,
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  target_workflow_blueprint_id TEXT,
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  action_policy TEXT NOT NULL DEFAULT 'observe_only',
+  status TEXT NOT NULL DEFAULT 'active',
+  last_run_at INTEGER,
+  next_run_at INTEGER,
+  failure_policy TEXT,
+  output_policy TEXT,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_watcher_runs (
+  id TEXT PRIMARY KEY,
+  watcher_id TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER,
+  status TEXT NOT NULL DEFAULT 'running',
+  trigger_ref TEXT,
+  source_ids TEXT NOT NULL DEFAULT '[]',
+  artifacts_created TEXT NOT NULL DEFAULT '[]',
+  signals_created TEXT NOT NULL DEFAULT '[]',
+  work_items_created TEXT NOT NULL DEFAULT '[]',
+  guidance_created TEXT NOT NULL DEFAULT '[]',
+  workflow_runs_linked TEXT NOT NULL DEFAULT '[]',
+  error_summary TEXT,
+  action_policy TEXT NOT NULL DEFAULT 'observe_only',
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_cb_sources_type_area ON cb_sources(source_type, area);
 CREATE INDEX IF NOT EXISTS idx_cb_artifacts_source_id ON cb_artifacts(source_id);
 CREATE INDEX IF NOT EXISTS idx_cb_artifacts_review ON cb_artifacts(human_review_status);
@@ -315,6 +360,10 @@ CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_status ON cb_workflow_runs(statu
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_work_item_id ON cb_workflow_runs(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_steps_run_id ON cb_workflow_steps(run_id);
 CREATE INDEX IF NOT EXISTS idx_cb_artifact_links_target ON cb_artifact_links(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_cb_watchers_status ON cb_watchers(status);
+CREATE INDEX IF NOT EXISTS idx_cb_watchers_trigger ON cb_watchers(trigger_type);
+CREATE INDEX IF NOT EXISTS idx_cb_watcher_runs_watcher_id ON cb_watcher_runs(watcher_id);
+CREATE INDEX IF NOT EXISTS idx_cb_watcher_runs_status ON cb_watcher_runs(status);
 `;
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;
@@ -457,6 +506,45 @@ function seedCompanyBrain(sqlite: Database.Database) {
       requiredArtifacts: JSON.stringify(
         DEVELOPMENT_BLUEPRINT_STAGES.map((stage) => stage.artifactExpected)
       ),
+      visibility: "internal",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  sqlite
+    .prepare(
+      `INSERT OR IGNORE INTO cb_watchers (
+        id, title, description, source_ids, trigger_type, schedule, event_filter,
+        scope_query, owner, owner_type, target_workflow_blueprint_id, risk_class,
+        action_policy, status, last_run_at, next_run_at, failure_policy,
+        output_policy, visibility, created_at, updated_at
+      ) VALUES (
+        @id, @title, @description, @sourceIds, @triggerType, @schedule, @eventFilter,
+        @scopeQuery, @owner, @ownerType, @targetWorkflowBlueprintId, @riskClass,
+        @actionPolicy, @status, @lastRunAt, @nextRunAt, @failurePolicy,
+        @outputPolicy, @visibility, @createdAt, @updatedAt
+      )`
+    )
+    .run({
+      id: "watcher-github-issues-manual-v0",
+      title: "GitHub Issues manual watcher v0",
+      description:
+        "Manual/simulated watcher for GitHub Issues and PR/CI evidence. It observes, records artifacts, and can create internal WorkItems without external writeback.",
+      sourceIds: JSON.stringify([]),
+      triggerType: "manual",
+      schedule: null,
+      eventFilter: "github.issue|github.pull_request|github.check_run",
+      scopeQuery: "repo:* state:open",
+      owner: "Felhen",
+      ownerType: "team",
+      targetWorkflowBlueprintId: "development-blueprint-v0",
+      riskClass: "B",
+      actionPolicy: "create_work_items",
+      status: "active",
+      lastRunAt: null,
+      nextRunAt: null,
+      failurePolicy: "record_error_no_writeback",
+      outputPolicy: "artifact_and_internal_work_item",
       visibility: "internal",
       createdAt: now,
       updatedAt: now,
