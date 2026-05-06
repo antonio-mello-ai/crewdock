@@ -26,6 +26,7 @@ import {
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
   useGenerateCompanyBrainAgentContext,
+  useImportCompanyBrainSlackMessages,
   useRunCompanyBrainWatcher,
   useSyncCompanyBrainGitHubIssues,
   useUpdateCompanyBrainGuidanceItem,
@@ -197,6 +198,7 @@ export default function CompanyBrainPage() {
   const createWatcher = useCreateCompanyBrainWatcher();
   const runWatcher = useRunCompanyBrainWatcher();
   const syncGitHubIssues = useSyncCompanyBrainGitHubIssues();
+  const importSlackMessages = useImportCompanyBrainSlackMessages();
   const updateGuidance = useUpdateCompanyBrainGuidanceItem();
 
   const summary = data?.data;
@@ -371,6 +373,15 @@ export default function CompanyBrainPage() {
     priorityId: "",
     goalId: "",
     createWorkItems: true,
+  });
+
+  const [slackImportForm, setSlackImportForm] = useState({
+    sourceName: "AIOS Slack manual import",
+    workspaceName: "felhen",
+    channelName: "aios-ops",
+    user: "Antonio",
+    permalink: "",
+    text: "Slack evidence imported into Company Brain with read-only provenance.",
   });
 
   const handleCreateSource = (event: FormEvent) => {
@@ -584,6 +595,26 @@ export default function CompanyBrainPage() {
       priorityId: githubSyncForm.priorityId || null,
       goalId: githubSyncForm.goalId || null,
       visibility: "internal",
+    });
+  };
+
+  const handleImportSlackMessages = (event: FormEvent) => {
+    event.preventDefault();
+    importSlackMessages.mutate({
+      sourceName: slackImportForm.sourceName || undefined,
+      workspaceName: slackImportForm.workspaceName || undefined,
+      area: "operations",
+      owner: "Felhen",
+      visibility: "internal",
+      messages: [
+        {
+          text: slackImportForm.text,
+          permalink: slackImportForm.permalink || null,
+          channelName: slackImportForm.channelName || null,
+          user: slackImportForm.user || null,
+          occurredAt: Date.now(),
+        },
+      ],
     });
   };
 
@@ -1031,7 +1062,7 @@ export default function CompanyBrainPage() {
             </KernelForm>
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-3">
+          <section className="grid gap-4 lg:grid-cols-4">
             <KernelForm title="Watcher" icon={Workflow} onSubmit={handleCreateWatcher}>
               <FieldLabel>Title</FieldLabel>
               <Input
@@ -1384,6 +1415,74 @@ export default function CompanyBrainPage() {
                 Create internal WorkItems
               </label>
               <SubmitButton pending={syncGitHubIssues.isPending} />
+            </KernelForm>
+
+            <KernelForm
+              title="Slack import"
+              icon={FileText}
+              onSubmit={handleImportSlackMessages}
+            >
+              <FieldLabel>Source name</FieldLabel>
+              <Input
+                value={slackImportForm.sourceName}
+                onChange={(event) =>
+                  setSlackImportForm({
+                    ...slackImportForm,
+                    sourceName: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Workspace</FieldLabel>
+                  <Input
+                    value={slackImportForm.workspaceName}
+                    onChange={(event) =>
+                      setSlackImportForm({
+                        ...slackImportForm,
+                        workspaceName: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Channel</FieldLabel>
+                  <Input
+                    value={slackImportForm.channelName}
+                    onChange={(event) =>
+                      setSlackImportForm({
+                        ...slackImportForm,
+                        channelName: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <FieldLabel>Permalink</FieldLabel>
+              <Input
+                value={slackImportForm.permalink}
+                onChange={(event) =>
+                  setSlackImportForm({
+                    ...slackImportForm,
+                    permalink: event.target.value,
+                  })
+                }
+              />
+              <FieldLabel>Message</FieldLabel>
+              <textarea
+                value={slackImportForm.text}
+                onChange={(event) =>
+                  setSlackImportForm({
+                    ...slackImportForm,
+                    text: event.target.value,
+                  })
+                }
+                className="min-h-20 rounded-md border border-neutral-800 bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <SubmitButton
+                pending={importSlackMessages.isPending}
+                disabled={!slackImportForm.text.trim()}
+              />
             </KernelForm>
           </section>
 

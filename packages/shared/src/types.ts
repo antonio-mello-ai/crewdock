@@ -489,6 +489,34 @@ export interface ImportLocalDocsResponse {
   artifactsCreated: Artifact[];
 }
 
+export interface SlackMessageImportItem {
+  text: string;
+  permalink?: string | null;
+  channelId?: string | null;
+  channelName?: string | null;
+  user?: string | null;
+  ts?: string | null;
+  threadTs?: string | null;
+  occurredAt?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ImportSlackMessagesRequest {
+  messages: SlackMessageImportItem[];
+  sourceId?: string | null;
+  sourceName?: string | null;
+  workspaceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+}
+
+export interface ImportSlackMessagesResponse {
+  source: Source;
+  artifactsCreated: Artifact[];
+  messagesSeen: number;
+}
+
 export interface SyncGitHubIssuesRequest {
   repo: string;
   state?: "open" | "closed" | "all";

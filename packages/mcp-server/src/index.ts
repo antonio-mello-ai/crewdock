@@ -477,6 +477,62 @@ server.registerTool(
 );
 
 server.registerTool(
+  "import_company_brain_slack_messages",
+  {
+    title: "Import Slack messages into Company Brain",
+    description:
+      "Manually import Slack message excerpts as read-only Company Brain artifacts with Slack metadata, raw_ref, hash and provenance. Does not post or mutate Slack.",
+    inputSchema: {
+      messages: z.array(
+        z.object({
+          text: z.string().min(1),
+          permalink: z.string().optional(),
+          channelId: z.string().optional(),
+          channelName: z.string().optional(),
+          user: z.string().optional(),
+          ts: z.string().optional(),
+          threadTs: z.string().optional(),
+          occurredAt: z.number().int().optional(),
+          metadata: z.record(z.string(), z.unknown()).optional(),
+        })
+      ).min(1),
+      sourceId: z.string().optional(),
+      sourceName: z.string().optional(),
+      workspaceName: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("operations"),
+      owner: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/importers/slack-messages",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "sync_company_brain_github_issues",
   {
     title: "Sync GitHub Issues into Company Brain",

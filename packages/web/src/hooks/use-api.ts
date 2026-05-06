@@ -37,6 +37,8 @@ import type {
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
   GenerateAgentContextRequest,
+  ImportSlackMessagesRequest,
+  ImportSlackMessagesResponse,
   RunWatcherRequest,
   RunWatcherResponse,
   SyncGitHubIssuesRequest,
@@ -469,6 +471,22 @@ export function useSyncCompanyBrainGitHubIssues() {
   >({
     mutationFn: (body) =>
       api("/api/company-brain/adapters/github/issues/sync", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useImportCompanyBrainSlackMessages() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ImportSlackMessagesResponse>,
+    Error,
+    ImportSlackMessagesRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/importers/slack-messages", {
         method: "POST",
         body: JSON.stringify(body),
       }),

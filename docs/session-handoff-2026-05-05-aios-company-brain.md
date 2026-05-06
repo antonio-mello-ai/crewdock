@@ -126,7 +126,7 @@ Agora existem:
 
 Ainda nao existem:
 
-- conector Slack com envelope comum;
+- conector Slack API real com token/workspace selecionado;
 - writeback externo real com policy/HITL e auditoria completa.
 
 Parciais que precisam evoluir:
@@ -246,7 +246,8 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- Slack ingestao read-only v0.
+- Demo Felhen v0.1.
+- Slack API adapter real quando houver token/workspace definidos.
 
 ## Slice Decision v0
 
@@ -279,7 +280,8 @@ Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-
 Proximos cortes recomendados:
 
 - `ImprovementProposal v0`.
-- Slack ingestao read-only v0.
+- Demo Felhen v0.1.
+- Slack API adapter real quando houver token/workspace definidos.
 
 ## Slice AgentContext v0
 
@@ -316,7 +318,8 @@ Dogfood local AgentContext v0 validado em DB temporario `/tmp/aios-runtime-agent
 Proximos cortes recomendados:
 
 - Importer local docs/corp.
-- Slack ingestao read-only v0.
+- Demo Felhen v0.1.
+- Slack API adapter real quando houver token/workspace definidos.
 
 ## Slice ImprovementProposal v0
 
@@ -347,7 +350,8 @@ Dogfood local ImprovementProposal v0 validado em DB temporario `/tmp/aios-runtim
 
 Proximos cortes recomendados:
 
-- Slack ingestao read-only v0.
+- Demo Felhen v0.1.
+- Slack API adapter real quando houver token/workspace definidos.
 
 ## Slice Local Docs Importer v0
 
@@ -460,9 +464,38 @@ Dogfood local Source Health v0 validado em DB temporario `/tmp/aios-runtime-sour
 - Source `Source Health GitHub sync`: `freshnessStatus=fresh`, `healthStatus=healthy`, `artifactCount=2`, `workItemCount=2`, `signalCount=1`, `watcherCount=1`, `watcherRunCount=1`, `openGuidanceCount=1`, `issueKinds=[]`.
 - Source `Uninstrumented source health dogfood`: `freshnessStatus=never_synced`, `healthStatus=unknown`, `artifactCount=0`, `workItemCount=0`, `signalCount=0`, `issueKinds=[never_synced,no_artifacts,no_work_items,no_signals]`.
 
+## Slice Slack Ingestao v0
+
+Objetivo: permitir que conversas/decisoes do Slack entrem como evidencia operacional no Company Brain sem depender de token real nem mutar Slack.
+
+Status em 2026-05-06: implementado como importer manual/read-only.
+
+Implementado:
+
+1. Tipos `SlackMessageImportItem`, `ImportSlackMessagesRequest` e `ImportSlackMessagesResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/importers/slack-messages`.
+3. Cria ou reutiliza `Source` `slack` por `workspaceName`/`sourceName`.
+4. Cria `Artifact` `slack_message` com `raw_ref`, `content_ref`, hash, channel/user/ts/thread/permalink em metadata e provenance `createdFrom=importer:slack_messages`.
+5. Dedupe por `raw_ref`.
+6. Atualiza source health/freshness.
+7. UI `/company-brain` tem formulario manual `Slack import`.
+8. MCP tool `import_company_brain_slack_messages`.
+9. Nenhum writeback externo: nao posta, nao responde, nao altera mensagens/canais.
+
+Dogfood local Slack Ingestao v0 validado em DB temporario `/tmp/aios-runtime-slack-import-dogfood.sqlite`, daemon em `127.0.0.1:43112`:
+
+- Source criado/reutilizado: `Jct2OciGwvfJ`, `sourceType=slack`, `healthStatus=healthy`.
+- Artifact criado: `aOPTDIzZ8K08`, `artifactType=slack_message`, raw_ref `https://felhen.slack.com/archives/C123/p1778070000000000`.
+- Provenance: `createdFrom=importer:slack_messages`, notes `read_only=true; mode=manual`.
+- Metadata incluiu `workspaceName=felhen`, `channelId=C123`, `channelName=aios-ops`, `user=antonio`, `ts=1778070000.000000`, `threadTs=1778070000.000000`.
+- Segunda importacao com o mesmo body reutilizou a mesma Source e retornou `artifactsCreated=0`.
+- Summary retornou `sourceCount=1`, `artifactCount=1`, `sourceTypes=[slack]`.
+- Source Health retornou `freshnessStatus=fresh`, `artifactCount=1`, `issueKinds=[no_work_items,no_signals]`.
+
 Proximos cortes recomendados:
 
-- Slack ingestao read-only v0.
+- Demo Felhen v0.1.
+- Slack API adapter real quando houver token/workspace definidos.
 
 ## Dogfood ERP
 
@@ -582,12 +615,12 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Source Health v0, focado em `Slack ingestao read-only v0`, sem recriar o kernel, watchers ou adapters ja entregues.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Slack Ingestao v0, focado em `Demo Felhen v0.1`, sem recriar o kernel, watchers ou adapters ja entregues.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- implementar adapter/importer Slack read-only com envelope equivalente a local docs/GitHub Issues;
-- gerar `Source` + `Artifact` com raw_ref/content_ref/hash/metadata/provenance, sem postar ou responder no Slack;
-- permitir uso manual/simulado se credencial Slack real nao estiver disponivel;
+- criar um dataset/dogfood demonstravel que atravesse estrategia -> evidencia -> work item -> workflow run -> signal/finding/guidance -> improvement proposal;
+- expor a demo via API/UI/MCP ou seed/manual runner sem writeback externo;
+- documentar exatamente quais objetos foram criados e quais gaps ainda aparecem em Adoption Dashboard/Source Health;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

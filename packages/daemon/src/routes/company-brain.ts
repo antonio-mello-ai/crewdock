@@ -26,6 +26,7 @@ import type {
   GuidanceAudience,
   GenerateAgentContextRequest,
   ImportLocalDocsRequest,
+  ImportSlackMessagesRequest,
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
@@ -110,6 +111,19 @@ function summarizeDoc(content: string) {
     .join(" ")
     .replaceAll(/[#*_`]/g, "")
     .slice(0, 500);
+}
+
+function parseSlackTimestamp(ts: string | null | undefined) {
+  if (!ts) return null;
+  const [seconds, fraction = "0"] = ts.split(".");
+  const secondsNumber = Number(seconds);
+  if (!Number.isFinite(secondsNumber)) return null;
+  const fractionMs = Number(fraction.padEnd(3, "0").slice(0, 3));
+  return secondsNumber * 1000 + (Number.isFinite(fractionMs) ? fractionMs : 0);
+}
+
+function summarizeSlackText(text: string) {
+  return text.replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
 interface GitHubIssuePayload {
@@ -1127,6 +1141,154 @@ app.post("/importers/local-docs", async (c) => {
         data: {
           source,
           artifactsCreated,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "import_failed", message }, 400);
+  }
+});
+
+app.post("/importers/slack-messages", async (c) => {
+  try {
+    const body = await c.req.json<ImportSlackMessagesRequest>();
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+      throw new Error("messages is required");
+    }
+    const db = getDb();
+    const timestamp = now();
+    const workspaceName = body.workspaceName?.trim() || "manual_slack_import";
+    const externalRef = `slack://${workspaceName}`;
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source =
+        db
+          .select()
+          .from(cbSources)
+          .all()
+          .find(
+            (item) =>
+              item.sourceType === "slack" &&
+              (item.externalRef === externalRef || item.name === body.sourceName)
+          ) ?? null;
+    }
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? `${workspaceName} Slack import`,
+        sourceType: "slack" as const,
+        area: body.area ?? "operations",
+        externalRef,
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          importer: "slack_messages",
+          workspaceName,
+          readOnly: true,
+          mode: "manual",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const existingArtifacts = db.select().from(cbArtifacts).all();
+    const artifactsCreated = [];
+    for (const message of body.messages) {
+      const text = requireText(message.text, "message.text");
+      const channel = message.channelName ?? message.channelId ?? "unknown_channel";
+      const occurredAt = message.occurredAt ?? parseSlackTimestamp(message.ts) ?? timestamp;
+      const rawRef =
+        message.permalink ??
+        `slack://${workspaceName}/${channel}/${message.ts ?? stableHash(text).slice(0, 12)}`;
+      if (existingArtifacts.some((artifact) => artifact.rawRef === rawRef)) continue;
+      const payload = JSON.stringify({
+        workspaceName,
+        channelId: message.channelId ?? null,
+        channelName: message.channelName ?? null,
+        user: message.user ?? null,
+        ts: message.ts ?? null,
+        threadTs: message.threadTs ?? null,
+        text,
+      });
+      const artifact = {
+        id: nanoid(12),
+        sourceId: source.id,
+        artifactType: "slack_message",
+        area: body.area ?? source.area,
+        title: `Slack ${channel}: ${summarizeSlackText(text).slice(0, 80)}`,
+        summary: summarizeSlackText(text),
+        contentRef: message.permalink ?? rawRef,
+        rawRef,
+        author: message.user ?? source.owner ?? "slack_importer",
+        occurredAt,
+        ingestedAt: timestamp,
+        hash: stableHash(payload),
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef,
+          createdFrom: "importer:slack_messages",
+          confidence: 0.9,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: "read_only=true; mode=manual",
+        },
+        humanReviewStatus: "pending" as const,
+        confidence: 0.9,
+        metadata: {
+          importer: "slack_messages",
+          readOnly: true,
+          workspaceName,
+          channelId: message.channelId ?? null,
+          channelName: message.channelName ?? null,
+          user: message.user ?? null,
+          ts: message.ts ?? null,
+          threadTs: message.threadTs ?? null,
+          permalink: message.permalink ?? null,
+          ...(message.metadata ?? {}),
+        },
+      };
+      db.insert(cbArtifacts).values(artifact).run();
+      existingArtifacts.push(artifact);
+      artifactsCreated.push(artifact);
+    }
+
+    const updatedSource = {
+      ...source,
+      lastSyncAt: timestamp,
+      healthStatus: "healthy" as const,
+      syncError: null,
+      updatedAt: timestamp,
+    };
+    db.update(cbSources)
+      .set({
+        lastSyncAt: updatedSource.lastSyncAt,
+        healthStatus: updatedSource.healthStatus,
+        syncError: updatedSource.syncError,
+        updatedAt: updatedSource.updatedAt,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          source: updatedSource,
+          artifactsCreated,
+          messagesSeen: body.messages.length,
         },
       },
       201
