@@ -692,6 +692,39 @@ function seedCompanyBrain(sqlite: Database.Database) {
 
   sqlite
     .prepare(
+      `INSERT OR IGNORE INTO cb_sources (
+        id, name, source_type, area, external_ref, status, health_status,
+        owner, owner_type, visibility, last_sync_at, sync_error, metadata,
+        created_at, updated_at
+      ) VALUES (
+        @id, @name, @sourceType, @area, @externalRef, @status, @healthStatus,
+        @owner, @ownerType, @visibility, @lastSyncAt, @syncError, @metadata,
+        @createdAt, @updatedAt
+      )`
+    )
+    .run({
+      id: "source-aios-briefing-v0",
+      name: "AIOS Briefing Runtime",
+      sourceType: "runtime",
+      area: "platform",
+      externalRef: "aios://company-brain/briefing",
+      status: "active",
+      healthStatus: "healthy",
+      owner: "Felhen",
+      ownerType: "team",
+      visibility: "internal",
+      lastSyncAt: null,
+      syncError: null,
+      metadata: JSON.stringify({
+        seed: "watcher-aios-briefing-v0",
+        actionPolicy: "observe_only",
+      }),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  sqlite
+    .prepare(
       `INSERT OR IGNORE INTO cb_watchers (
         id, title, description, source_ids, trigger_type, schedule, event_filter,
         scope_query, owner, owner_type, target_workflow_blueprint_id, risk_class,
@@ -724,6 +757,45 @@ function seedCompanyBrain(sqlite: Database.Database) {
       nextRunAt: null,
       failurePolicy: "record_error_no_writeback",
       outputPolicy: "artifact_and_internal_work_item",
+      visibility: "internal",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  sqlite
+    .prepare(
+      `INSERT OR IGNORE INTO cb_watchers (
+        id, title, description, source_ids, trigger_type, schedule, event_filter,
+        scope_query, owner, owner_type, target_workflow_blueprint_id, risk_class,
+        action_policy, status, last_run_at, next_run_at, failure_policy,
+        output_policy, visibility, created_at, updated_at
+      ) VALUES (
+        @id, @title, @description, @sourceIds, @triggerType, @schedule, @eventFilter,
+        @scopeQuery, @owner, @ownerType, @targetWorkflowBlueprintId, @riskClass,
+        @actionPolicy, @status, @lastRunAt, @nextRunAt, @failurePolicy,
+        @outputPolicy, @visibility, @createdAt, @updatedAt
+      )`
+    )
+    .run({
+      id: "watcher-aios-briefing-v0",
+      title: "AIOS Briefing watcher v0",
+      description:
+        "Manual observe-only watcher that produces an internal Company Brain briefing artifact and optional gap signals.",
+      sourceIds: JSON.stringify(["source-aios-briefing-v0"]),
+      triggerType: "manual",
+      schedule: "daily 09:00 BRT",
+      eventFilter: "company_brain.summary|company_brain.gap",
+      scopeQuery: "aios://company-brain/summary",
+      owner: "Felhen",
+      ownerType: "team",
+      targetWorkflowBlueprintId: null,
+      riskClass: "B",
+      actionPolicy: "observe_only",
+      status: "active",
+      lastRunAt: null,
+      nextRunAt: null,
+      failurePolicy: "record_error_no_writeback",
+      outputPolicy: "briefing_artifact_and_gap_signals",
       visibility: "internal",
       createdAt: now,
       updatedAt: now,

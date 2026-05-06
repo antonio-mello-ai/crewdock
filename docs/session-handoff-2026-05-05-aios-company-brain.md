@@ -657,7 +657,31 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-signal-guidance-dogfo
 - Segundo extract reutilizou os mesmos objetos (`findingCreated=false`, `guidanceCreated=false`).
 - Summary retornou `signalCount=1`, `alignmentFindingCount=1`, `guidanceItemCount=1`, `openGuidanceCount=1`.
 
-Proximo corte recomendado: Guidance/Decision/Signal review cohesion v0 ou AIOS Briefing watcher v0 para resumir decisions, tradeoffs, findings e guidance aberta.
+## Slice AIOS Briefing Watcher v0
+
+Objetivo: criar um pulso operacional interno do AIOS a partir do Company Brain, sem writeback externo, para mostrar se o sistema esta legivel como gestao e nao apenas como colecao de entidades.
+
+Implementado em 2026-05-06:
+
+1. Seed `source-aios-briefing-v0` e `watcher-aios-briefing-v0` em `packages/daemon/src/db/client.ts`.
+2. Watcher especial reutiliza `Watcher/WatcherRun` existente e mantem `actionPolicy=observe_only`, `riskClass=B`, `failurePolicy=record_error_no_writeback`.
+3. Run gera Artifact interno `aios_briefing` com summary estruturado e provenance `watcher:watcher-aios-briefing-v0:briefing`.
+4. Briefing cobre decisions novas/pendentes, tradeoffs, open guidance, findings, source health, adoption dashboard, work items sem priority/goal, gates/SLA em risco e proximos passos.
+5. Signals opcionais sao emitidos apenas para gaps claros: source stale/error/never synced, guidance vencida, work item sem priority/goal, gate critico pendente e SLA risk. Cada signal traz envelope AutoImprove Core em `metadata.autoImproveEnvelope`.
+6. `CompanyBrainSummary` inclui `lastBriefing`; tambem existe `GET /api/company-brain/briefing`.
+7. UI `/company-brain` mostra painel AIOS Briefing com ultimo artifact, secoes, next steps, contador de gap signals e botao para rodar o watcher.
+8. MCP tool `get_company_brain_briefing` expõe o ultimo briefing; `get_company_brain_summary` tambem retorna `lastBriefing`.
+9. Nenhum post no Slack/GitHub ou writeback externo automatico foi implementado.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-aios-briefing-dogfood.sqlite`, daemon em `127.0.0.1:43119`:
+
+- WatcherRun: `KXZkIiALdSmE`.
+- Artifact briefing: `KFbXLc23I8-2`, `artifactType=aios_briefing`, `actionPolicy=observe_only`.
+- Secoes geradas: `9` (`decisions`, `tradeoffs`, `open_guidance`, `findings`, `source_health`, `adoption_dashboard`, `unlinked_work`, `gates_sla`, `next_steps`).
+- Gap signals emitidos: `5`, todos com `metadata.autoImproveEnvelope`.
+- Summary retornou `lastBriefing.artifactId=KFbXLc23I8-2`, igual ao endpoint `/api/company-brain/briefing`.
+
+Proximo corte recomendado: Review cohesion para Decision/Signal/Guidance candidates, depois Slack threads/incremental sync, GitHub PR/CI watcher real, GitHub notifications watcher e somente depois writeback controlado com `action_policy`, `risk_class`, HITL e audit trail.
 
 ## Dogfood ERP
 
@@ -777,10 +801,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Signal Guidance Extractor v0. O corte recomendado e `AIOS Briefing watcher v0` ou uma coesao de review para Decision/Signal/Guidance, mantendo qualquer writeback externo bloqueado.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos AIOS Briefing Watcher v0. O corte recomendado e Review cohesion para Decision/Signal/Guidance candidates, mantendo qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- gerar briefing interno ou consolidar review/status de candidates;
+- consolidar review/status/cohesion de candidates;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.

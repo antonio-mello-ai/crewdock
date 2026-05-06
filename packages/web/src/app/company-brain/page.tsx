@@ -264,6 +264,7 @@ export default function CompanyBrainPage() {
   const improvementProposals = summary?.improvementProposals ?? [];
   const adoptionDashboard = summary?.adoptionDashboard;
   const sourceHealthReport = summary?.sourceHealthReport;
+  const lastBriefing = summary?.lastBriefing ?? null;
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -753,6 +754,13 @@ export default function CompanyBrainPage() {
     });
   };
 
+  const handleRunAiosBriefing = () => {
+    runWatcher.mutate({
+      watcherId: "watcher-aios-briefing-v0",
+      body: {},
+    });
+  };
+
   const updateGuidanceFeedback = (
     id: string,
     status: "accepted" | "done" | "ignored",
@@ -954,6 +962,95 @@ export default function CompanyBrainPage() {
               </div>
             </section>
           ) : null}
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    AIOS Briefing
+                  </h2>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRunAiosBriefing}
+                  disabled={runWatcher.isPending}
+                >
+                  {runWatcher.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Run briefing
+                </Button>
+              </div>
+            </div>
+            {lastBriefing ? (
+              <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
+                <div className="border-neutral-800/50 px-5 py-4 lg:border-r">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium text-neutral-200">
+                      {lastBriefing.title}
+                    </p>
+                    <StatusBadge value={lastBriefing.actionPolicy} />
+                    <Badge
+                      variant="outline"
+                      className="border-neutral-800 text-neutral-500"
+                    >
+                      {lastBriefing.gapSignalIds.length} gap signals
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-600">
+                    generated {formatTimeAgo(lastBriefing.generatedAt)} · artifact{" "}
+                    {lastBriefing.artifactId}
+                  </p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {lastBriefing.sections
+                      .filter((section) => section.key !== "next_steps")
+                      .slice(0, 8)
+                      .map((section) => (
+                        <div key={section.key} className="space-y-2">
+                          <p className="text-xs font-medium uppercase text-neutral-500">
+                            {section.title}
+                          </p>
+                          <ul className="space-y-1 text-xs text-neutral-400">
+                            {section.items.slice(0, 3).map((item) => (
+                              <li key={item} className="leading-5">
+                                {item}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+                <div className="px-5 py-4">
+                  <p className="text-xs font-medium uppercase text-neutral-500">
+                    Next Steps
+                  </p>
+                  <div className="mt-3 space-y-2">
+                    {lastBriefing.nextSteps.length === 0 ? (
+                      <p className="text-xs text-neutral-500">
+                        No next steps generated.
+                      </p>
+                    ) : (
+                      lastBriefing.nextSteps.slice(0, 7).map((step) => (
+                        <div key={step} className="flex gap-2 text-xs text-neutral-400">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-neutral-600" />
+                          <span className="leading-5">{step}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <EmptyState label="No AIOS briefing generated" />
+            )}
+          </section>
 
           {sourceHealthReport ? (
             <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">

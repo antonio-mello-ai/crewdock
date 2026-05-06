@@ -1481,6 +1481,36 @@ export interface CompanyBrainSourceHealthReport {
   };
 }
 
+export interface CompanyBrainBriefingSection {
+  key:
+    | "decisions"
+    | "tradeoffs"
+    | "open_guidance"
+    | "findings"
+    | "source_health"
+    | "adoption_dashboard"
+    | "unlinked_work"
+    | "gates_sla"
+    | "next_steps";
+  title: string;
+  items: string[];
+}
+
+export interface CompanyBrainBriefingSnapshot {
+  artifactId: string;
+  watcherId: string | null;
+  watcherRunId: string | null;
+  generatedAt: number;
+  title: string;
+  summary: string | null;
+  rawRef: string;
+  actionPolicy: ActionPolicy;
+  sections: CompanyBrainBriefingSection[];
+  nextSteps: string[];
+  gapSignalIds: string[];
+  provenance: Provenance | null;
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -1503,6 +1533,7 @@ export interface CompanyBrainSummary {
   improvementProposals: ImprovementProposal[];
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
+  lastBriefing: CompanyBrainBriefingSnapshot | null;
   stats: {
     sourceCount: number;
     artifactCount: number;

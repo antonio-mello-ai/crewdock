@@ -6,7 +6,10 @@ import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
   AlignmentClassification,
+  CompanyBrainArea,
   CompanyBrainAdoptionDashboard,
+  CompanyBrainBriefingSection,
+  CompanyBrainBriefingSnapshot,
   CompanyBrainSourceHealthReport,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -31,6 +34,7 @@ import type {
   ImportLocalDocsRequest,
   ImportSlackMessagesRequest,
   RunFelhenDemoRequest,
+  SignalSource,
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
@@ -73,6 +77,9 @@ function now() {
 function stableHash(input: string) {
   return createHash("sha256").update(input).digest("hex");
 }
+
+const AIOS_BRIEFING_SOURCE_ID = "source-aios-briefing-v0";
+const AIOS_BRIEFING_WATCHER_ID = "watcher-aios-briefing-v0";
 
 function allowedLocalDocRoots() {
   const envRoots = process.env.AIOS_LOCAL_DOC_IMPORT_ROOTS?.split(",") ?? [];
@@ -1068,10 +1075,704 @@ function buildSourceHealthReport(
   };
 }
 
+const briefingSectionKeys: CompanyBrainBriefingSection["key"][] = [
+  "decisions",
+  "tradeoffs",
+  "open_guidance",
+  "findings",
+  "source_health",
+  "adoption_dashboard",
+  "unlinked_work",
+  "gates_sla",
+  "next_steps",
+];
+
+function isBriefingSectionKey(
+  key: unknown
+): key is CompanyBrainBriefingSection["key"] {
+  return (
+    typeof key === "string" &&
+    briefingSectionKeys.includes(key as CompanyBrainBriefingSection["key"])
+  );
+}
+
+function isActionPolicy(value: unknown): value is CompanyBrainBriefingSnapshot["actionPolicy"] {
+  return (
+    value === "observe_only" ||
+    value === "create_artifacts" ||
+    value === "create_work_items" ||
+    value === "request_human" ||
+    value === "writeback_allowed"
+  );
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(
+    new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))
+  );
+}
+
+function limitOrNone(values: string[], limit = 6) {
+  const limited = uniqueStrings(values).slice(0, limit);
+  return limited.length ? limited : ["None currently detected."];
+}
+
+function textSnippet(value: string | null | undefined, maxLength = 120) {
+  if (!value) return null;
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function formatEntityLine(args: {
+  prefix?: string;
+  title: string;
+  status?: string | null;
+  detail?: string | null;
+}) {
+  const title = args.prefix ? `${args.prefix}: ${args.title}` : args.title;
+  const status = args.status ? ` [${args.status}]` : "";
+  const detail = args.detail ? ` - ${args.detail}` : "";
+  return `${title}${status}${detail}`;
+}
+
+function stringArrayFromMetadata(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function briefingSectionsFromMetadata(value: unknown): CompanyBrainBriefingSection[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((section): CompanyBrainBriefingSection[] => {
+    if (!section || typeof section !== "object") return [];
+    const candidate = section as {
+      key?: unknown;
+      title?: unknown;
+      items?: unknown;
+    };
+    if (!isBriefingSectionKey(candidate.key)) return [];
+    const title = typeof candidate.title === "string" ? candidate.title : candidate.key;
+    const items = stringArrayFromMetadata(candidate.items);
+    return [{ key: candidate.key, title, items }];
+  });
+}
+
+function buildLastBriefing(
+  data: ReturnType<typeof listAll>
+): CompanyBrainBriefingSnapshot | null {
+  const artifact = data.artifacts
+    .filter((item) => item.artifactType === "aios_briefing")
+    .sort((a, b) => b.ingestedAt - a.ingestedAt)[0];
+  if (!artifact) return null;
+
+  const metadata = artifact.metadata ?? {};
+  const watcherId = typeof metadata.watcherId === "string" ? metadata.watcherId : null;
+  const watcherRunId =
+    typeof metadata.watcherRunId === "string" ? metadata.watcherRunId : null;
+  const actionPolicy = isActionPolicy(metadata.actionPolicy)
+    ? metadata.actionPolicy
+    : "observe_only";
+
+  return {
+    artifactId: artifact.id,
+    watcherId,
+    watcherRunId,
+    generatedAt: artifact.ingestedAt,
+    title: artifact.title,
+    summary: artifact.summary,
+    rawRef: artifact.rawRef,
+    actionPolicy,
+    sections: briefingSectionsFromMetadata(metadata.sections),
+    nextSteps: stringArrayFromMetadata(metadata.nextSteps),
+    gapSignalIds: stringArrayFromMetadata(metadata.gapSignalIds),
+    provenance: artifact.provenance,
+  };
+}
+
+function buildBriefingSections(args: {
+  data: ReturnType<typeof listAll>;
+  adoptionDashboard: CompanyBrainAdoptionDashboard;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+  generatedAt: number;
+}): { sections: CompanyBrainBriefingSection[]; nextSteps: string[] } {
+  const { data, adoptionDashboard, sourceHealthReport, generatedAt } = args;
+  const weekAgo = generatedAt - 7 * 24 * 60 * 60 * 1000;
+  const relevantHealthSources = sourceHealthReport.sources.filter(
+    (source) => source.sourceId !== AIOS_BRIEFING_SOURCE_ID
+  );
+  const relevantGaps = adoptionDashboard.gaps.filter(
+    (gap) => gap.sourceId !== AIOS_BRIEFING_SOURCE_ID
+  );
+  const pendingDecisions = data.decisions.filter((decision) => decision.status === "proposed");
+  const newDecisions = data.decisions.filter((decision) => decision.createdAt >= weekAgo);
+  const activeTradeoffs = data.strategyTradeoffs.filter((tradeoff) =>
+    ["proposed", "accepted"].includes(tradeoff.status)
+  );
+  const openGuidance = data.guidanceItems.filter((item) =>
+    ["new", "open"].includes(item.status)
+  );
+  const overdueGuidance = openGuidance.filter(
+    (item) => typeof item.dueAt === "number" && item.dueAt < generatedAt
+  );
+  const driftFindings = data.alignmentFindings.filter((finding) =>
+    ["drift", "contradiction", "weak", "unknown"].includes(finding.classification)
+  );
+  const unhealthySources = relevantHealthSources.filter(
+    (source) => source.issueKinds.length > 0
+  );
+  const unlinkedWorkItems = data.workItems.filter(
+    (item) => !item.priorityId && !item.goalId
+  );
+  const riskyRuns = data.workflowRuns.filter(
+    (run) =>
+      ["pending", "blocked", "failed"].includes(run.gateStatus) ||
+      ["at_risk", "breached"].includes(run.slaStatus)
+  );
+  const riskyGoals = data.goals.filter((goal) =>
+    ["at_risk", "breached"].includes(goal.slaStatus)
+  );
+
+  const sections: CompanyBrainBriefingSection[] = [
+    {
+      key: "decisions",
+      title: "Decisions",
+      items: limitOrNone([
+        ...newDecisions.map((decision) =>
+          formatEntityLine({
+            prefix: "new",
+            title: decision.title,
+            status: decision.status,
+            detail: textSnippet(decision.rationale ?? decision.summary),
+          })
+        ),
+        ...pendingDecisions.map((decision) =>
+          formatEntityLine({
+            prefix: "pending",
+            title: decision.title,
+            status: decision.status,
+            detail: textSnippet(decision.rationale ?? decision.summary),
+          })
+        ),
+      ]),
+    },
+    {
+      key: "tradeoffs",
+      title: "Tradeoffs",
+      items: limitOrNone(
+        activeTradeoffs.map((tradeoff) =>
+          formatEntityLine({
+            prefix: tradeoff.kind,
+            title: tradeoff.title,
+            status: tradeoff.status,
+            detail: textSnippet(tradeoff.acceptedOption ?? tradeoff.summary),
+          })
+        )
+      ),
+    },
+    {
+      key: "open_guidance",
+      title: "Open Guidance",
+      items: limitOrNone([
+        ...overdueGuidance.map((item) =>
+          formatEntityLine({
+            prefix: "overdue",
+            title: item.title,
+            status: item.status,
+            detail: item.action,
+          })
+        ),
+        ...openGuidance.map((item) =>
+          formatEntityLine({
+            title: item.title,
+            status: item.status,
+            detail: textSnippet(item.action),
+          })
+        ),
+      ]),
+    },
+    {
+      key: "findings",
+      title: "Findings",
+      items: limitOrNone(
+        driftFindings.map((finding) =>
+          formatEntityLine({
+            title: finding.rationale,
+            status: finding.classification,
+            detail: finding.suggestedAction,
+          })
+        )
+      ),
+    },
+    {
+      key: "source_health",
+      title: "Source Health",
+      items: limitOrNone(
+        unhealthySources.map((source) =>
+          formatEntityLine({
+            title: source.title,
+            status: source.freshnessStatus,
+            detail: source.issueKinds.join(", "),
+          })
+        )
+      ),
+    },
+    {
+      key: "adoption_dashboard",
+      title: "Adoption Dashboard",
+      items: [
+        `${adoptionDashboard.stats.closedLoopProjectCount}/${adoptionDashboard.stats.projectCount} projects closed-loop; ${adoptionDashboard.stats.improvingProjectCount} improving.`,
+        `${relevantGaps.length} adoption gaps visible; ${adoptionDashboard.stats.openGuidanceCount} open guidance; ${adoptionDashboard.stats.pendingGateCount} pending gates; ${adoptionDashboard.stats.slaRiskCount} SLA risks.`,
+        ...relevantGaps
+          .slice(0, 4)
+          .map((gap) =>
+            formatEntityLine({
+              prefix: gap.kind,
+              title: gap.title,
+              status: gap.severity,
+              detail: gap.rationale,
+            })
+          ),
+      ],
+    },
+    {
+      key: "unlinked_work",
+      title: "Unlinked Work",
+      items: limitOrNone(
+        unlinkedWorkItems.map((item) =>
+          formatEntityLine({
+            title: item.title,
+            status: item.status,
+            detail: "No priority or goal link.",
+          })
+        )
+      ),
+    },
+    {
+      key: "gates_sla",
+      title: "Gates and SLA",
+      items: limitOrNone([
+        ...riskyRuns.map((run) =>
+          formatEntityLine({
+            title: run.title,
+            status: `gate=${run.gateStatus}; sla=${run.slaStatus}`,
+            detail: run.currentStep ? `current step ${run.currentStep}` : null,
+          })
+        ),
+        ...riskyGoals.map((goal) =>
+          formatEntityLine({
+            title: goal.title,
+            status: `goal sla=${goal.slaStatus}`,
+            detail: goal.reviewCadence,
+          })
+        ),
+      ]),
+    },
+  ];
+
+  const nextSteps = uniqueStrings([
+    pendingDecisions.length
+      ? `Review ${pendingDecisions.length} proposed decision candidates.`
+      : "",
+    activeTradeoffs.some((tradeoff) => tradeoff.status === "proposed")
+      ? "Accept, reject or supersede proposed strategy tradeoffs."
+      : "",
+    openGuidance.length
+      ? `Close feedback on ${openGuidance.length} open guidance items.`
+      : "",
+    unhealthySources.length
+      ? `Refresh or repair ${unhealthySources.length} source health gaps.`
+      : "",
+    unlinkedWorkItems.length
+      ? `Link ${unlinkedWorkItems.length} work items to priority or goal.`
+      : "",
+    riskyRuns.length || riskyGoals.length
+      ? "Review blocked gates and SLA risks before starting new writeback work."
+      : "",
+    relevantGaps.length
+      ? "Run review cohesion before expanding adapters."
+      : "Keep the daily briefing cadence and move to review cohesion.",
+  ]);
+
+  sections.push({
+    key: "next_steps",
+    title: "Next Steps",
+    items: limitOrNone(nextSteps),
+  });
+
+  return { sections, nextSteps: limitOrNone(nextSteps) };
+}
+
+interface BriefingGapSignalCandidate {
+  title: string;
+  summary: string;
+  rawRef: string;
+  severity: SignalSeverity;
+  source: SignalSource;
+  area: CompanyBrainArea;
+  sourceId: string | null;
+  entityId: string;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  tags: string[];
+  metadata: Record<string, unknown>;
+}
+
+function buildBriefingGapCandidates(args: {
+  data: ReturnType<typeof listAll>;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+  generatedAt: number;
+  runId: string;
+}): BriefingGapSignalCandidate[] {
+  const { data, sourceHealthReport, generatedAt, runId } = args;
+  const candidates: BriefingGapSignalCandidate[] = [];
+  const addCandidate = (candidate: BriefingGapSignalCandidate) => {
+    if (candidates.some((item) => item.rawRef === candidate.rawRef)) return;
+    candidates.push(candidate);
+  };
+
+  for (const source of sourceHealthReport.sources) {
+    if (source.sourceId === AIOS_BRIEFING_SOURCE_ID) continue;
+    const clearHealthIssue = source.issueKinds.find((kind) =>
+      ["sync_error", "stale", "never_synced"].includes(kind)
+    );
+    if (!clearHealthIssue) continue;
+    addCandidate({
+      title: `Source health gap: ${source.title}`,
+      summary: `Source ${source.title} is ${source.freshnessStatus}; issues: ${source.issueKinds.join(", ")}.`,
+      rawRef: `aios://company-brain/briefing/${runId}/source-health/${source.sourceId}`,
+      severity: source.freshnessStatus === "error" ? "critical" : "warn",
+      source: "telemetry",
+      area: source.area,
+      sourceId: source.sourceId,
+      entityId: source.sourceId,
+      workItemId: null,
+      workflowRunId: null,
+      tags: ["aios_briefing", "source_health", clearHealthIssue],
+      metadata: {
+        gapKind: "source_health",
+        issueKinds: source.issueKinds,
+        freshnessStatus: source.freshnessStatus,
+      },
+    });
+  }
+
+  for (const item of data.guidanceItems) {
+    if (!["new", "open"].includes(item.status)) continue;
+    if (typeof item.dueAt !== "number" || item.dueAt >= generatedAt) continue;
+    addCandidate({
+      title: `Overdue guidance: ${item.title}`,
+      summary: `Guidance ${item.title} is overdue and still ${item.status}.`,
+      rawRef: `aios://company-brain/briefing/${runId}/guidance/${item.id}`,
+      severity: item.severity,
+      source: "qa",
+      area: item.area,
+      sourceId: null,
+      entityId: item.id,
+      workItemId: item.workItemId,
+      workflowRunId: item.workflowRunId,
+      tags: ["aios_briefing", "guidance_overdue"],
+      metadata: {
+        gapKind: "guidance_overdue",
+        dueAt: item.dueAt,
+        status: item.status,
+      },
+    });
+  }
+
+  for (const item of data.workItems) {
+    if (item.priorityId || item.goalId) continue;
+    addCandidate({
+      title: `Unlinked work item: ${item.title}`,
+      summary: `Work item ${item.title} has no priority or goal link.`,
+      rawRef: `aios://company-brain/briefing/${runId}/work-item/${item.id}`,
+      severity: "warn",
+      source: "qa",
+      area: item.area,
+      sourceId: item.sourceId,
+      entityId: item.id,
+      workItemId: item.id,
+      workflowRunId: null,
+      tags: ["aios_briefing", "unlinked_work_item"],
+      metadata: {
+        gapKind: "unlinked_work_item",
+        status: item.status,
+      },
+    });
+  }
+
+  for (const run of data.workflowRuns) {
+    if (!["blocked", "failed"].includes(run.gateStatus)) continue;
+    addCandidate({
+      title: `Critical gate pending: ${run.title}`,
+      summary: `Workflow run ${run.title} has gate status ${run.gateStatus}.`,
+      rawRef: `aios://company-brain/briefing/${runId}/workflow-run/${run.id}/gate`,
+      severity: "critical",
+      source: "qa",
+      area: run.workflowArea,
+      sourceId: null,
+      entityId: run.id,
+      workItemId: run.workItemId,
+      workflowRunId: run.id,
+      tags: ["aios_briefing", "critical_gate", run.gateStatus],
+      metadata: {
+        gapKind: "critical_gate",
+        gateStatus: run.gateStatus,
+        slaStatus: run.slaStatus,
+      },
+    });
+  }
+
+  for (const run of data.workflowRuns) {
+    if (!["at_risk", "breached"].includes(run.slaStatus)) continue;
+    addCandidate({
+      title: `Workflow SLA risk: ${run.title}`,
+      summary: `Workflow run ${run.title} has SLA status ${run.slaStatus}.`,
+      rawRef: `aios://company-brain/briefing/${runId}/workflow-run/${run.id}/sla`,
+      severity: run.slaStatus === "breached" ? "critical" : "warn",
+      source: "qa",
+      area: run.workflowArea,
+      sourceId: null,
+      entityId: run.id,
+      workItemId: run.workItemId,
+      workflowRunId: run.id,
+      tags: ["aios_briefing", "sla_risk", run.slaStatus],
+      metadata: {
+        gapKind: "sla_risk",
+        gateStatus: run.gateStatus,
+        slaStatus: run.slaStatus,
+      },
+    });
+  }
+
+  return candidates.slice(0, 10);
+}
+
+function buildBriefingSummary(sections: CompanyBrainBriefingSection[]) {
+  const lines = [
+    "AIOS operational briefing generated from the Company Brain.",
+    "",
+  ];
+  for (const section of sections) {
+    lines.push(`## ${section.title}`);
+    for (const item of section.items) {
+      lines.push(`- ${item}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+function runAiosBriefingWatcher(args: {
+  watcher: typeof cbWatchers.$inferSelect;
+  startedAt: number;
+  runId: string;
+}) {
+  const db = getDb();
+  const { watcher, startedAt, runId } = args;
+  const source = db
+    .select()
+    .from(cbSources)
+    .where(eq(cbSources.id, AIOS_BRIEFING_SOURCE_ID))
+    .get();
+  if (!source) throw new Error("AIOS briefing source not found");
+
+  const data = listAll();
+  const adoptionDashboard = buildAdoptionDashboard(data);
+  const sourceHealthReport = buildSourceHealthReport(data);
+  const { sections, nextSteps } = buildBriefingSections({
+    data,
+    adoptionDashboard,
+    sourceHealthReport,
+    generatedAt: startedAt,
+  });
+  const candidates = buildBriefingGapCandidates({
+    data,
+    sourceHealthReport,
+    generatedAt: startedAt,
+    runId,
+  });
+  const artifactId = nanoid(12);
+  const rawRef = `aios://company-brain/briefing/${runId}`;
+  const provenance = {
+    sourceId: source.id,
+    rawRef,
+    createdFrom: `watcher:${watcher.id}:briefing`,
+    confidence: 1,
+    extractedAt: startedAt,
+    humanReviewStatus: "approved" as const,
+    visibility: watcher.visibility,
+    notes: `action_policy=${watcher.actionPolicy}; risk_class=${watcher.riskClass}`,
+  };
+  const signalsCreated = candidates.map((candidate) => {
+    const signalId = nanoid(12);
+    const tags = uniqueStrings([
+      "watcher",
+      watcher.id,
+      "aios_briefing",
+      ...candidate.tags,
+    ]);
+    const envelope = {
+      source: candidate.source,
+      scope: "core" as const,
+      entity_type: "job" as const,
+      entity_id: candidate.entityId,
+      timestamp: startedAt,
+      summary: candidate.summary,
+      raw_ref: candidate.rawRef,
+      severity: candidate.severity,
+      confidence: 0.92,
+      tags,
+    };
+    return {
+      id: signalId,
+      source: candidate.source,
+      scope: "core" as const,
+      entityType: "job" as const,
+      entityId: candidate.entityId,
+      timestamp: startedAt,
+      summary: candidate.summary,
+      rawRef: candidate.rawRef,
+      severity: candidate.severity,
+      confidence: 0.92,
+      tags,
+      area: candidate.area,
+      sourceId: candidate.sourceId,
+      artifactId,
+      workItemId: candidate.workItemId,
+      workflowRunId: candidate.workflowRunId,
+      watcherId: watcher.id,
+      watcherRunId: runId,
+      visibility: watcher.visibility,
+      provenance: {
+        ...provenance,
+        artifactId,
+        rawRef: candidate.rawRef,
+        createdFrom: `watcher:${watcher.id}:briefing_signal`,
+      },
+      metadata: {
+        ...candidate.metadata,
+        autoImproveEnvelope: envelope,
+        actionPolicy: watcher.actionPolicy,
+        watcherRunId: runId,
+      },
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    };
+  });
+  const gapSignalIds = signalsCreated.map((signal) => signal.id);
+  const summary = buildBriefingSummary(sections);
+  const artifact = {
+    id: artifactId,
+    sourceId: source.id,
+    artifactType: "aios_briefing",
+    area: "platform" as const,
+    title: `AIOS Briefing ${new Date(startedAt).toISOString()}`,
+    summary,
+    contentRef: rawRef,
+    rawRef,
+    author: watcher.owner ?? "AIOS Briefing watcher",
+    occurredAt: startedAt,
+    ingestedAt: startedAt,
+    hash: stableHash(`${watcher.id}:${runId}:${summary}`),
+    visibility: watcher.visibility,
+    provenance,
+    humanReviewStatus: "approved" as const,
+    confidence: 1,
+    metadata: {
+      watcherId: watcher.id,
+      watcherRunId: runId,
+      actionPolicy: watcher.actionPolicy,
+      riskClass: watcher.riskClass,
+      sections,
+      nextSteps,
+      gapSignalIds,
+      adoptionDashboardStats: adoptionDashboard.stats,
+      sourceHealthStats: sourceHealthReport.stats,
+      generatedAt: startedAt,
+    },
+  };
+
+  db.insert(cbArtifacts).values(artifact).run();
+  for (const signal of signalsCreated) {
+    db.insert(cbSignals).values(signal).run();
+    db.insert(cbArtifactLinks)
+      .values({
+        id: nanoid(12),
+        artifactId,
+        targetType: "signal",
+        targetId: signal.id,
+        relationship: "briefing_gap_signal",
+        confidence: signal.confidence,
+        rationale:
+          "AIOS Briefing watcher emitted an observe-only AutoImprove gap signal.",
+        createdAt: startedAt,
+      })
+      .run();
+  }
+
+  const finishedAt = now();
+  const sourceIds = [source.id];
+  const run = {
+    id: runId,
+    watcherId: watcher.id,
+    startedAt,
+    finishedAt,
+    status: "completed" as const,
+    triggerRef: rawRef,
+    sourceIds,
+    artifactsCreated: [artifactId],
+    signalsCreated: gapSignalIds,
+    alignmentFindingsCreated: [],
+    workItemsCreated: [],
+    guidanceCreated: [],
+    workflowRunsLinked: [],
+    errorSummary: null,
+    actionPolicy: watcher.actionPolicy,
+    riskClass: watcher.riskClass,
+    provenance: {
+      ...provenance,
+      artifactId,
+      createdFrom: `watcher:${watcher.id}:run`,
+    },
+    createdAt: startedAt,
+    updatedAt: finishedAt,
+  };
+
+  db.insert(cbWatcherRuns).values(run).run();
+  db.update(cbWatchers)
+    .set({
+      lastRunAt: finishedAt,
+      status: "active",
+      updatedAt: finishedAt,
+    })
+    .where(eq(cbWatchers.id, watcher.id))
+    .run();
+  db.update(cbSources)
+    .set({
+      lastSyncAt: finishedAt,
+      healthStatus: "healthy",
+      syncError: null,
+      updatedAt: finishedAt,
+    })
+    .where(eq(cbSources.id, source.id))
+    .run();
+
+  return {
+    run,
+    artifact,
+    signalsCreated,
+    alignmentFindingsCreated: [],
+    workItemsCreated: [],
+    guidanceItemsCreated: [],
+    workflowRunsLinked: [],
+  };
+}
+
 app.get("/summary", (c) => {
   const data = listAll();
   const adoptionDashboard = buildAdoptionDashboard(data);
   const sourceHealthReport = buildSourceHealthReport(data);
+  const lastBriefing = buildLastBriefing(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -1102,6 +1803,7 @@ app.get("/summary", (c) => {
       ...data,
       adoptionDashboard,
       sourceHealthReport,
+      lastBriefing,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -1150,6 +1852,11 @@ app.get("/adoption-dashboard", (c) => {
 
 app.get("/source-health", (c) => {
   const data = buildSourceHealthReport(listAll());
+  return c.json({ data });
+});
+
+app.get("/briefing", (c) => {
+  const data = buildLastBriefing(listAll());
   return c.json({ data });
 });
 
@@ -3924,10 +4631,16 @@ app.post("/watchers/:id/run", async (c) => {
   const runId = nanoid(12);
 
   try {
-    const body = await c.req.json<RunWatcherRequest>();
+    const body = (await c.req
+      .json<RunWatcherRequest>()
+      .catch(() => ({}))) as RunWatcherRequest;
     const watcher = db.select().from(cbWatchers).where(eq(cbWatchers.id, watcherId)).get();
     if (!watcher) throw new Error("watcher not found");
     if (watcher.status !== "active") throw new Error("watcher is not active");
+    if (watcher.id === AIOS_BRIEFING_WATCHER_ID) {
+      const data = runAiosBriefingWatcher({ watcher, startedAt, runId });
+      return c.json({ data }, 201);
+    }
 
     const sourceIds = Array.from(
       new Set([body.sourceId, ...watcher.sourceIds].filter((id): id is string => !!id))
