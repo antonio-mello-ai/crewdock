@@ -2,6 +2,9 @@ import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import type {
   CompanyBrainArea,
   ActionPolicy,
+  AgentContextStatus,
+  AgentContextType,
+  AgentContextValidationStatus,
   AlignmentClassification,
   DecisionStatus,
   GateStatus,
@@ -356,6 +359,40 @@ export const cbGuidanceItems = sqliteTable("cb_guidance_items", {
   feedbackNote: text("feedback_note"),
   feedbackAt: integer("feedback_at", { mode: "number" }),
   generatedFrom: text("generated_from", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbAgentContexts = sqliteTable("cb_agent_contexts", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  targetAgent: text("target_agent").notNull(),
+  contextType: text("context_type").$type<AgentContextType>().notNull().default("briefing"),
+  sourceKnowledgeIds: text("source_knowledge_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  sourceArtifactIds: text("source_artifact_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  decisionIds: text("decision_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  guidanceItemIds: text("guidance_item_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  workItemIds: text("work_item_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  priorityIds: text("priority_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  goalIds: text("goal_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  content: text("content").notNull(),
+  contentFormat: text("content_format").notNull().default("markdown"),
+  status: text("status").$type<AgentContextStatus>().notNull().default("draft"),
+  validationStatus: text("validation_status")
+    .$type<AgentContextValidationStatus>()
+    .notNull()
+    .default("unvalidated"),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),

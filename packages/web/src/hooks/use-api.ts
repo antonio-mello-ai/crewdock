@@ -23,6 +23,7 @@ import type {
   ApiResponse,
   ApiListResponse,
   CompanyBrainSummary,
+  CreateAgentContextRequest,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
   CreateDecisionRequest,
@@ -34,10 +35,12 @@ import type {
   CreateWatcherRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  GenerateAgentContextRequest,
   RunWatcherRequest,
   RunWatcherResponse,
   UpdateGuidanceItemRequest,
   AlignmentFinding,
+  AgentContext,
   Artifact,
   Decision,
   Goal,
@@ -485,6 +488,30 @@ export function useCreateCompanyBrainDecision() {
   return useMutation<ApiResponse<Decision>, Error, CreateDecisionRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/decisions", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainAgentContext() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<AgentContext>, Error, CreateAgentContextRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/agent-contexts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useGenerateCompanyBrainAgentContext() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<AgentContext>, Error, GenerateAgentContextRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/agent-contexts/generate", {
         method: "POST",
         body: JSON.stringify(body),
       }),

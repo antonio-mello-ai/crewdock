@@ -319,6 +319,28 @@ CREATE TABLE IF NOT EXISTS cb_guidance_items (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_agent_contexts (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  target_agent TEXT NOT NULL,
+  context_type TEXT NOT NULL DEFAULT 'briefing',
+  source_knowledge_ids TEXT NOT NULL DEFAULT '[]',
+  source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+  decision_ids TEXT NOT NULL DEFAULT '[]',
+  guidance_item_ids TEXT NOT NULL DEFAULT '[]',
+  work_item_ids TEXT NOT NULL DEFAULT '[]',
+  priority_ids TEXT NOT NULL DEFAULT '[]',
+  goal_ids TEXT NOT NULL DEFAULT '[]',
+  content TEXT NOT NULL,
+  content_format TEXT NOT NULL DEFAULT 'markdown',
+  status TEXT NOT NULL DEFAULT 'draft',
+  validation_status TEXT NOT NULL DEFAULT 'unvalidated',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cb_workflow_blueprints (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -455,6 +477,8 @@ CREATE INDEX IF NOT EXISTS idx_cb_alignment_findings_priority_id ON cb_alignment
 CREATE INDEX IF NOT EXISTS idx_cb_alignment_findings_classification ON cb_alignment_findings(classification);
 CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_status ON cb_guidance_items(status);
 CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_finding_id ON cb_guidance_items(finding_id);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_contexts_target_agent ON cb_agent_contexts(target_agent);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_contexts_status ON cb_agent_contexts(status);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_blueprints_area ON cb_workflow_blueprints(workflow_area);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_status ON cb_workflow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_work_item_id ON cb_workflow_runs(work_item_id);

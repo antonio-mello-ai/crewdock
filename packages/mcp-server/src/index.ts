@@ -275,7 +275,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, agent contexts, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -589,6 +589,83 @@ server.registerTool(
   async (input) => {
     const result = await daemonFetch<{ data: unknown }>(
       "/api/company-brain/guidance-items",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_agent_context",
+  {
+    title: "Register Company Brain agent context",
+    description:
+      "Register executable context for an agent, including source knowledge IDs, content, status, validation status and provenance.",
+    inputSchema: {
+      title: z.string().min(1),
+      targetAgent: z.string().min(1),
+      contextType: z
+        .enum(["spec", "prompt", "playbook", "constraints", "briefing"])
+        .default("briefing"),
+      content: z.string().min(1),
+      sourceKnowledgeIds: z.array(z.string()).default([]),
+      sourceArtifactIds: z.array(z.string()).default([]),
+      decisionIds: z.array(z.string()).default([]),
+      guidanceItemIds: z.array(z.string()).default([]),
+      workItemIds: z.array(z.string()).default([]),
+      priorityIds: z.array(z.string()).default([]),
+      goalIds: z.array(z.string()).default([]),
+      status: z.enum(["draft", "ready", "active", "archived"]).default("draft"),
+      validationStatus: z
+        .enum(["unvalidated", "validated", "rejected", "needs_review"])
+        .default("unvalidated"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-contexts",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          contentFormat: "markdown",
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "generate_company_brain_agent_context",
+  {
+    title: "Generate Company Brain agent context",
+    description:
+      "Generate a markdown AgentContext from selected Company Brain priorities, goals, decisions, guidance, work items and artifacts without running the agent.",
+    inputSchema: {
+      title: z.string().optional(),
+      targetAgent: z.string().min(1),
+      contextType: z
+        .enum(["spec", "prompt", "playbook", "constraints", "briefing"])
+        .default("briefing"),
+      sourceArtifactIds: z.array(z.string()).default([]),
+      decisionIds: z.array(z.string()).default([]),
+      guidanceItemIds: z.array(z.string()).default([]),
+      workItemIds: z.array(z.string()).default([]),
+      priorityIds: z.array(z.string()).default([]),
+      goalIds: z.array(z.string()).default([]),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-contexts/generate",
       {
         method: "POST",
         body: JSON.stringify({

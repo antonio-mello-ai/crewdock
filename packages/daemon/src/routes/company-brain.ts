@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
   AlignmentClassification,
+  CreateAgentContextRequest,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
   CreateDecisionRequest,
@@ -18,6 +19,7 @@ import type {
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
   GuidanceAudience,
+  GenerateAgentContextRequest,
   SignalSeverity,
   RunWatcherRequest,
   UpdateGuidanceItemRequest,
@@ -25,6 +27,7 @@ import type {
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
 import {
+  cbAgentContexts,
   cbAlignmentFindings,
   cbArtifactLinks,
   cbArtifacts,
@@ -113,6 +116,89 @@ function defaultGuidanceAudience(
   return classification === "aligned" ? "agent" : "human";
 }
 
+function bullet(title: string, body: string | null | undefined) {
+  return `- ${title}${body ? `: ${body}` : ""}`;
+}
+
+function buildAgentContextContent(args: {
+  title: string;
+  targetAgent: string;
+  contextType: string;
+  priorities: Array<{ title: string; status: string; successCriteria: string | null }>;
+  goals: Array<{ title: string; status: string; dueAt: number | null; reviewCadence: string | null }>;
+  decisions: Array<{ title: string; status: string; rationale: string | null }>;
+  guidanceItems: Array<{ title: string; action: string; status: string; feedbackStatus: string }>;
+  workItems: Array<{ title: string; status: string; externalUrl: string | null }>;
+  artifacts: Array<{ title: string; rawRef: string; summary: string | null }>;
+}) {
+  const lines = [
+    `# ${args.title}`,
+    "",
+    `Target agent: ${args.targetAgent}`,
+    `Context type: ${args.contextType}`,
+    "",
+    "## Operating Constraints",
+    "- Use the linked Company Brain records as source of truth.",
+    "- Do not perform external writeback unless a policy/gate explicitly allows it.",
+    "- Preserve provenance in any generated output.",
+  ];
+
+  if (args.priorities.length) {
+    lines.push("", "## Priorities");
+    for (const priority of args.priorities) {
+      lines.push(
+        bullet(
+          `${priority.title} (${priority.status})`,
+          priority.successCriteria
+        )
+      );
+    }
+  }
+  if (args.goals.length) {
+    lines.push("", "## Goals");
+    for (const goal of args.goals) {
+      const due = goal.dueAt ? new Date(goal.dueAt).toISOString().slice(0, 10) : "no due date";
+      lines.push(
+        bullet(
+          `${goal.title} (${goal.status})`,
+          `due ${due}; cadence ${goal.reviewCadence ?? "not set"}`
+        )
+      );
+    }
+  }
+  if (args.decisions.length) {
+    lines.push("", "## Decisions");
+    for (const decision of args.decisions) {
+      lines.push(bullet(`${decision.title} (${decision.status})`, decision.rationale));
+    }
+  }
+  if (args.guidanceItems.length) {
+    lines.push("", "## Guidance");
+    for (const item of args.guidanceItems) {
+      lines.push(
+        bullet(
+          `${item.title} (${item.status}/${item.feedbackStatus})`,
+          item.action
+        )
+      );
+    }
+  }
+  if (args.workItems.length) {
+    lines.push("", "## Work Items");
+    for (const item of args.workItems) {
+      lines.push(bullet(`${item.title} (${item.status})`, item.externalUrl));
+    }
+  }
+  if (args.artifacts.length) {
+    lines.push("", "## Source Evidence");
+    for (const artifact of args.artifacts) {
+      lines.push(bullet(`${artifact.title} [${artifact.rawRef}]`, artifact.summary));
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 function listAll() {
   const db = getDb();
   const sources = db.select().from(cbSources).orderBy(desc(cbSources.updatedAt)).all();
@@ -193,6 +279,12 @@ function listAll() {
     .orderBy(desc(cbGuidanceItems.updatedAt))
     .limit(100)
     .all();
+  const agentContexts = db
+    .select()
+    .from(cbAgentContexts)
+    .orderBy(desc(cbAgentContexts.updatedAt))
+    .limit(100)
+    .all();
 
   return {
     sources,
@@ -211,6 +303,7 @@ function listAll() {
     signals,
     alignmentFindings,
     guidanceItems,
+    agentContexts,
   };
 }
 
@@ -268,6 +361,10 @@ app.get("/summary", (c) => {
         driftFindingCount,
         guidanceItemCount: data.guidanceItems.length,
         openGuidanceCount,
+        agentContextCount: data.agentContexts.length,
+        readyAgentContextCount: data.agentContexts.filter((context) =>
+          ["ready", "active"].includes(context.status)
+        ).length,
       },
     },
   });
@@ -838,6 +935,165 @@ app.put("/guidance-items/:id", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "update_failed", message }, 400);
+  }
+});
+
+app.get("/agent-contexts", (c) => {
+  const data = getDb()
+    .select()
+    .from(cbAgentContexts)
+    .orderBy(desc(cbAgentContexts.updatedAt))
+    .limit(100)
+    .all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/agent-contexts", async (c) => {
+  try {
+    const body = await c.req.json<CreateAgentContextRequest>();
+    const timestamp = now();
+    const row = {
+      id: nanoid(12),
+      title: requireText(body.title, "title"),
+      targetAgent: requireText(body.targetAgent, "targetAgent"),
+      contextType: body.contextType ?? "briefing",
+      sourceKnowledgeIds: body.sourceKnowledgeIds ?? [],
+      sourceArtifactIds: body.sourceArtifactIds ?? [],
+      decisionIds: body.decisionIds ?? [],
+      guidanceItemIds: body.guidanceItemIds ?? [],
+      workItemIds: body.workItemIds ?? [],
+      priorityIds: body.priorityIds ?? [],
+      goalIds: body.goalIds ?? [],
+      content: requireText(body.content, "content"),
+      contentFormat: body.contentFormat ?? "markdown",
+      status: body.status ?? "draft",
+      validationStatus: body.validationStatus ?? "unvalidated",
+      visibility: body.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        rawRef: body.sourceKnowledgeIds?.[0],
+        artifactId: body.sourceArtifactIds?.[0],
+        createdFrom: "api:agent_context",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "approved",
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    getDb().insert(cbAgentContexts).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.post("/agent-contexts/generate", async (c) => {
+  try {
+    const body = await c.req.json<GenerateAgentContextRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const sourceArtifactIds = body.sourceArtifactIds ?? [];
+    const decisionIds = body.decisionIds ?? [];
+    const guidanceItemIds = body.guidanceItemIds ?? [];
+    const workItemIds = body.workItemIds ?? [];
+    const priorityIds = body.priorityIds ?? [];
+    const goalIds = body.goalIds ?? [];
+
+    const artifacts = sourceArtifactIds.map((id) => {
+      const row = db.select().from(cbArtifacts).where(eq(cbArtifacts.id, id)).get();
+      if (!row) throw new Error(`sourceArtifactIds contains unknown artifact ${id}`);
+      return row;
+    });
+    const decisions = decisionIds.map((id) => {
+      const row = db.select().from(cbDecisions).where(eq(cbDecisions.id, id)).get();
+      if (!row) throw new Error(`decisionIds contains unknown decision ${id}`);
+      return row;
+    });
+    const guidanceItems = guidanceItemIds.map((id) => {
+      const row = db.select().from(cbGuidanceItems).where(eq(cbGuidanceItems.id, id)).get();
+      if (!row) throw new Error(`guidanceItemIds contains unknown guidance item ${id}`);
+      return row;
+    });
+    const workItems = workItemIds.map((id) => {
+      const row = db.select().from(cbWorkItems).where(eq(cbWorkItems.id, id)).get();
+      if (!row) throw new Error(`workItemIds contains unknown work item ${id}`);
+      return row;
+    });
+    const priorities = priorityIds.map((id) => {
+      const row = db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, id))
+        .get();
+      if (!row) throw new Error(`priorityIds contains unknown priority ${id}`);
+      return row;
+    });
+    const goals = goalIds.map((id) => {
+      const row = db.select().from(cbGoals).where(eq(cbGoals.id, id)).get();
+      if (!row) throw new Error(`goalIds contains unknown goal ${id}`);
+      return row;
+    });
+
+    const title =
+      body.title ??
+      `${body.targetAgent} ${body.contextType ?? "briefing"} context`;
+    const contextType = body.contextType ?? "briefing";
+    const sourceKnowledgeIds = [
+      ...sourceArtifactIds.map((id) => `artifact:${id}`),
+      ...decisionIds.map((id) => `decision:${id}`),
+      ...guidanceItemIds.map((id) => `guidance:${id}`),
+      ...workItemIds.map((id) => `work_item:${id}`),
+      ...priorityIds.map((id) => `priority:${id}`),
+      ...goalIds.map((id) => `goal:${id}`),
+    ];
+    const content = buildAgentContextContent({
+      title,
+      targetAgent: body.targetAgent,
+      contextType,
+      priorities,
+      goals,
+      decisions,
+      guidanceItems,
+      workItems,
+      artifacts,
+    });
+
+    const row = {
+      id: nanoid(12),
+      title,
+      targetAgent: requireText(body.targetAgent, "targetAgent"),
+      contextType,
+      sourceKnowledgeIds,
+      sourceArtifactIds,
+      decisionIds,
+      guidanceItemIds,
+      workItemIds,
+      priorityIds,
+      goalIds,
+      content,
+      contentFormat: "markdown",
+      status: "ready" as const,
+      validationStatus: "needs_review" as const,
+      visibility: body.visibility ?? "internal",
+      provenance: {
+        rawRef: sourceKnowledgeIds[0],
+        artifactId: sourceArtifactIds[0],
+        createdFrom: "api:agent_context_generator",
+        confidence: 0.9,
+        extractedAt: timestamp,
+        humanReviewStatus: "needs_review" as const,
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbAgentContexts).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "generate_failed", message }, 400);
   }
 });
 

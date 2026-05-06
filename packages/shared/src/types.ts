@@ -365,6 +365,18 @@ export type GuidanceFeedbackStatus =
   | "rejected"
   | "ignored"
   | "completed";
+export type AgentContextType =
+  | "spec"
+  | "prompt"
+  | "playbook"
+  | "constraints"
+  | "briefing";
+export type AgentContextStatus = "draft" | "ready" | "active" | "archived";
+export type AgentContextValidationStatus =
+  | "unvalidated"
+  | "validated"
+  | "rejected"
+  | "needs_review";
 
 export interface Provenance {
   sourceId?: string;
@@ -775,6 +787,60 @@ export interface UpdateGuidanceItemRequest {
   feedbackNote?: string | null;
 }
 
+export interface AgentContext {
+  id: string;
+  title: string;
+  targetAgent: string;
+  contextType: AgentContextType;
+  sourceKnowledgeIds: string[];
+  sourceArtifactIds: string[];
+  decisionIds: string[];
+  guidanceItemIds: string[];
+  workItemIds: string[];
+  priorityIds: string[];
+  goalIds: string[];
+  content: string;
+  contentFormat: string;
+  status: AgentContextStatus;
+  validationStatus: AgentContextValidationStatus;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateAgentContextRequest {
+  title: string;
+  targetAgent: string;
+  contextType?: AgentContextType;
+  sourceKnowledgeIds?: string[];
+  sourceArtifactIds?: string[];
+  decisionIds?: string[];
+  guidanceItemIds?: string[];
+  workItemIds?: string[];
+  priorityIds?: string[];
+  goalIds?: string[];
+  content: string;
+  contentFormat?: string;
+  status?: AgentContextStatus;
+  validationStatus?: AgentContextValidationStatus;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
+export interface GenerateAgentContextRequest {
+  title?: string;
+  targetAgent: string;
+  contextType?: AgentContextType;
+  sourceArtifactIds?: string[];
+  decisionIds?: string[];
+  guidanceItemIds?: string[];
+  workItemIds?: string[];
+  priorityIds?: string[];
+  goalIds?: string[];
+  visibility?: Visibility;
+}
+
 export interface WorkflowBlueprintStage {
   key: string;
   title: string;
@@ -1006,6 +1072,7 @@ export interface CompanyBrainSummary {
   signals: Signal[];
   alignmentFindings: AlignmentFinding[];
   guidanceItems: GuidanceItem[];
+  agentContexts: AgentContext[];
   stats: {
     sourceCount: number;
     artifactCount: number;
@@ -1027,6 +1094,8 @@ export interface CompanyBrainSummary {
     driftFindingCount: number;
     guidanceItemCount: number;
     openGuidanceCount: number;
+    agentContextCount: number;
+    readyAgentContextCount: number;
   };
 }
 

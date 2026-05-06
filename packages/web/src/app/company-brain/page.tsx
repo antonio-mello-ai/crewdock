@@ -24,6 +24,7 @@ import {
   useCreateCompanyBrainWatcher,
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
+  useGenerateCompanyBrainAgentContext,
   useRunCompanyBrainWatcher,
   useUpdateCompanyBrainGuidanceItem,
 } from "@/hooks/use-api";
@@ -42,6 +43,7 @@ import type {
   SignalSeverity,
   WorkItemStatus,
   ActionPolicy,
+  AgentContextType,
 } from "@aios/shared";
 
 const areas: CompanyBrainArea[] = [
@@ -80,6 +82,14 @@ const decisionStatuses: DecisionStatus[] = [
   "superseded",
   "rejected",
   "archived",
+];
+
+const agentContextTypes: AgentContextType[] = [
+  "briefing",
+  "spec",
+  "prompt",
+  "playbook",
+  "constraints",
 ];
 
 const workStatuses: WorkItemStatus[] = [
@@ -151,6 +161,7 @@ export default function CompanyBrainPage() {
   const createPriority = useCreateCompanyBrainPriority();
   const createGoal = useCreateCompanyBrainGoal();
   const createDecision = useCreateCompanyBrainDecision();
+  const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createWorkItem = useCreateCompanyBrainWorkItem();
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
@@ -172,6 +183,7 @@ export default function CompanyBrainPage() {
   const signals = summary?.signals ?? [];
   const alignmentFindings = summary?.alignmentFindings ?? [];
   const guidanceItems = summary?.guidanceItems ?? [];
+  const agentContexts = summary?.agentContexts ?? [];
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -242,6 +254,18 @@ export default function CompanyBrainPage() {
     sourceArtifactId: "",
     priorityId: "",
     goalId: "",
+  });
+
+  const [agentContextForm, setAgentContextForm] = useState({
+    title: "AIOS closed-loop execution context",
+    targetAgent: "full-stack-dev",
+    contextType: "briefing" as AgentContextType,
+    priorityId: "",
+    goalId: "",
+    decisionId: "",
+    guidanceItemId: "",
+    workItemId: "",
+    sourceArtifactId: "",
   });
 
   const [workItemForm, setWorkItemForm] = useState({
@@ -347,6 +371,26 @@ export default function CompanyBrainPage() {
     });
   };
 
+  const handleGenerateAgentContext = (event: FormEvent) => {
+    event.preventDefault();
+    generateAgentContext.mutate({
+      title: agentContextForm.title,
+      targetAgent: agentContextForm.targetAgent,
+      contextType: agentContextForm.contextType,
+      priorityIds: agentContextForm.priorityId ? [agentContextForm.priorityId] : [],
+      goalIds: agentContextForm.goalId ? [agentContextForm.goalId] : [],
+      decisionIds: agentContextForm.decisionId ? [agentContextForm.decisionId] : [],
+      guidanceItemIds: agentContextForm.guidanceItemId
+        ? [agentContextForm.guidanceItemId]
+        : [],
+      workItemIds: agentContextForm.workItemId ? [agentContextForm.workItemId] : [],
+      sourceArtifactIds: agentContextForm.sourceArtifactId
+        ? [agentContextForm.sourceArtifactId]
+        : [],
+      visibility: "internal",
+    });
+  };
+
   const handleCreateWorkItem = (event: FormEvent) => {
     event.preventDefault();
     createWorkItem.mutate({
@@ -447,7 +491,7 @@ export default function CompanyBrainPage() {
             Strategy, goals, evidence, work items, workflow runs and gates.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
           <Metric icon={Database} label="Sources" value={summary?.stats.sourceCount ?? 0} />
           <Metric icon={Target} label="Goals" value={summary?.stats.goalCount ?? 0} />
           <Metric
@@ -470,6 +514,11 @@ export default function CompanyBrainPage() {
             icon={Workflow}
             label="Guidance"
             value={summary?.stats.openGuidanceCount ?? 0}
+          />
+          <Metric
+            icon={FileText}
+            label="Contexts"
+            value={summary?.stats.agentContextCount ?? 0}
           />
         </div>
       </div>
@@ -1093,6 +1142,133 @@ export default function CompanyBrainPage() {
               <SubmitButton pending={createDecision.isPending} />
             </KernelForm>
 
+            <KernelForm
+              title="Agent context"
+              icon={FileText}
+              onSubmit={handleGenerateAgentContext}
+            >
+              <FieldLabel>Title</FieldLabel>
+              <Input
+                value={agentContextForm.title}
+                onChange={(event) =>
+                  setAgentContextForm({
+                    ...agentContextForm,
+                    title: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Target agent</FieldLabel>
+                  <Input
+                    value={agentContextForm.targetAgent}
+                    onChange={(event) =>
+                      setAgentContextForm({
+                        ...agentContextForm,
+                        targetAgent: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Type</FieldLabel>
+                  <Select
+                    value={agentContextForm.contextType}
+                    onChange={(event) =>
+                      setAgentContextForm({
+                        ...agentContextForm,
+                        contextType: event.target.value as AgentContextType,
+                      })
+                    }
+                  >
+                    {agentContextTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <FieldLabel>Decision</FieldLabel>
+              <Select
+                value={agentContextForm.decisionId}
+                onChange={(event) =>
+                  setAgentContextForm({
+                    ...agentContextForm,
+                    decisionId: event.target.value,
+                  })
+                }
+              >
+                <option value="">no decision</option>
+                {decisions.map((decision) => (
+                  <option key={decision.id} value={decision.id}>
+                    {decision.title}
+                  </option>
+                ))}
+              </Select>
+              <FieldLabel>Guidance</FieldLabel>
+              <Select
+                value={agentContextForm.guidanceItemId}
+                onChange={(event) =>
+                  setAgentContextForm({
+                    ...agentContextForm,
+                    guidanceItemId: event.target.value,
+                  })
+                }
+              >
+                <option value="">no guidance</option>
+                {guidanceItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.title}
+                  </option>
+                ))}
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Priority</FieldLabel>
+                  <Select
+                    value={agentContextForm.priorityId}
+                    onChange={(event) =>
+                      setAgentContextForm({
+                        ...agentContextForm,
+                        priorityId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no priority</option>
+                    {priorities.map((priority) => (
+                      <option key={priority.id} value={priority.id}>
+                        {priority.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Goal</FieldLabel>
+                  <Select
+                    value={agentContextForm.goalId}
+                    onChange={(event) =>
+                      setAgentContextForm({
+                        ...agentContextForm,
+                        goalId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no goal</option>
+                    {goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <SubmitButton
+                pending={generateAgentContext.isPending}
+                disabled={!agentContextForm.targetAgent}
+              />
+            </KernelForm>
+
             <KernelForm title="Work item" icon={GitPullRequest} onSubmit={handleCreateWorkItem}>
               <FieldLabel>Title</FieldLabel>
               <Input
@@ -1571,6 +1747,45 @@ export default function CompanyBrainPage() {
                         )}
                       </div>
                       <StatusBadge value={decision.status} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-neutral-500" />
+                <h2 className="text-sm font-semibold text-neutral-200">
+                  Agent Contexts
+                </h2>
+              </div>
+            </div>
+            <div className="divide-y divide-neutral-800/40">
+              {agentContexts.length === 0 ? (
+                <EmptyState label="No agent contexts generated" />
+              ) : (
+                agentContexts.slice(0, 6).map((context) => (
+                  <div key={context.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-neutral-200">
+                          {context.title}
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-600">
+                          {context.targetAgent} · {context.contextType} ·{" "}
+                          {context.sourceKnowledgeIds.length} sources
+                        </p>
+                        <p className="mt-2 line-clamp-2 text-sm text-neutral-500">
+                          {context.content}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <StatusBadge value={context.status} />
+                        <StatusBadge value={context.validationStatus} />
+                      </div>
                     </div>
                   </div>
                 ))

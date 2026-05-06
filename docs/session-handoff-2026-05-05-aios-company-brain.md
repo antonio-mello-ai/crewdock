@@ -125,7 +125,6 @@ Ainda nao existem:
 
 - drift/alignment findings;
 - guidance items;
-- agent context generator;
 - improvement proposals;
 - conectores Slack/GitHub/docs com envelope comum;
 - adoption dashboard para enxergar quais frentes estao em closed loop.
@@ -134,7 +133,7 @@ Parciais que precisam evoluir:
 
 - Strategy layer ainda nao tem tradeoffs completos; `Decision v0` ja existe.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/decisions/signals/alignment findings/guidance/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
+- MCP cobre sources/artifacts/decisions/signals/alignment findings/guidance/agent contexts/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
 
 ## Slice Watcher / Operating Loop Layer
 
@@ -220,7 +219,7 @@ Dogfood local Closed Loop v0 validado em DB temporario `/tmp/aios-runtime-loop-d
 Proximos cortes recomendados:
 
 - Melhorar Drift/Alignment alem da heuristica v0, incluindo `drift` e `contradiction` a partir de regras de strategy/decision.
-- Adicionar `AgentContext` e `ImprovementProposal`.
+- Adicionar `ImprovementProposal`.
 - Depois disso, avaliar adapters/read-only reais e writeback gated, sem auto-writeback por default.
 
 ## Slice Guidance Feedback v0
@@ -247,7 +246,6 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- `AgentContext v0`.
 - `ImprovementProposal v0`.
 - Importer local docs/corp.
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
@@ -283,7 +281,45 @@ Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-
 
 Proximos cortes recomendados:
 
-- `AgentContext v0`.
+- `ImprovementProposal v0`.
+- Importer local docs/corp.
+- GitHub Issues sync adapter real sem writeback automatico agressivo.
+- Adoption Dashboard.
+
+## Slice AgentContext v0
+
+Objetivo: gerar contexto executavel para agentes a partir de conhecimento aprovado no Company Brain, sem iniciar execucao automaticamente.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `AgentContext`, `CreateAgentContextRequest` e `GenerateAgentContextRequest` em `packages/shared/src/types.ts`.
+2. Tabela `cb_agent_contexts` com `target_agent`, `context_type`, `source_knowledge_ids`, source IDs por objeto, `content`, `content_format`, `status`, `validation_status`, `visibility`, `provenance` e timestamps.
+3. Rotas:
+   - `GET/POST /api/company-brain/agent-contexts`
+   - `POST /api/company-brain/agent-contexts/generate`
+4. Gerador deterministico de markdown com priorities, goals, decisions, guidance, work items, artifacts e constraints operacionais.
+5. `summary` inclui `agentContexts`, `agentContextCount` e `readyAgentContextCount`.
+6. UI `/company-brain` tem formulario de geracao, metrica de contexts e painel Agent Contexts.
+7. MCP tools `create_company_brain_agent_context` e `generate_company_brain_agent_context`.
+8. Nenhuma execucao de agente e nenhum writeback externo automatico.
+
+Dogfood local AgentContext v0 validado em DB temporario `/tmp/aios-runtime-agent-context-dogfood.sqlite`, daemon em `127.0.0.1:43106`:
+
+- AgentContext gerado: `wqm706bSsXME`.
+- `targetAgent=full-stack-dev`, `contextType=briefing`, `status=ready`, `validationStatus=needs_review`.
+- Source knowledge IDs tipados:
+  - `artifact:gG4cFBpTv4WE`
+  - `decision:kNwHhuO0u2CC`
+  - `guidance:lPuruawM_RIH`
+  - `priority:h4jTuWMTosTz`
+  - `goal:4qfZkPD4_t4J`
+- Conteudo gerado incluiu constraint de nao fazer writeback externo e a decision fonte.
+- Summary retornou `agentContextCount=1`, `readyAgentContextCount=1`, `decisionCount=1`, `guidanceItemCount=1`.
+
+Proximos cortes recomendados:
+
 - `ImprovementProposal v0`.
 - Importer local docs/corp.
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
