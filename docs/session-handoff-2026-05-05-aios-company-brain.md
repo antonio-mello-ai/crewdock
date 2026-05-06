@@ -907,6 +907,19 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-slack-thread-reply-wr
 - Preview retornou `dry_run`, target normalizado, body com marker `aios-writeback`, `externalId=null`.
 - Caminho proibido validado: proposal sem aprovacao `zQp7_ttOCwUk` retornou 400 `proposal must be approved before Slack writeback`, sem chamada Slack de escrita.
 
+Dogfood real posterior validado em DB operacional local ignorado pelo git, daemon em `127.0.0.1:3101`, usando thread segura `https://felhen.slack.com/archives/C0B1ZM0JULA/p1778092775577459`:
+
+- Payload aprovado: `AIOS writeback dogfood executado: esta resposta foi criada a partir de uma ExternalActionProposal aprovada, com preview gate, HITL rationale, idempotency marker e audit trail. Não houve mensagem fora de thread.`
+- Guidance aceita criada: `rvis2S8FuEqt`.
+- Proposal criada/aprovada: `gx7PrLKf4iJF`, `destinationType=slack`, `actionType=thread_reply`, `riskClass=B`, `actionPolicy=writeback_allowed`, `idempotencyKey=dogfood:slack-thread-reply-v0:C0B1ZM0JULA:1778092775.577459`.
+- Target normalizado: `slack://C0B1ZM0JULA/1778092775.577459`.
+- Preview retornou `dry_run`, marker presente e `externalId=null`.
+- Execute retornou `completed`, `reusedExisting=false`, `externalId=C0B1ZM0JULA:1778092928.052089`.
+- `externalUrl` gravado: `https://felhen.slack.com/archives/C0B1ZM0JULA/p1778092928052089?thread_ts=1778092775.577459&cid=C0B1ZM0JULA`.
+- Replay do execute retornou `already_completed`, `reusedExisting=true`, com o mesmo `externalId/externalUrl`.
+- Readback da thread via Slack API encontrou exatamente 1 mensagem com o marker de idempotencia, confirmando que nao houve duplicacao.
+- Audit trail da proposal: `proposal_created`, `approved`, `slack_thread_reply_previewed`, `slack_thread_reply_posted`.
+
 ## Slice Writeback Safety Dashboard v0
 
 Objetivo: tornar auditavel em uma unica superficie tudo que o AIOS ja escreveu fora ou tentou preparar para writeback, antes de permitir labels/status/assign ou qualquer acao externa mais forte.
