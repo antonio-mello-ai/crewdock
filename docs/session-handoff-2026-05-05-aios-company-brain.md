@@ -1060,7 +1060,23 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-retry-safety-dogfood.
 - Slack duplicate-prevention foi validado contra a thread segura `https://felhen.slack.com/archives/C0B1ZM0JULA/p1778092775577459`, reutilizando a proposal `gx7PrLKf4iJF` e idempotency key `dogfood:slack-thread-reply-v0:C0B1ZM0JULA:1778092775.577459`: marker count antes/depois ficou `1`, execute retornou `reusedExisting=true`, `reviewStatus=duplicate_prevented`, `externalId=C0B1ZM0JULA:1778092928.052089`, e reexecute retornou `already_completed`.
 - Dashboard final retornou `proposalCount=6`, `needsPreviewCount=2`, `payloadMismatchCount=1`, `retryableFailedCount=1`, `completedExternalWriteCount=2`, `duplicateAvoidedCount=1`, `readyToExecuteCount=0`.
 
-Proximo corte recomendado: writeback policy doc/matrix A-B-C dentro do repo, alinhando action types permitidos/bloqueados antes de qualquer label/status/assign preview-only.
+## Slice Writeback Policy Matrix v0
+
+Objetivo: registrar dentro do repo a fronteira versionada entre acoes internas, writebacks B permitidos e acoes bloqueadas antes de criar propostas para label/status/assign.
+
+Implementado em 2026-05-06:
+
+1. Novo documento `docs/writeback-policy-matrix.md`.
+2. Matriz A/B/C para `risk_class` e `action_policy`.
+3. Matriz por `destination_type` e `action_type`, marcando:
+   - executavel agora: GitHub issue/PR comment e Slack thread reply;
+   - preview-only planejado: GitHub label proposal v0;
+   - bloqueado: assign/unassign, close/reopen, merge, deploy, notification read, Slack top-level/DM/edit/delete/react/pin/invite/topic/rename e unknown.
+4. Gates obrigatorios documentados para GitHub comment e Slack thread reply, alinhados com HITL, preview, idempotencia e Retry Safety.
+5. Requisitos para preview-only candidates: target, payload diff, rationale de risco, idempotency key, approvals futuros e audit event sem mutacao externa.
+6. Nenhuma mudanca de schema/API/UI/MCP e nenhuma chamada externa.
+
+Proximo corte recomendado: GitHub label proposal v0 em modo preview-only, sem execucao real.
 
 ## Dogfood ERP
 
@@ -1180,7 +1196,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0 e Retry Safety / Idempotent Execution Review v0. O proximo corte recomendado e writeback policy doc/matrix A-B-C dentro do repo, antes de qualquer label/status/assign preview-only ou qualquer acao externa mais forte.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0 e Writeback Policy Matrix v0. O proximo corte recomendado e GitHub label proposal v0 em modo preview-only, sem execucao real.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
