@@ -1204,7 +1204,28 @@ Dogfood real validado em DB temporario `/tmp/aios-runtime-github-label-executor-
 - Reexecute retornou `status=already_completed`, `mutationAttempted=false`.
 - Safety apos execute retornou `reviewStatus=duplicate_prevented`, flags `duplicate_prevented/completed`, audit `github_label_completed_noop`.
 
-Proximo corte recomendado: reforcar revisao read-only da fila pos-writeback com foco em labels executadas/noop e manter status/check, assign, close/reopen, merge, deploy e notification-read bloqueados.
+## Slice Post-Writeback Audit Review v0
+
+Objetivo: melhorar a leitura pos-writeback sem criar nova mutacao externa, especialmente para labels executadas/noop.
+
+Implementado em 2026-05-06:
+
+1. `WritebackAuditReview` agora inclui `executionEvent`, `completedNoop` e `mutationAttempted`.
+2. `CompanyBrainWritebackSafetyDashboard.stats` agora inclui:
+   - `githubLabelWriteCount`;
+   - `githubLabelNoopCount`;
+   - `completedNoopCount`;
+   - `externalMutationAttemptedCount`.
+3. UI `/company-brain` mostra metricas `labels` e `noop` e outcome por item: execution event, mutacao tentada e noop.
+4. Nenhuma rota de mutacao nova, nenhuma chamada externa nova.
+
+Dogfood read-only validado reaproveitando DB temporario `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon em `127.0.0.1:43135`:
+
+- Proposal revisada: `fx3NheQm3Crv`.
+- Stats: `completedExternalWriteCount=1`, `githubLabelWriteCount=1`, `githubLabelNoopCount=1`, `completedNoopCount=1`, `externalMutationAttemptedCount=0`, `duplicateAvoidedCount=1`.
+- Item retornou `reviewStatus=duplicate_prevented`, `auditEvent=github_label_completed_noop`, `executionEvent=github_label_completed_noop`, `duplicatePrevented=true`, `completedNoop=true`, `mutationAttempted=false`, `hasExternalRef=true`.
+
+Proximo corte recomendado: criar negative-path review read-only para proposals bloqueadas de label/status/check, garantindo que mode remove/set, multi-label, target fora da allowlist e status/check execute inexistente fiquem legiveis como bloqueados antes de qualquer novo executor.
 
 ## Dogfood ERP
 
@@ -1324,7 +1345,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0 e GitHub Label Executor v0. O proximo corte recomendado e reforcar revisao read-only da fila pos-writeback com foco em labels executadas/noop, mantendo status/check, assign, close/reopen, merge, deploy e notification-read bloqueados.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0 e Post-Writeback Audit Review v0. O proximo corte recomendado e negative-path review read-only para proposals bloqueadas de label/status/check, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

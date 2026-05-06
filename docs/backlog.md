@@ -75,7 +75,9 @@ Status Writeback Audit Review v0 em 2026-05-06: Safety Dashboard agora expõe `a
 
 Status GitHub Label Executor v0 em 2026-05-06: `github_label` agora tem executor real restrito a Risk B, `writeback_allowed`, HITL approval/rationale, preview apos aprovacao, Retry Safety `ready_to_execute`, mode `add`, um unico label e allowlist local (`AIOS_GITHUB_LABEL_WRITEBACK_ALLOWLIST`, default dogfood `antonio-mello-ai/crewdock#3=enhancement`). Antes de qualquer write, o executor le labels atuais; se o label ja existe, grava `github_label_completed_noop`, retorna `completed_noop`, nao chama write API e reexecucao retorna `already_completed`.
 
-Proximo corte planejado: reforcar revisao read-only da fila pos-writeback com foco em labels executadas/noop e manter status/check, assign, close/reopen, merge, deploy e notification-read bloqueados.
+Status Post-Writeback Audit Review v0 em 2026-05-06: Safety Dashboard agora distingue outcomes pos-execucao sem novas mutacoes: `executionEvent`, `completedNoop`, `mutationAttempted`, stats para label completado/noop, noops totais e mutacoes externas tentadas. UI mostra outcome por item e metricas `labels`/`noop`.
+
+Proximo corte planejado: criar negative-path review read-only para proposals bloqueadas de label/status/check, garantindo que mode remove/set, multi-label, target fora da allowlist e status/check execute inexistente fiquem legiveis como bloqueados antes de qualquer novo executor.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -101,6 +103,7 @@ Proximo corte planejado: reforcar revisao read-only da fila pos-writeback com fo
 - [x] **GitHub status/check proposal v0 preview-only** — criar e prever propostas de status/check GitHub para PR/CI com target, payloadHash, idempotency e risk rationale, sem endpoint de execute e sem chamar GitHub write API
 - [x] **Writeback Audit Review v0** — expor audit review derivado na fila de safety com eventos, ator, approval/preview/execution timestamps, payloadHash, idempotency, external refs, erro e flags
 - [x] **GitHub label executor real v0** — executar somente label add allowlisted, aprovado e previewado; ler labels atuais antes de write; fechar como completed_noop/already_completed quando o label ja existe
+- [x] **Post-Writeback Audit Review v0** — distinguir label completado/noop, mutacao tentada e execution event na Safety Dashboard/API/UI/MCP sem novas mutacoes
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

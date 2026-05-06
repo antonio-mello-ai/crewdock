@@ -3195,27 +3195,8 @@ function hasDuplicateAvoidanceAudit(proposal: ExternalActionProposal) {
   });
 }
 
-function isExternalWritebackDestination(proposal: ExternalActionProposal) {
-  return proposal.destinationType === "github" || proposal.destinationType === "slack";
-}
-
-function isCompletedExternalWriteback(proposal: ExternalActionProposal) {
+function latestWritebackExecutionAudit(proposal: ExternalActionProposal) {
   return (
-    isExternalWritebackDestination(proposal) &&
-    ["completed", "executed"].includes(proposal.executionStatus)
-  );
-}
-
-function buildWritebackAuditReview(
-  proposal: ExternalActionProposal,
-  executionReview: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
-): CompanyBrainWritebackSafetyDashboard["items"][number]["auditReview"] {
-  const latestAudit = latestExternalActionAudit(proposal);
-  const approvalAudit = latestAuditEvent(proposal, "approved");
-  const previewAudit = executionReview.previewEvent
-    ? latestAuditEvent(proposal, executionReview.previewEvent)
-    : null;
-  const executionAudit =
     [...proposal.auditTrail]
       .reverse()
       .find((event) =>
@@ -3236,17 +3217,63 @@ function buildWritebackAuditReview(
           "slack_thread_reply_execution_blocked",
           "slack_thread_reply_retry_required",
         ].includes(event.event)
-      ) ?? null;
+      ) ?? null
+  );
+}
+
+function hasCompletedNoopAudit(proposal: ExternalActionProposal) {
+  return proposal.auditTrail.some((event) => {
+    const response = metadataRecord(auditMetadata(event).response);
+    return event.event.endsWith("_completed_noop") || response.completedNoop === true;
+  });
+}
+
+function hasExternalMutationAttemptAudit(proposal: ExternalActionProposal) {
+  return proposal.auditTrail.some((event) => {
+    const response = metadataRecord(auditMetadata(event).response);
+    return (
+      response.mutationAttempted === true ||
+      ["github_comment_posted", "github_label_added", "slack_thread_reply_posted"].includes(
+        event.event
+      )
+    );
+  });
+}
+
+function isExternalWritebackDestination(proposal: ExternalActionProposal) {
+  return proposal.destinationType === "github" || proposal.destinationType === "slack";
+}
+
+function isCompletedExternalWriteback(proposal: ExternalActionProposal) {
+  return (
+    isExternalWritebackDestination(proposal) &&
+    ["completed", "executed"].includes(proposal.executionStatus)
+  );
+}
+
+function buildWritebackAuditReview(
+  proposal: ExternalActionProposal,
+  executionReview: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+): CompanyBrainWritebackSafetyDashboard["items"][number]["auditReview"] {
+  const latestAudit = latestExternalActionAudit(proposal);
+  const approvalAudit = latestAuditEvent(proposal, "approved");
+  const previewAudit = executionReview.previewEvent
+    ? latestAuditEvent(proposal, executionReview.previewEvent)
+    : null;
+  const executionAudit = latestWritebackExecutionAudit(proposal);
   return {
     eventCount: proposal.auditTrail.length,
     latestEvent: latestAudit?.event ?? null,
     latestActor: latestAudit?.actor ?? null,
     latestAt: latestAudit?.at ?? null,
+    executionEvent: executionAudit?.event ?? null,
     approvalEventAt: approvalAudit?.at ?? null,
     approvalActor: approvalAudit?.actor ?? null,
     previewEventAt: previewAudit?.at ?? null,
     executionEventAt: executionAudit?.at ?? null,
     duplicatePrevented: executionReview.flags.includes("duplicate_prevented"),
+    completedNoop: hasCompletedNoopAudit(proposal),
+    mutationAttempted: hasExternalMutationAttemptAudit(proposal),
     hasExternalRef: Boolean(proposal.externalId || proposal.externalUrl),
     hasError: Boolean(proposal.errorSummary),
     payloadHashCurrent: executionReview.payloadHashCurrent,
@@ -3435,12 +3462,27 @@ function buildWritebackSafetyDashboard(
           isGitHubCommentAction(proposal.actionType) &&
           (proposal.externalId || proposal.externalUrl)
       ).length,
+      githubLabelWriteCount: completedExternal.filter(
+        (proposal) =>
+          proposal.destinationType === "github" &&
+          isGitHubLabelAction(proposal.actionType) &&
+          (proposal.externalId || proposal.externalUrl)
+      ).length,
+      githubLabelNoopCount: completedExternal.filter(
+        (proposal) =>
+          proposal.destinationType === "github" &&
+          isGitHubLabelAction(proposal.actionType) &&
+          hasCompletedNoopAudit(proposal)
+      ).length,
       slackThreadReplyWriteCount: completedExternal.filter(
         (proposal) =>
           proposal.destinationType === "slack" &&
           isSlackThreadReplyAction(proposal.actionType) &&
           (proposal.externalId || proposal.externalUrl)
       ).length,
+      completedNoopCount: proposals.filter(hasCompletedNoopAudit).length,
+      externalMutationAttemptedCount: proposals.filter(hasExternalMutationAttemptAudit)
+        .length,
       duplicateAvoidedCount: proposals.filter(hasDuplicateAvoidanceAudit).length,
       riskCOrUnknownCount: proposals.filter(
         (proposal) => proposal.riskClass === "C" || proposal.riskClass === "unknown"

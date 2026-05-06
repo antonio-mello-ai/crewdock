@@ -1862,11 +1862,14 @@ export interface WritebackAuditReview {
   latestEvent: string | null;
   latestActor: string | null;
   latestAt: number | null;
+  executionEvent: string | null;
   approvalEventAt: number | null;
   approvalActor: string | null;
   previewEventAt: number | null;
   executionEventAt: number | null;
   duplicatePrevented: boolean;
+  completedNoop: boolean;
+  mutationAttempted: boolean;
   hasExternalRef: boolean;
   hasError: boolean;
   payloadHashCurrent: string;
@@ -1914,7 +1917,11 @@ export interface CompanyBrainWritebackSafetyDashboard {
     rejectedProposalCount: number;
     blockedProposalCount: number;
     githubCommentWriteCount: number;
+    githubLabelWriteCount: number;
+    githubLabelNoopCount: number;
     slackThreadReplyWriteCount: number;
+    completedNoopCount: number;
+    externalMutationAttemptedCount: number;
     duplicateAvoidedCount: number;
     riskCOrUnknownCount: number;
     completedMissingExternalRefCount: number;

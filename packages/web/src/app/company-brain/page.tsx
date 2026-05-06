@@ -1629,12 +1629,20 @@ export default function CompanyBrainPage() {
             </div>
             {writebackSafetyDashboard ? (
               <div className="border-b border-neutral-800/50 px-5 py-4">
-                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-3 xl:grid-cols-6">
+                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-4 xl:grid-cols-8">
                   <MiniMetric
                     label="written"
                     value={
                       writebackSafetyDashboard.stats.completedExternalWriteCount
                     }
+                  />
+                  <MiniMetric
+                    label="labels"
+                    value={writebackSafetyDashboard.stats.githubLabelWriteCount}
+                  />
+                  <MiniMetric
+                    label="noop"
+                    value={writebackSafetyDashboard.stats.completedNoopCount}
                   />
                   <MiniMetric
                     label="ready"
@@ -1685,6 +1693,12 @@ export default function CompanyBrainPage() {
                             events {item.auditReview.eventCount} · actor{" "}
                             {item.auditReview.latestActor ?? "none"} · key{" "}
                             {item.auditReview.idempotencyKey}
+                          </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            outcome {item.auditReview.executionEvent ?? "none"} ·{" "}
+                            mutation{" "}
+                            {item.auditReview.mutationAttempted ? "yes" : "no"} ·
+                            noop {item.auditReview.completedNoop ? "yes" : "no"}
                           </p>
                           <p className="mt-1 truncate text-neutral-700">
                             payload {item.auditReview.payloadHashCurrent}
