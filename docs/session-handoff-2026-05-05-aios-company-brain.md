@@ -1307,7 +1307,23 @@ Dogfood read-only validado reaproveitando `/tmp/aios-runtime-writeback-negative-
 - `GET /external-action-proposals/audit-trail?adapter=github_label&limit=20` retornou `total=9`, `adapter=github_label` e todos os items com adapter `github_label`.
 - `GET /external-action-proposals/audit-trail?proposalId=I5PGjeflFsRN&limit=10` retornou `total=3`, todos do mesmo proposal e blockReasons `blocked/github_label_mode_not_supported/github_label_target_or_policy_blocked`.
 
-Proximo corte recomendado: preparar runbook/HITL checklist read-only para quando um novo executor externo for proposto, antes de qualquer nova mutacao real.
+## Slice Writeback HITL Runbook v0
+
+Objetivo: registrar um checklist operacional antes de qualquer novo executor externo.
+
+Implementado em 2026-05-06:
+
+1. Novo documento `docs/writeback-hitl-runbook.md`.
+2. Conteudo:
+   - superficie executavel atual;
+   - checklist preflight;
+   - gates obrigatorios para novo executor;
+   - dogfood checklist;
+   - template de aprovacao HITL;
+   - lista de acoes bloqueadas ate nova politica.
+3. Nenhum codigo runtime alterado e nenhuma chamada externa.
+
+Proximo corte recomendado: parar antes de novo executor real ate existir alvo controlado e aprovacao explicita; enquanto isso, seguir apenas em melhorias read-only de audit/search/export.
 
 ## Dogfood ERP
 
@@ -1427,7 +1443,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0 e Writeback Audit Trail Export v0. O proximo corte recomendado e runbook/HITL checklist read-only para quando um novo executor externo for proposto, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0 e Writeback HITL Runbook v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita; enquanto isso, seguir apenas em melhorias read-only de audit/search/export.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

@@ -83,7 +83,9 @@ Status Writeback Adapter Summary v0 em 2026-05-06: Safety Dashboard agora expõe
 
 Status Writeback Audit Trail Export v0 em 2026-05-06: audit trail de `ExternalActionProposal` agora e exportavel por API/MCP em modo read-only, com filtros por adapter/proposal, `latestAuditTrail` no Safety Dashboard e UI mostrando ultimos eventos. Inclui reviewStatus e blockReasons junto de cada evento.
 
-Proximo corte planejado: preparar runbook/HITL checklist read-only para quando um novo executor externo for proposto, antes de qualquer nova mutacao real.
+Status Writeback HITL Runbook v0 em 2026-05-06: `docs/writeback-hitl-runbook.md` define checklist de preflight, gates obrigatorios, dogfood, template de aprovacao humana e acoes bloqueadas antes de qualquer novo executor externo.
+
+Proximo corte planejado: parar antes de novo executor real ate existir alvo controlado e aprovacao explicita; enquanto isso, seguir apenas em melhorias read-only de audit/search/export.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -113,6 +115,7 @@ Proximo corte planejado: preparar runbook/HITL checklist read-only para quando u
 - [x] **Writeback Negative-Path Review v0** — expor motivos e contadores para proposals bloqueadas de label/status/check, incluindo remove, multi-label, alvo fora da allowlist e preview-only
 - [x] **Writeback Adapter Summary v0** — consolidar writeback safety por adapter com completed/noop/mutation/block/ready/failed em summary/API/UI/MCP
 - [x] **Writeback Audit Trail Export v0** — exportar eventos de audit trail por adapter/proposal em API/MCP e mostrar ultimos eventos na UI/Summary
+- [x] **Writeback HITL Runbook v0** — versionar checklist para qualquer novo executor externo com preflight, gates, dogfood, aprovacao e bloqueios
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
