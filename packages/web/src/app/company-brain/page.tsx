@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Database,
+  Download,
   FileText,
   GitPullRequest,
   Loader2,
@@ -17,6 +18,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  companyBrainWritebackAuditTrailCsvUrl,
+  type CompanyBrainWritebackAuditTrailFilters,
   useCompanyBrainSummary,
   useCreateCompanyBrainArtifact,
   useCreateCompanyBrainDecision,
@@ -48,6 +51,7 @@ import {
   usePreviewCompanyBrainGitHubLabelProposal,
   usePreviewCompanyBrainGitHubStatusCheckProposal,
   usePreviewCompanyBrainSlackThreadReplyWriteback,
+  useCompanyBrainWritebackAuditTrail,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -182,6 +186,35 @@ const externalActionKinds: ExternalActionKind[] = [
   "thread_reply",
   "draft",
   "unknown",
+];
+const writebackAdapters = [
+  "github_comment",
+  "github_label",
+  "github_status_check",
+  "slack_thread_reply",
+  "other",
+];
+const writebackActionFilters = [
+  "comment",
+  "github_comment",
+  "label",
+  "github_label",
+  "github_status",
+  "github_check",
+  "thread_reply",
+  "slack_thread_reply",
+  "draft",
+  "unknown",
+];
+const writebackExecutionStatuses = [
+  "not_started",
+  "blocked",
+  "dry_run",
+  "queued",
+  "completed",
+  "executed",
+  "failed",
+  "cancelled",
 ];
 
 function toDateInput(value: number | null | undefined) {
@@ -319,6 +352,57 @@ export default function CompanyBrainPage() {
   const lastBriefing = summary?.lastBriefing ?? null;
   const reviewCohesion = summary?.reviewCohesion;
   const writebackSafetyDashboard = summary?.writebackSafetyDashboard;
+  const [writebackAuditFilters, setWritebackAuditFilters] = useState({
+    search: "",
+    adapter: "",
+    destinationType: "",
+    actionType: "",
+    riskClass: "",
+    executionStatus: "",
+    actor: "",
+    proposalId: "",
+    guidanceId: "",
+    idempotencyKey: "",
+    externalUrl: "",
+    fromDate: "",
+    toDate: "",
+    limit: "25",
+  });
+  const writebackAuditQueryFilters =
+    useMemo<CompanyBrainWritebackAuditTrailFilters>(() => {
+      const fromAt = writebackAuditFilters.fromDate
+        ? new Date(`${writebackAuditFilters.fromDate}T00:00:00`).getTime()
+        : null;
+      const toAt = writebackAuditFilters.toDate
+        ? new Date(`${writebackAuditFilters.toDate}T23:59:59`).getTime()
+        : null;
+      return {
+        search: writebackAuditFilters.search,
+        adapter: writebackAuditFilters.adapter,
+        destinationType: writebackAuditFilters.destinationType,
+        actionType: writebackAuditFilters.actionType,
+        riskClass: writebackAuditFilters.riskClass,
+        executionStatus: writebackAuditFilters.executionStatus,
+        actor: writebackAuditFilters.actor,
+        proposalId: writebackAuditFilters.proposalId,
+        guidanceId: writebackAuditFilters.guidanceId,
+        idempotencyKey: writebackAuditFilters.idempotencyKey,
+        externalUrl: writebackAuditFilters.externalUrl,
+        fromAt,
+        toAt,
+        limit: writebackAuditFilters.limit,
+      };
+    }, [writebackAuditFilters]);
+  const writebackAuditTrail = useCompanyBrainWritebackAuditTrail(
+    writebackAuditQueryFilters
+  );
+  const writebackAuditCsvUrl = companyBrainWritebackAuditTrailCsvUrl(
+    writebackAuditQueryFilters
+  );
+  const updateWritebackAuditFilter = (
+    field: keyof typeof writebackAuditFilters,
+    value: string
+  ) => setWritebackAuditFilters((current) => ({ ...current, [field]: value }));
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -1848,30 +1932,223 @@ export default function CompanyBrainPage() {
                       ))}
                   </div>
                 ) : null}
-                {writebackSafetyDashboard.latestAuditTrail.length ? (
-                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs font-medium text-neutral-300">
-                      Latest audit trail
+                      Audit trail search/export
                     </p>
-                    <div className="mt-2 divide-y divide-neutral-800/40">
-                      {writebackSafetyDashboard.latestAuditTrail
-                        .slice(0, 5)
-                        .map((event) => (
-                          <div
-                            key={`${event.proposalId}:${event.event}:${event.at}`}
-                            className="grid gap-1 py-2 text-xs lg:grid-cols-[1fr_auto]"
-                          >
-                            <p className="min-w-0 truncate text-neutral-500">
+                    <a
+                      href={writebackAuditCsvUrl}
+                      className="inline-flex items-center gap-2 text-xs text-neutral-400 underline-offset-4 hover:underline"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Export CSV
+                    </a>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+                    <Input
+                      placeholder="search"
+                      value={writebackAuditFilters.search}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("search", event.target.value)
+                      }
+                    />
+                    <Select
+                      value={writebackAuditFilters.adapter}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("adapter", event.target.value)
+                      }
+                    >
+                      <option value="">adapter</option>
+                      {writebackAdapters.map((adapter) => (
+                        <option key={adapter} value={adapter}>
+                          {adapter}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackAuditFilters.destinationType}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter(
+                          "destinationType",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">destination</option>
+                      {externalActionDestinations.map((destination) => (
+                        <option key={destination} value={destination}>
+                          {destination}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackAuditFilters.actionType}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("actionType", event.target.value)
+                      }
+                    >
+                      <option value="">action</option>
+                      {writebackActionFilters.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackAuditFilters.riskClass}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("riskClass", event.target.value)
+                      }
+                    >
+                      <option value="">risk</option>
+                      {riskClasses.map((risk) => (
+                        <option key={risk} value={risk}>
+                          {risk}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackAuditFilters.executionStatus}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter(
+                          "executionStatus",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">status</option>
+                      {writebackExecutionStatuses.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+                    <Input
+                      placeholder="actor"
+                      value={writebackAuditFilters.actor}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("actor", event.target.value)
+                      }
+                    />
+                    <Input
+                      placeholder="proposal id"
+                      value={writebackAuditFilters.proposalId}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("proposalId", event.target.value)
+                      }
+                    />
+                    <Input
+                      placeholder="guidance id"
+                      value={writebackAuditFilters.guidanceId}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("guidanceId", event.target.value)
+                      }
+                    />
+                    <Input
+                      placeholder="idempotency key"
+                      value={writebackAuditFilters.idempotencyKey}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter(
+                          "idempotencyKey",
+                          event.target.value
+                        )
+                      }
+                    />
+                    <Input
+                      placeholder="external url"
+                      value={writebackAuditFilters.externalUrl}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("externalUrl", event.target.value)
+                      }
+                    />
+                    <Input
+                      placeholder="limit"
+                      value={writebackAuditFilters.limit}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("limit", event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+                    <Input
+                      type="date"
+                      value={writebackAuditFilters.fromDate}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("fromDate", event.target.value)
+                      }
+                    />
+                    <Input
+                      type="date"
+                      value={writebackAuditFilters.toDate}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("toDate", event.target.value)
+                      }
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setWritebackAuditFilters({
+                          search: "",
+                          adapter: "",
+                          destinationType: "",
+                          actionType: "",
+                          riskClass: "",
+                          executionStatus: "",
+                          actor: "",
+                          proposalId: "",
+                          guidanceId: "",
+                          idempotencyKey: "",
+                          externalUrl: "",
+                          fromDate: "",
+                          toDate: "",
+                          limit: "25",
+                        })
+                      }
+                    >
+                      Reset
+                    </Button>
+                  </div>
+                  <div className="mt-3 divide-y divide-neutral-800/40">
+                    {writebackAuditTrail.isLoading ? (
+                      <p className="py-2 text-xs text-neutral-600">Loading audit trail</p>
+                    ) : writebackAuditTrail.data?.data.items.length ? (
+                      writebackAuditTrail.data.data.items.slice(0, 8).map((event) => (
+                        <div
+                          key={`${event.proposalId}:${event.event}:${event.at}`}
+                          className="grid gap-1 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-neutral-500">
                               {event.adapter} · {event.event} · {event.title}
                             </p>
-                            <p className="text-neutral-700">
-                              {event.actor ?? "system"}
+                            <p className="mt-1 truncate text-neutral-700">
+                              {event.destinationType}/{event.actionType} ·{" "}
+                              {event.reviewStatus} · {event.idempotencyKey}
                             </p>
                           </div>
-                        ))}
-                    </div>
+                          <p className="text-neutral-700">
+                            {event.actor ?? "system"} · {formatTimeAgo(event.at)}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="py-2 text-xs text-neutral-600">
+                        No audit events match the current filters
+                      </p>
+                    )}
                   </div>
-                ) : null}
+                  {writebackAuditTrail.data?.data ? (
+                    <p className="mt-2 text-xs text-neutral-700">
+                      showing {writebackAuditTrail.data.data.items.length} of{" "}
+                      {writebackAuditTrail.data.data.total} matching events
+                    </p>
+                  ) : null}
+                </div>
                 <div className="mt-3 divide-y divide-neutral-800/40">
                   {writebackSafetyDashboard.items.length === 0 ? (
                     <p className="py-2 text-xs text-neutral-600">

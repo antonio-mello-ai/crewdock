@@ -22,6 +22,7 @@ import type {
   HitlRequest,
   ApiResponse,
   ApiListResponse,
+  CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainSummary,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -85,6 +86,37 @@ import type {
   WorkItem,
 } from "@aios/shared";
 import { DAEMON_URL } from "@/lib/utils";
+
+export interface CompanyBrainWritebackAuditTrailFilters {
+  adapter?: string | null;
+  proposalId?: string | null;
+  guidanceId?: string | null;
+  destinationType?: string | null;
+  actionType?: string | null;
+  riskClass?: string | null;
+  executionStatus?: string | null;
+  actor?: string | null;
+  fromAt?: number | null;
+  toAt?: number | null;
+  idempotencyKey?: string | null;
+  externalUrl?: string | null;
+  search?: string | null;
+  limit?: number | string | null;
+}
+
+function writebackAuditTrailQueryString(
+  filters: CompanyBrainWritebackAuditTrailFilters,
+  format?: "csv"
+) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+  if (format) params.set("format", format);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
 
 // ---------------------------------------------------------------------------
 // Fetch helper
@@ -461,6 +493,30 @@ export function useCompanyBrainSummary() {
     queryFn: () => api("/api/company-brain/summary"),
     refetchInterval: 10_000,
   });
+}
+
+export function useCompanyBrainWritebackAuditTrail(
+  filters: CompanyBrainWritebackAuditTrailFilters
+) {
+  return useQuery<ApiResponse<CompanyBrainWritebackAuditTrailResponse>>({
+    queryKey: ["company-brain", "writeback-audit-trail", filters],
+    queryFn: () =>
+      api(
+        `/api/company-brain/external-action-proposals/audit-trail${writebackAuditTrailQueryString(
+          filters
+        )}`
+      ),
+    refetchInterval: 10_000,
+  });
+}
+
+export function companyBrainWritebackAuditTrailCsvUrl(
+  filters: CompanyBrainWritebackAuditTrailFilters
+) {
+  return `${DAEMON_URL}/api/company-brain/external-action-proposals/audit-trail${writebackAuditTrailQueryString(
+    filters,
+    "csv"
+  )}`;
 }
 
 export function useRunFelhenDemo() {
