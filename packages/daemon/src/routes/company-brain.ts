@@ -3559,6 +3559,138 @@ function buildWritebackDestinationSummaries(
   return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
 }
 
+function durationBetween(start: number | null | undefined, end: number | null | undefined) {
+  if (
+    typeof start !== "number" ||
+    typeof end !== "number" ||
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end < start
+  ) {
+    return null;
+  }
+  return end - start;
+}
+
+function averageDuration(values: Array<number | null>) {
+  const valid = values.filter((value): value is number => value !== null);
+  if (!valid.length) return null;
+  return Math.round(valid.reduce((sum, value) => sum + value, 0) / valid.length);
+}
+
+function rate(count: number, total: number) {
+  if (total <= 0) return 0;
+  return Number((count / total).toFixed(4));
+}
+
+function buildWritebackOperatingLoopMetrics(
+  data: ReturnType<typeof listAll>,
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >,
+  generatedAt: number
+): CompanyBrainWritebackSafetyDashboard["operatingLoopMetrics"] {
+  const proposals = data.externalActionProposals;
+  const guidanceById = new Map(data.guidanceItems.map((item) => [item.id, item]));
+  const blockReasonByProposal = new Map<string, string[]>();
+  const durations = {
+    guidanceToProposal: [] as Array<number | null>,
+    proposalToApproval: [] as Array<number | null>,
+    approvalToPreview: [] as Array<number | null>,
+    previewToExecution: [] as Array<number | null>,
+    proposalToExecution: [] as Array<number | null>,
+  };
+
+  for (const proposal of proposals) {
+    const guidance = guidanceById.get(proposal.guidanceItemId) ?? null;
+    const review =
+      reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal, generatedAt);
+    const executionAudit = latestWritebackExecutionAudit(proposal);
+    const blockReasons = writebackBlockReasons(proposal, review);
+    blockReasonByProposal.set(proposal.id, blockReasons);
+
+    durations.guidanceToProposal.push(
+      durationBetween(guidance?.createdAt, proposal.createdAt)
+    );
+    durations.proposalToApproval.push(
+      durationBetween(proposal.createdAt, proposal.approvedAt)
+    );
+    durations.approvalToPreview.push(
+      durationBetween(proposal.approvedAt, review.previewAt)
+    );
+    durations.previewToExecution.push(
+      durationBetween(review.previewAt, executionAudit?.at)
+    );
+    durations.proposalToExecution.push(
+      durationBetween(proposal.createdAt, executionAudit?.at)
+    );
+  }
+
+  const proposalCount = proposals.length;
+  const counts = {
+    pendingApproval: proposals.filter((proposal) => proposal.approvalStatus === "pending")
+      .length,
+    approved: proposals.filter((proposal) => proposal.approvalStatus === "approved")
+      .length,
+    blocked: proposals.filter((proposal) => {
+      const review = reviews.get(proposal.id);
+      return (
+        proposal.approvalStatus === "blocked" ||
+        proposal.executionStatus === "blocked" ||
+        review?.status === "blocked"
+      );
+    }).length,
+    rejected: proposals.filter((proposal) => proposal.approvalStatus === "rejected")
+      .length,
+    failed: proposals.filter((proposal) => proposal.executionStatus === "failed").length,
+    completed: proposals.filter(isCompletedExternalWriteback).length,
+    completedNoop: proposals.filter(hasCompletedNoopAudit).length,
+    duplicatePrevented: proposals.filter(hasDuplicateAvoidanceAudit).length,
+    mutationAttempted: proposals.filter(hasExternalMutationAttemptAudit).length,
+    staleApproval: proposals.filter((proposal) => {
+      const review = reviews.get(proposal.id);
+      return (
+        proposal.approvalStatus === "approved" &&
+        proposal.approvedAt !== null &&
+        review?.previewAt === null &&
+        generatedAt - proposal.approvedAt > WRITEBACK_PREVIEW_STALE_MS
+      );
+    }).length,
+    stalePreview: proposals.filter((proposal) =>
+      reviews.get(proposal.id)?.flags.includes("stale_preview")
+    ).length,
+    previewOnlyBlocked: proposals.filter((proposal) =>
+      (blockReasonByProposal.get(proposal.id) ?? []).some((reason) =>
+        reason.endsWith("_preview_only")
+      )
+    ).length,
+  };
+
+  return {
+    generatedAt,
+    staleThresholdMs: WRITEBACK_PREVIEW_STALE_MS,
+    proposalCount,
+    counts,
+    rates: {
+      blocked: rate(counts.blocked, proposalCount),
+      rejected: rate(counts.rejected, proposalCount),
+      failed: rate(counts.failed, proposalCount),
+      completed: rate(counts.completed, proposalCount),
+      completedNoop: rate(counts.completedNoop, proposalCount),
+      duplicatePrevented: rate(counts.duplicatePrevented, proposalCount),
+      mutationAttempted: rate(counts.mutationAttempted, proposalCount),
+    },
+    averageDurationsMs: {
+      guidanceToProposal: averageDuration(durations.guidanceToProposal),
+      proposalToApproval: averageDuration(durations.proposalToApproval),
+      approvalToPreview: averageDuration(durations.approvalToPreview),
+      previewToExecution: averageDuration(durations.previewToExecution),
+      proposalToExecution: averageDuration(durations.proposalToExecution),
+    },
+  };
+}
+
 function auditTrailTextMatches(
   value: string,
   proposal: ExternalActionProposal,
@@ -3918,6 +4050,7 @@ function buildWritebackSafetyDashboard(
     items,
     adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
     destinationSummaries: buildWritebackDestinationSummaries(proposals, reviews),
+    operatingLoopMetrics: buildWritebackOperatingLoopMetrics(data, reviews, generatedAt),
     latestAuditTrail: buildWritebackAuditTrail({
       proposals,
       reviews,

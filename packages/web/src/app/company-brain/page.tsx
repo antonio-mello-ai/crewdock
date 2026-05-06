@@ -57,7 +57,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { formatTimeAgo } from "@/lib/utils";
+import { formatDuration, formatTimeAgo } from "@/lib/utils";
 import type {
   CompanyBrainArea,
   DecisionStatus,
@@ -1678,6 +1678,91 @@ export default function CompanyBrainPage() {
                     label="failed"
                     value={writebackSafetyDashboard.stats.failedExecutionCount}
                   />
+                </div>
+                <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                  <p className="text-xs font-medium text-neutral-300">
+                    Operating loop metrics
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-left md:grid-cols-4 xl:grid-cols-6">
+                    <MiniMetric
+                      label="complete rate"
+                      value={formatRate(
+                        writebackSafetyDashboard.operatingLoopMetrics.rates
+                          .completed
+                      )}
+                    />
+                    <MiniMetric
+                      label="blocked rate"
+                      value={formatRate(
+                        writebackSafetyDashboard.operatingLoopMetrics.rates
+                          .blocked
+                      )}
+                    />
+                    <MiniMetric
+                      label="failed rate"
+                      value={formatRate(
+                        writebackSafetyDashboard.operatingLoopMetrics.rates.failed
+                      )}
+                    />
+                    <MiniMetric
+                      label="duplicates"
+                      value={
+                        writebackSafetyDashboard.operatingLoopMetrics.counts
+                          .duplicatePrevented
+                      }
+                    />
+                    <MiniMetric
+                      label="stale approvals"
+                      value={
+                        writebackSafetyDashboard.operatingLoopMetrics.counts
+                          .staleApproval
+                      }
+                    />
+                    <MiniMetric
+                      label="stale previews"
+                      value={
+                        writebackSafetyDashboard.operatingLoopMetrics.counts
+                          .stalePreview
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-left md:grid-cols-3 xl:grid-cols-5">
+                    <MiniMetric
+                      label="guidance -> proposal"
+                      value={formatDurationMetric(
+                        writebackSafetyDashboard.operatingLoopMetrics
+                          .averageDurationsMs.guidanceToProposal
+                      )}
+                    />
+                    <MiniMetric
+                      label="proposal -> approval"
+                      value={formatDurationMetric(
+                        writebackSafetyDashboard.operatingLoopMetrics
+                          .averageDurationsMs.proposalToApproval
+                      )}
+                    />
+                    <MiniMetric
+                      label="approval -> preview"
+                      value={formatDurationMetric(
+                        writebackSafetyDashboard.operatingLoopMetrics
+                          .averageDurationsMs.approvalToPreview
+                      )}
+                    />
+                    <MiniMetric
+                      label="preview -> execute"
+                      value={formatDurationMetric(
+                        writebackSafetyDashboard.operatingLoopMetrics
+                          .averageDurationsMs.previewToExecution
+                      )}
+                    />
+                    <MiniMetric
+                      label="proposal -> execute"
+                      value={formatDurationMetric(
+                        writebackSafetyDashboard.operatingLoopMetrics
+                          .averageDurationsMs.proposalToExecution
+                      )}
+                    />
+                  </div>
                 </div>
                 {writebackSafetyDashboard.adapterSummaries.length ? (
                   <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -4963,7 +5048,15 @@ function Metric({
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: number }) {
+function formatDurationMetric(value: number | null) {
+  return value === null ? "n/a" : formatDuration(value);
+}
+
+function formatRate(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function MiniMetric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded border border-neutral-800/60 px-2 py-1.5">
       <p className="text-xs font-medium text-neutral-300">{value}</p>

@@ -1937,6 +1937,42 @@ export interface WritebackDestinationSummary {
   latestAt: number | null;
 }
 
+export interface WritebackOperatingLoopMetrics {
+  generatedAt: number;
+  staleThresholdMs: number;
+  proposalCount: number;
+  counts: {
+    pendingApproval: number;
+    approved: number;
+    blocked: number;
+    rejected: number;
+    failed: number;
+    completed: number;
+    completedNoop: number;
+    duplicatePrevented: number;
+    mutationAttempted: number;
+    staleApproval: number;
+    stalePreview: number;
+    previewOnlyBlocked: number;
+  };
+  rates: {
+    blocked: number;
+    rejected: number;
+    failed: number;
+    completed: number;
+    completedNoop: number;
+    duplicatePrevented: number;
+    mutationAttempted: number;
+  };
+  averageDurationsMs: {
+    guidanceToProposal: number | null;
+    proposalToApproval: number | null;
+    approvalToPreview: number | null;
+    previewToExecution: number | null;
+    proposalToExecution: number | null;
+  };
+}
+
 export interface WritebackAuditTrailEntry {
   proposalId: string;
   adapter: WritebackAdapterKey;
@@ -2031,6 +2067,7 @@ export interface CompanyBrainWritebackSafetyDashboard {
   items: WritebackSafetyQueueItem[];
   adapterSummaries: WritebackAdapterSummary[];
   destinationSummaries: WritebackDestinationSummary[];
+  operatingLoopMetrics: WritebackOperatingLoopMetrics;
   latestAuditTrail: WritebackAuditTrailEntry[];
   stats: {
     proposalCount: number;
