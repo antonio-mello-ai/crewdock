@@ -788,7 +788,40 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-review-cohesion-dogfo
 - Fila final: `totalItemCount=0`.
 - Summary retornou `reviewQueueItemCount=0`.
 
-Proximo corte recomendado: Slack threads/incremental sync, depois GitHub PR/CI watcher real, GitHub notifications watcher e somente depois writeback controlado com `action_policy`, `risk_class`, HITL e audit trail.
+## Slice Writeback Governance v0
+
+Objetivo: criar politica, modelo e fila interna para writeback controlado, sem executar mutacao externa em Slack, GitHub ou qualquer sistema fora do AIOS.
+
+Implementado em 2026-05-06:
+
+1. Tipos `ExternalActionProposal`, `ExternalActionAuditEvent`, destinations, action kinds, approval status e execution status em `packages/shared/src/types.ts`.
+2. Tabela `cb_external_action_proposals` em `packages/daemon/src/db/schema.ts` e migration inline em `packages/daemon/src/db/client.ts`, com guidance/source links, destination, payload, risk/action policy, approval, execution, external id/url, erro, rollback, idempotency, visibility e provenance.
+3. Politica v0:
+   - Risk A: apenas acao interna ou draft; sem writeback externo.
+   - Risk B: comentario GitHub ou reply Slack de baixo risco, sempre dependente de aprovacao humana.
+   - Risk C/unknown: bloqueado no v0, sem reinforced approval implementado.
+4. API:
+   - `GET /api/company-brain/external-action-proposals`
+   - `POST /api/company-brain/external-action-proposals/from-guidance`
+   - `PUT /api/company-brain/external-action-proposals/:id`
+5. `CompanyBrainSummary` inclui `externalActionProposals` e contadores total/pending/approved/blocked.
+6. UI `/company-brain` adiciona painel Writeback Governance com criacao a partir de guidance aceita, fila, policy summary, status e botoes approve/reject.
+7. MCP tools:
+   - `list_company_brain_external_action_proposals`
+   - `create_company_brain_external_action_proposal`
+   - `review_company_brain_external_action_proposal`
+8. Aprovar proposta registra HITL/audit e mantem `executionStatus=not_started`; nao chama adapters externos e nao gera `externalId`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-writeback-governance-dogfood.sqlite`, daemon em `127.0.0.1:43124`:
+
+- Guidance aceita: `Z0u8rPYSsEK4`.
+- Proposta B GitHub comment aprovada internamente: `Odbhk9mWFzt0`, `executionStatus=not_started`, `externalId=null`.
+- Proposta B Slack thread reply rejeitada: `GSMjWhVuL0pK`, `executionStatus=cancelled`.
+- Proposta C bloqueada: `4-RYOKYCh2EI`, tentativa de approve retornou erro 400 por policy.
+- Proposta A internal draft: `BpSp0VlcbPQ-`, `approvalStatus=pending`, `executionStatus=not_started`.
+- Summary retornou `externalActionProposalCount=4`, `pending=1`, `approved=1`, `blocked=1`; todos os `externalIds` permaneceram `null`.
+
+Proximo corte recomendado: GitHub comment writeback v0, somente comentario aprovado em issue/PR, com idempotency key, dry-run/preview, audit trail e `action_policy`/`risk_class` obrigatorios. Ainda nao fazer close issue, label, assign, mark notification read, merge, deploy ou qualquer acao destrutiva/status-changing.
 
 ## Dogfood ERP
 

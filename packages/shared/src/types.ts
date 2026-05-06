@@ -404,6 +404,29 @@ export type PromotionStatus =
   | "approved"
   | "rejected"
   | "promoted";
+export type ExternalActionDestination =
+  | "github"
+  | "slack"
+  | "internal"
+  | "unknown";
+export type ExternalActionKind =
+  | "github_comment"
+  | "slack_thread_reply"
+  | "draft"
+  | "unknown";
+export type ExternalActionApprovalStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "blocked";
+export type ExternalActionExecutionStatus =
+  | "not_started"
+  | "blocked"
+  | "dry_run"
+  | "queued"
+  | "executed"
+  | "failed"
+  | "cancelled";
 
 export interface Provenance {
   sourceId?: string;
@@ -1076,6 +1099,71 @@ export interface UpdateGuidanceItemRequest {
   feedbackNote?: string | null;
 }
 
+export interface ExternalActionAuditEvent {
+  at: number;
+  actor: string | null;
+  event: string;
+  note: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface ExternalActionProposal {
+  id: string;
+  guidanceItemId: string;
+  signalId: string | null;
+  findingId: string | null;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  title: string;
+  rationale: string | null;
+  destinationType: ExternalActionDestination;
+  destinationRef: string | null;
+  actionType: ExternalActionKind;
+  payload: Record<string, unknown>;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  policySummary: string;
+  approvalStatus: ExternalActionApprovalStatus;
+  approvalRequired: boolean;
+  requestedBy: string | null;
+  approvedBy: string | null;
+  approvedAt: number | null;
+  rejectionReason: string | null;
+  executionStatus: ExternalActionExecutionStatus;
+  externalId: string | null;
+  externalUrl: string | null;
+  errorSummary: string | null;
+  rollbackRef: string | null;
+  idempotencyKey: string;
+  auditTrail: ExternalActionAuditEvent[];
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateExternalActionProposalRequest {
+  guidanceItemId: string;
+  title?: string | null;
+  rationale?: string | null;
+  destinationType?: ExternalActionDestination;
+  destinationRef?: string | null;
+  actionType?: ExternalActionKind;
+  payload?: Record<string, unknown>;
+  riskClass?: RiskClass;
+  actionPolicy?: ActionPolicy;
+  requestedBy?: string | null;
+  idempotencyKey?: string | null;
+  visibility?: Visibility;
+}
+
+export interface UpdateExternalActionProposalRequest {
+  approvalStatus: "approved" | "rejected";
+  actor?: string | null;
+  rejectionReason?: string | null;
+  note?: string | null;
+}
+
 export interface AgentContext {
   id: string;
   title: string;
@@ -1625,6 +1713,7 @@ export interface CompanyBrainSummary {
   guidanceItems: GuidanceItem[];
   agentContexts: AgentContext[];
   improvementProposals: ImprovementProposal[];
+  externalActionProposals: ExternalActionProposal[];
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
@@ -1657,6 +1746,10 @@ export interface CompanyBrainSummary {
     improvementProposalCount: number;
     promotionCandidateCount: number;
     reviewQueueItemCount: number;
+    externalActionProposalCount: number;
+    pendingExternalActionCount: number;
+    approvedExternalActionCount: number;
+    blockedExternalActionCount: number;
   };
 }
 

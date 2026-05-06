@@ -19,6 +19,7 @@ import {
   useCompanyBrainSummary,
   useCreateCompanyBrainArtifact,
   useCreateCompanyBrainDecision,
+  useCreateCompanyBrainExternalActionProposalFromGuidance,
   useCreateCompanyBrainGoal,
   useCreateCompanyBrainGuidanceItem,
   useCreateCompanyBrainImprovementProposal,
@@ -39,6 +40,7 @@ import {
   useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
   useUpdateCompanyBrainDecision,
+  useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
   useUpdateCompanyBrainImprovementProposal,
 } from "@/hooks/use-api";
@@ -61,6 +63,8 @@ import type {
   ActionPolicy,
   AgentContextType,
   ArtifactInsightExtractionMode,
+  ExternalActionDestination,
+  ExternalActionKind,
   ImprovementChangeClass,
 } from "@aios/shared";
 
@@ -155,6 +159,18 @@ const actionPolicies: ActionPolicy[] = [
   "request_human",
   "writeback_allowed",
 ];
+const externalActionDestinations: ExternalActionDestination[] = [
+  "github",
+  "slack",
+  "internal",
+  "unknown",
+];
+const externalActionKinds: ExternalActionKind[] = [
+  "github_comment",
+  "slack_thread_reply",
+  "draft",
+  "unknown",
+];
 
 function toDateInput(value: number | null | undefined) {
   if (!value) return "";
@@ -234,6 +250,10 @@ export default function CompanyBrainPage() {
   const extractArtifactInsights = useExtractCompanyBrainArtifactInsights();
   const extractSignalGuidance = useExtractCompanyBrainSignalGuidance();
   const createGuidanceItem = useCreateCompanyBrainGuidanceItem();
+  const createExternalActionProposal =
+    useCreateCompanyBrainExternalActionProposalFromGuidance();
+  const updateExternalActionProposal =
+    useUpdateCompanyBrainExternalActionProposal();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -268,6 +288,7 @@ export default function CompanyBrainPage() {
   const guidanceItems = summary?.guidanceItems ?? [];
   const agentContexts = summary?.agentContexts ?? [];
   const improvementProposals = summary?.improvementProposals ?? [];
+  const externalActionProposals = summary?.externalActionProposals ?? [];
   const adoptionDashboard = summary?.adoptionDashboard;
   const sourceHealthReport = summary?.sourceHealthReport;
   const lastBriefing = summary?.lastBriefing ?? null;
@@ -280,6 +301,13 @@ export default function CompanyBrainPage() {
   const unlinkedWorkItems = useMemo(
     () => workItems.filter((item) => !item.priorityId && !item.goalId),
     [workItems]
+  );
+  const acceptedGuidanceItems = useMemo(
+    () =>
+      guidanceItems.filter(
+        (item) => item.status === "accepted" || item.feedbackStatus === "accepted"
+      ),
+    [guidanceItems]
   );
 
   const stepsByRun = useMemo(() => {
@@ -395,6 +423,16 @@ export default function CompanyBrainPage() {
     goalId: "",
     validationPlan:
       "Validate with API dogfood, build, diff check, and human review before any promotion.",
+  });
+
+  const [writebackForm, setWritebackForm] = useState({
+    guidanceItemId: "",
+    destinationType: "github" as ExternalActionDestination,
+    actionType: "github_comment" as ExternalActionKind,
+    destinationRef: "",
+    riskClass: "B" as RiskClass,
+    actionPolicy: "request_human" as ActionPolicy,
+    requestedBy: "Antonio",
   });
 
   const [workItemForm, setWorkItemForm] = useState({
@@ -834,6 +872,42 @@ export default function CompanyBrainPage() {
     });
   };
 
+  const handleCreateWritebackProposal = (event: FormEvent) => {
+    event.preventDefault();
+    if (!writebackForm.guidanceItemId) return;
+    createExternalActionProposal.mutate({
+      guidanceItemId: writebackForm.guidanceItemId,
+      destinationType: writebackForm.destinationType,
+      actionType: writebackForm.actionType,
+      destinationRef: writebackForm.destinationRef || null,
+      riskClass: writebackForm.riskClass,
+      actionPolicy: writebackForm.actionPolicy,
+      requestedBy: writebackForm.requestedBy || null,
+      visibility: "internal",
+    });
+  };
+
+  const reviewExternalActionProposal = (
+    id: string,
+    approvalStatus: "approved" | "rejected"
+  ) => {
+    updateExternalActionProposal.mutate({
+      id,
+      body: {
+        approvalStatus,
+        actor: "Antonio",
+        rejectionReason:
+          approvalStatus === "rejected"
+            ? "Rejected from Company Brain UI before external execution."
+            : undefined,
+        note:
+          approvalStatus === "approved"
+            ? "Approved in Company Brain UI. Execution remains disabled in Writeback Governance v0."
+            : undefined,
+      },
+    });
+  };
+
   const updateDecisionStatus = (id: string, status: DecisionStatus) => {
     updateDecision.mutate({
       id,
@@ -943,6 +1017,11 @@ export default function CompanyBrainPage() {
             icon={Workflow}
             label="Proposals"
             value={summary?.stats.improvementProposalCount ?? 0}
+          />
+          <Metric
+            icon={CheckCircle2}
+            label="Writeback"
+            value={summary?.stats.pendingExternalActionCount ?? 0}
           />
         </div>
       </div>
@@ -1299,6 +1378,261 @@ export default function CompanyBrainPage() {
               </div>
             </section>
           ) : null}
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Writeback Governance
+                  </h2>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-left sm:w-96">
+                  <MiniMetric
+                    label="pending"
+                    value={summary?.stats.pendingExternalActionCount ?? 0}
+                  />
+                  <MiniMetric
+                    label="approved"
+                    value={summary?.stats.approvedExternalActionCount ?? 0}
+                  />
+                  <MiniMetric
+                    label="blocked"
+                    value={summary?.stats.blockedExternalActionCount ?? 0}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="grid gap-0 lg:grid-cols-[0.85fr_1.15fr]">
+              <form
+                onSubmit={handleCreateWritebackProposal}
+                className="space-y-3 border-neutral-800/50 px-5 py-4 lg:border-r"
+              >
+                <FieldLabel>Accepted guidance</FieldLabel>
+                <Select
+                  value={writebackForm.guidanceItemId}
+                  onChange={(event) =>
+                    setWritebackForm({
+                      ...writebackForm,
+                      guidanceItemId: event.target.value,
+                    })
+                  }
+                >
+                  <option value="">select guidance</option>
+                  {acceptedGuidanceItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
+                </Select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <FieldLabel>Destination</FieldLabel>
+                    <Select
+                      value={writebackForm.destinationType}
+                      onChange={(event) => {
+                        const destinationType = event.target
+                          .value as ExternalActionDestination;
+                        setWritebackForm({
+                          ...writebackForm,
+                          destinationType,
+                          actionType:
+                            destinationType === "slack"
+                              ? "slack_thread_reply"
+                              : destinationType === "internal"
+                                ? "draft"
+                                : "github_comment",
+                        });
+                      }}
+                    >
+                      {externalActionDestinations.map((destination) => (
+                        <option key={destination} value={destination}>
+                          {destination}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <FieldLabel>Action</FieldLabel>
+                    <Select
+                      value={writebackForm.actionType}
+                      onChange={(event) => {
+                        const actionType = event.target.value as ExternalActionKind;
+                        setWritebackForm({
+                          ...writebackForm,
+                          actionType,
+                          destinationType:
+                            actionType === "slack_thread_reply"
+                              ? "slack"
+                              : actionType === "draft"
+                                ? "internal"
+                                : "github",
+                        });
+                      }}
+                    >
+                      {externalActionKinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <FieldLabel>Risk</FieldLabel>
+                    <Select
+                      value={writebackForm.riskClass}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          riskClass: event.target.value as RiskClass,
+                        })
+                      }
+                    >
+                      {riskClasses.map((risk) => (
+                        <option key={risk} value={risk}>
+                          {risk}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <FieldLabel>Policy</FieldLabel>
+                    <Select
+                      value={writebackForm.actionPolicy}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          actionPolicy: event.target.value as ActionPolicy,
+                        })
+                      }
+                    >
+                      {actionPolicies.map((policy) => (
+                        <option key={policy} value={policy}>
+                          {policy}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+                <FieldLabel>Destination ref</FieldLabel>
+                <Input
+                  value={writebackForm.destinationRef}
+                  onChange={(event) =>
+                    setWritebackForm({
+                      ...writebackForm,
+                      destinationRef: event.target.value,
+                    })
+                  }
+                />
+                <FieldLabel>Requested by</FieldLabel>
+                <Input
+                  value={writebackForm.requestedBy}
+                  onChange={(event) =>
+                    setWritebackForm({
+                      ...writebackForm,
+                      requestedBy: event.target.value,
+                    })
+                  }
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    createExternalActionProposal.isPending ||
+                    !writebackForm.guidanceItemId
+                  }
+                >
+                  {createExternalActionProposal.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  Create proposal
+                </Button>
+              </form>
+              <div className="divide-y divide-neutral-800/40">
+                {externalActionProposals.length === 0 ? (
+                  <EmptyState label="No writeback proposals queued" />
+                ) : (
+                  externalActionProposals.slice(0, 8).map((proposal) => {
+                    const lastAudit =
+                      proposal.auditTrail[proposal.auditTrail.length - 1] ?? null;
+                    return (
+                      <div key={proposal.id} className="px-5 py-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-sm font-medium text-neutral-200">
+                                {proposal.title}
+                              </p>
+                              <StatusBadge value={proposal.riskClass} />
+                              <StatusBadge value={proposal.approvalStatus} />
+                              <StatusBadge value={proposal.executionStatus} />
+                            </div>
+                            <p className="mt-1 text-xs text-neutral-600">
+                              {proposal.destinationType} · {proposal.actionType} ·{" "}
+                              {proposal.actionPolicy}
+                            </p>
+                            <p className="mt-2 line-clamp-2 text-xs text-neutral-500">
+                              {proposal.policySummary}
+                            </p>
+                            {proposal.destinationRef ? (
+                              <p className="mt-2 truncate text-xs text-neutral-600">
+                                {proposal.destinationRef}
+                              </p>
+                            ) : null}
+                            {lastAudit ? (
+                              <p className="mt-2 text-xs text-neutral-600">
+                                {lastAudit.event} · {formatTimeAgo(lastAudit.at)}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                updateExternalActionProposal.isPending ||
+                                proposal.approvalStatus === "approved" ||
+                                proposal.approvalStatus === "rejected" ||
+                                proposal.approvalStatus === "blocked"
+                              }
+                              onClick={() =>
+                                reviewExternalActionProposal(proposal.id, "approved")
+                              }
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              Approve
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={
+                                updateExternalActionProposal.isPending ||
+                                proposal.approvalStatus === "approved" ||
+                                proposal.approvalStatus === "rejected"
+                              }
+                              onClick={() =>
+                                reviewExternalActionProposal(proposal.id, "rejected")
+                              }
+                            >
+                              <AlertTriangle className="h-4 w-4" />
+                              Reject
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </section>
 
           {sourceHealthReport ? (
             <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">

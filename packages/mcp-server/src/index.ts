@@ -1242,6 +1242,102 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_external_action_proposals",
+  {
+    title: "List Company Brain writeback proposals",
+    description:
+      "List the internal writeback governance queue. This is read-only and does not execute Slack or GitHub writeback.",
+    inputSchema: {
+      approvalStatus: z
+        .enum(["pending", "approved", "rejected", "blocked"])
+        .optional(),
+    },
+  },
+  async ({ approvalStatus }) => {
+    const params = new URLSearchParams();
+    if (approvalStatus) params.set("approvalStatus", approvalStatus);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown[] }>(
+      `/api/company-brain/external-action-proposals${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_external_action_proposal",
+  {
+    title: "Create Company Brain writeback proposal",
+    description:
+      "Create an internal ExternalActionProposal from accepted GuidanceItem. This queues policy/audit state only and does not mutate Slack, GitHub, or any external system.",
+    inputSchema: {
+      guidanceItemId: z.string().min(1),
+      title: z.string().optional(),
+      rationale: z.string().optional(),
+      destinationType: z
+        .enum(["github", "slack", "internal", "unknown"])
+        .default("github"),
+      destinationRef: z.string().optional(),
+      actionType: z
+        .enum(["github_comment", "slack_thread_reply", "draft", "unknown"])
+        .default("github_comment"),
+      payload: z.record(z.string(), z.unknown()).optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).default("B"),
+      actionPolicy: z
+        .enum([
+          "observe_only",
+          "create_artifacts",
+          "create_work_items",
+          "request_human",
+          "writeback_allowed",
+        ])
+        .default("request_human"),
+      requestedBy: z.string().optional(),
+      idempotencyKey: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/external-action-proposals/from-guidance",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "review_company_brain_external_action_proposal",
+  {
+    title: "Review Company Brain writeback proposal",
+    description:
+      "Approve or reject an internal writeback proposal. Approval records HITL state only; external execution remains disabled in Writeback Governance v0.",
+    inputSchema: {
+      id: z.string().min(1),
+      approvalStatus: z.enum(["approved", "rejected"]),
+      actor: z.string().optional(),
+      rejectionReason: z.string().optional(),
+      note: z.string().optional(),
+    },
+  },
+  async ({ id, ...body }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_improvement_proposal",
   {
     title: "Create Company Brain improvement proposal",

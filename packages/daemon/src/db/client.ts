@@ -342,6 +342,41 @@ CREATE TABLE IF NOT EXISTS cb_guidance_items (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_external_action_proposals (
+  id TEXT PRIMARY KEY,
+  guidance_item_id TEXT NOT NULL,
+  signal_id TEXT,
+  finding_id TEXT,
+  work_item_id TEXT,
+  workflow_run_id TEXT,
+  title TEXT NOT NULL,
+  rationale TEXT,
+  destination_type TEXT NOT NULL DEFAULT 'unknown',
+  destination_ref TEXT,
+  action_type TEXT NOT NULL DEFAULT 'unknown',
+  payload TEXT NOT NULL DEFAULT '{}',
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  action_policy TEXT NOT NULL DEFAULT 'observe_only',
+  policy_summary TEXT NOT NULL,
+  approval_status TEXT NOT NULL DEFAULT 'pending',
+  approval_required INTEGER NOT NULL DEFAULT 1,
+  requested_by TEXT,
+  approved_by TEXT,
+  approved_at INTEGER,
+  rejection_reason TEXT,
+  execution_status TEXT NOT NULL DEFAULT 'not_started',
+  external_id TEXT,
+  external_url TEXT,
+  error_summary TEXT,
+  rollback_ref TEXT,
+  idempotency_key TEXT NOT NULL,
+  audit_trail TEXT NOT NULL DEFAULT '[]',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cb_agent_contexts (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -530,6 +565,9 @@ CREATE INDEX IF NOT EXISTS idx_cb_alignment_findings_priority_id ON cb_alignment
 CREATE INDEX IF NOT EXISTS idx_cb_alignment_findings_classification ON cb_alignment_findings(classification);
 CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_status ON cb_guidance_items(status);
 CREATE INDEX IF NOT EXISTS idx_cb_guidance_items_finding_id ON cb_guidance_items(finding_id);
+CREATE INDEX IF NOT EXISTS idx_cb_external_action_proposals_guidance ON cb_external_action_proposals(guidance_item_id);
+CREATE INDEX IF NOT EXISTS idx_cb_external_action_proposals_approval ON cb_external_action_proposals(approval_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cb_external_action_proposals_idempotency ON cb_external_action_proposals(idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_contexts_target_agent ON cb_agent_contexts(target_agent);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_contexts_status ON cb_agent_contexts(status);
 CREATE INDEX IF NOT EXISTS idx_cb_improvement_proposals_status ON cb_improvement_proposals(status);

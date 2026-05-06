@@ -27,6 +27,7 @@ import type {
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
   CreateDecisionRequest,
+  CreateExternalActionProposalRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateImprovementProposalRequest,
@@ -57,12 +58,14 @@ import type {
   SyncSlackChannelRequest,
   SyncSlackChannelResponse,
   UpdateDecisionRequest,
+  UpdateExternalActionProposalRequest,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   AlignmentFinding,
   AgentContext,
   Artifact,
   Decision,
+  ExternalActionProposal,
   Goal,
   GuidanceItem,
   ImprovementProposal,
@@ -754,6 +757,38 @@ export function useUpdateCompanyBrainGuidanceItem() {
   >({
     mutationFn: ({ id, body }) =>
       api(`/api/company-brain/guidance-items/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainExternalActionProposalFromGuidance() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ExternalActionProposal>,
+    Error,
+    CreateExternalActionProposalRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/external-action-proposals/from-guidance", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useUpdateCompanyBrainExternalActionProposal() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ExternalActionProposal>,
+    Error,
+    { id: string; body: UpdateExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/external-action-proposals/${id}`, {
         method: "PUT",
         body: JSON.stringify(body),
       }),

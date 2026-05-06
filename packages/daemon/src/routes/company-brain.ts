@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
+  ActionPolicy,
   AlignmentClassification,
   CompanyBrainArea,
   CompanyBrainAdoptionDashboard,
@@ -17,6 +18,7 @@ import type {
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
   CreateDecisionRequest,
+  CreateExternalActionProposalRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateImprovementProposalRequest,
@@ -29,6 +31,12 @@ import type {
   CreateWorkflowBlueprintRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  ExternalActionApprovalStatus,
+  ExternalActionAuditEvent,
+  ExternalActionDestination,
+  ExternalActionExecutionStatus,
+  ExternalActionKind,
+  ExternalActionProposal,
   ExtractArtifactInsightsRequest,
   ExtractSignalGuidanceRequest,
   GuidanceAudience,
@@ -43,9 +51,12 @@ import type {
   SyncGitHubNotificationsRequest,
   SyncGitHubPrCiRequest,
   SyncSlackChannelRequest,
+  RiskClass,
   UpdateDecisionRequest,
+  UpdateExternalActionProposalRequest,
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
+  Visibility,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
@@ -56,6 +67,7 @@ import {
   cbArtifactLinks,
   cbArtifacts,
   cbDecisions,
+  cbExternalActionProposals,
   cbGoals,
   cbGuidanceItems,
   cbImprovementProposals,
@@ -767,6 +779,12 @@ function listAll() {
     .orderBy(desc(cbImprovementProposals.updatedAt))
     .limit(100)
     .all();
+  const externalActionProposals = db
+    .select()
+    .from(cbExternalActionProposals)
+    .orderBy(desc(cbExternalActionProposals.updatedAt))
+    .limit(100)
+    .all();
 
   return {
     sources,
@@ -788,6 +806,7 @@ function listAll() {
     guidanceItems,
     agentContexts,
     improvementProposals,
+    externalActionProposals,
   };
 }
 
@@ -2091,6 +2110,93 @@ function buildReviewCohesion(
   };
 }
 
+function externalActionPolicy(args: {
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+}): {
+  approvalStatus: ExternalActionApprovalStatus;
+  approvalRequired: boolean;
+  executionStatus: ExternalActionExecutionStatus;
+  policySummary: string;
+} {
+  const { destinationType, actionType, riskClass, actionPolicy } = args;
+  const isExternal = destinationType === "github" || destinationType === "slack";
+  const isLowRiskExternal =
+    actionType === "github_comment" || actionType === "slack_thread_reply";
+
+  if (riskClass === "C") {
+    return {
+      approvalStatus: "blocked",
+      approvalRequired: true,
+      executionStatus: "blocked",
+      policySummary:
+        "Risk C actions are blocked in Writeback Governance v0; reinforced approval and execution adapters are not implemented.",
+    };
+  }
+
+  if (riskClass === "A") {
+    const allowed = !isExternal || actionType === "draft";
+    return {
+      approvalStatus: allowed ? "pending" : "blocked",
+      approvalRequired: true,
+      executionStatus: allowed ? "not_started" : "blocked",
+      policySummary: allowed
+        ? "Risk A allows internal actions or drafts only. External execution remains disabled in this cut."
+        : "Risk A cannot target external systems unless it is represented as an internal draft.",
+    };
+  }
+
+  if (riskClass === "B") {
+    const allowedPolicy =
+      actionPolicy === "request_human" || actionPolicy === "writeback_allowed";
+    const allowed = isExternal && isLowRiskExternal && allowedPolicy;
+    return {
+      approvalStatus: allowed ? "pending" : "blocked",
+      approvalRequired: true,
+      executionStatus: allowed ? "not_started" : "blocked",
+      policySummary: allowed
+        ? "Risk B permits low-risk external comments or replies only after human approval. Writeback execution is disabled in v0."
+        : "Risk B requires a low-risk external comment/reply plus request_human/writeback_allowed policy.",
+    };
+  }
+
+  return {
+    approvalStatus: "blocked",
+    approvalRequired: true,
+    executionStatus: "blocked",
+    policySummary:
+      "Unknown risk class is blocked until the proposal is explicitly classified.",
+  };
+}
+
+function defaultExternalActionPayload(args: {
+  actionType: ExternalActionKind;
+  guidanceAction: string;
+}): Record<string, unknown> {
+  if (args.actionType === "slack_thread_reply") {
+    return { text: args.guidanceAction };
+  }
+  if (args.actionType === "github_comment") {
+    return { body: args.guidanceAction };
+  }
+  return { body: args.guidanceAction };
+}
+
+function appendAuditEvent(
+  auditTrail: ExternalActionAuditEvent[],
+  event: Omit<ExternalActionAuditEvent, "at">
+) {
+  return [
+    ...auditTrail,
+    {
+      ...event,
+      at: now(),
+    },
+  ];
+}
+
 app.get("/summary", (c) => {
   const data = listAll();
   const adoptionDashboard = buildAdoptionDashboard(data);
@@ -2166,6 +2272,16 @@ app.get("/summary", (c) => {
           ["candidate", "approved"].includes(proposal.promotionStatus)
         ).length,
         reviewQueueItemCount: reviewCohesion.stats.totalItemCount,
+        externalActionProposalCount: data.externalActionProposals.length,
+        pendingExternalActionCount: data.externalActionProposals.filter(
+          (proposal) => proposal.approvalStatus === "pending"
+        ).length,
+        approvedExternalActionCount: data.externalActionProposals.filter(
+          (proposal) => proposal.approvalStatus === "approved"
+        ).length,
+        blockedExternalActionCount: data.externalActionProposals.filter(
+          (proposal) => proposal.approvalStatus === "blocked"
+        ).length,
       },
     },
   });
@@ -5256,6 +5372,265 @@ app.put("/guidance-items/:id", async (c) => {
         ...update,
       },
     });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "update_failed", message }, 400);
+  }
+});
+
+app.get("/external-action-proposals", (c) => {
+  const approvalStatus = c.req.query("approvalStatus");
+  let data = getDb()
+    .select()
+    .from(cbExternalActionProposals)
+    .orderBy(desc(cbExternalActionProposals.updatedAt))
+    .limit(100)
+    .all();
+  if (approvalStatus) {
+    data = data.filter((item) => item.approvalStatus === approvalStatus);
+  }
+  return c.json({ data, total: data.length });
+});
+
+app.post("/external-action-proposals/from-guidance", async (c) => {
+  try {
+    const db = getDb();
+    const body = await c.req.json<CreateExternalActionProposalRequest>();
+    const guidanceItemId = requireText(body.guidanceItemId, "guidanceItemId");
+    const guidance = db
+      .select()
+      .from(cbGuidanceItems)
+      .where(eq(cbGuidanceItems.id, guidanceItemId))
+      .get();
+    if (!guidance) throw new Error("guidance item not found");
+    if (guidance.status !== "accepted" && guidance.feedbackStatus !== "accepted") {
+      throw new Error("writeback proposals require accepted guidance");
+    }
+
+    const requestedDestination = body.destinationType;
+    const requestedAction = body.actionType;
+    const destinationType: ExternalActionDestination =
+      requestedDestination ??
+      (requestedAction === "slack_thread_reply"
+        ? "slack"
+        : requestedAction === "draft"
+          ? "internal"
+          : "github");
+    const actionType: ExternalActionKind =
+      requestedAction ??
+      (destinationType === "slack"
+        ? "slack_thread_reply"
+        : destinationType === "internal"
+          ? "draft"
+          : "github_comment");
+    const riskClass = body.riskClass ?? "B";
+    const actionPolicy = body.actionPolicy ?? "request_human";
+    const visibility: Visibility = body.visibility ?? guidance.visibility;
+    const workItem = guidance.workItemId
+      ? db
+          .select()
+          .from(cbWorkItems)
+          .where(eq(cbWorkItems.id, guidance.workItemId))
+          .get()
+      : null;
+    const signal = guidance.signalId
+      ? db.select().from(cbSignals).where(eq(cbSignals.id, guidance.signalId)).get()
+      : null;
+    const explicitDestinationRef = body.destinationRef?.trim() || null;
+    const destinationRef =
+      explicitDestinationRef ??
+      workItem?.externalUrl ??
+      signal?.rawRef ??
+      guidance.provenance?.rawRef ??
+      null;
+    const idempotencyKey =
+      body.idempotencyKey?.trim() ||
+      `writeback:${guidance.id}:${destinationType}:${actionType}:${stableHash(
+        destinationRef ?? "none"
+      ).slice(0, 16)}`;
+
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.idempotencyKey, idempotencyKey))
+      .get();
+    if (existing) {
+      return c.json({ data: existing });
+    }
+
+    const timestamp = now();
+    const policy = externalActionPolicy({
+      destinationType,
+      actionType,
+      riskClass,
+      actionPolicy,
+    });
+    const payload =
+      body.payload && Object.keys(body.payload).length
+        ? body.payload
+        : defaultExternalActionPayload({
+            actionType,
+            guidanceAction: guidance.action,
+          });
+    const requestedBy = body.requestedBy?.trim() || null;
+    const row: ExternalActionProposal = {
+      id: nanoid(12),
+      guidanceItemId: guidance.id,
+      signalId: guidance.signalId,
+      findingId: guidance.findingId,
+      workItemId: guidance.workItemId,
+      workflowRunId: guidance.workflowRunId,
+      title: body.title?.trim() || `Writeback proposal: ${guidance.title}`,
+      rationale: body.rationale?.trim() || guidance.action,
+      destinationType,
+      destinationRef,
+      actionType,
+      payload,
+      riskClass,
+      actionPolicy,
+      policySummary: policy.policySummary,
+      approvalStatus: policy.approvalStatus,
+      approvalRequired: policy.approvalRequired,
+      requestedBy,
+      approvedBy: null,
+      approvedAt: null,
+      rejectionReason: null,
+      executionStatus: policy.executionStatus,
+      externalId: null,
+      externalUrl: null,
+      errorSummary: null,
+      rollbackRef: null,
+      idempotencyKey,
+      auditTrail: [
+        {
+          at: timestamp,
+          actor: requestedBy,
+          event: "proposal_created",
+          note: "Generated from accepted GuidanceItem. External execution is disabled in Writeback Governance v0.",
+          metadata: {
+            guidanceItemId: guidance.id,
+            destinationType,
+            destinationRef,
+            actionType,
+            riskClass,
+            actionPolicy,
+            approvalStatus: policy.approvalStatus,
+            executionStatus: policy.executionStatus,
+            payload,
+          },
+        },
+      ],
+      visibility,
+      provenance: {
+        rawRef: guidance.id,
+        artifactId: guidance.provenance?.artifactId,
+        createdFrom: "writeback_governance:guidance_item",
+        confidence: guidance.provenance?.confidence ?? 1,
+        extractedAt: timestamp,
+        humanReviewStatus:
+          policy.approvalStatus === "blocked" ? "rejected" : "pending",
+        visibility,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    db.insert(cbExternalActionProposals).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.put("/external-action-proposals/:id", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = await c.req.json<UpdateExternalActionProposalRequest>();
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, id))
+      .get();
+    if (!existing) throw new Error("external action proposal not found");
+
+    const timestamp = now();
+    const actor = body.actor?.trim() || null;
+
+    if (body.approvalStatus === "approved") {
+      if (existing.approvalStatus === "blocked" || existing.riskClass === "C") {
+        throw new Error(
+          "proposal is blocked by Writeback Governance v0 and cannot be approved"
+        );
+      }
+      const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+        actor,
+        event: "approved",
+        note:
+          body.note ??
+          "Approved for the internal queue only. External execution remains disabled in v0.",
+        metadata: {
+          destinationType: existing.destinationType,
+          destinationRef: existing.destinationRef,
+          actionType: existing.actionType,
+          payload: existing.payload,
+          executionStatus: "not_started",
+          externalId: existing.externalId,
+          errorSummary: existing.errorSummary,
+          rollbackRef: existing.rollbackRef,
+        },
+      });
+      const update = {
+        approvalStatus: "approved" as const,
+        approvedBy: actor,
+        approvedAt: timestamp,
+        rejectionReason: null,
+        executionStatus: "not_started" as const,
+        auditTrail,
+        updatedAt: timestamp,
+      };
+      db.update(cbExternalActionProposals)
+        .set(update)
+        .where(eq(cbExternalActionProposals.id, id))
+        .run();
+      return c.json({ data: { ...existing, ...update } });
+    }
+
+    if (body.approvalStatus === "rejected") {
+      const rejectionReason = body.rejectionReason?.trim() || body.note?.trim() || null;
+      const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+        actor,
+        event: "rejected",
+        note: rejectionReason,
+        metadata: {
+          destinationType: existing.destinationType,
+          destinationRef: existing.destinationRef,
+          actionType: existing.actionType,
+          payload: existing.payload,
+          previousExecutionStatus: existing.executionStatus,
+          externalId: existing.externalId,
+          errorSummary: existing.errorSummary,
+          rollbackRef: existing.rollbackRef,
+        },
+      });
+      const update = {
+        approvalStatus: "rejected" as const,
+        approvedBy: null,
+        approvedAt: null,
+        rejectionReason,
+        executionStatus: "cancelled" as const,
+        auditTrail,
+        updatedAt: timestamp,
+      };
+      db.update(cbExternalActionProposals)
+        .set(update)
+        .where(eq(cbExternalActionProposals.id, id))
+        .run();
+      return c.json({ data: { ...existing, ...update } });
+    }
+
+    throw new Error("approvalStatus must be approved or rejected");
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "update_failed", message }, 400);

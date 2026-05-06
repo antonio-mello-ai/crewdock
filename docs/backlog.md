@@ -51,7 +51,9 @@ Status AIOS Briefing Watcher v0 em 2026-05-06: seed `watcher-aios-briefing-v0` i
 
 Status Review Cohesion v0 em 2026-05-06: fila unificada derivada para Decision/Signal/AlignmentFinding/Guidance candidates implementada em summary/API/UI/MCP. O corte mostra decisions propostas, signals sem finding, findings sem guidance e guidance aberta com feedback pendente, com next action, severity, provenance e acoes internas de review/extracao/feedback. Sem writeback externo.
 
-Proximo corte planejado: writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail. Nao iniciar sem politica explicita de risco/escopo.
+Status Writeback Governance v0 em 2026-05-06: politica A/B/C de `risk_class` + `action_policy` implementada com fila interna `ExternalActionProposal`, geracao a partir de `GuidanceItem` aceito, approve/reject por HITL, execution status e audit trail completo em API/UI/MCP. Slack/GitHub writeback real permanece bloqueado; aprovar proposta nao executa mutacao externa.
+
+Proximo corte planejado: GitHub comment writeback v0 somente para comentario aprovado em issue/PR, com `action_policy`, `risk_class`, HITL, idempotency e audit trail. Nao implementar label/status/assign/close/merge/deploy.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -65,6 +67,7 @@ Proximo corte planejado: writeback controlado somente com `action_policy`, `risk
 - [x] **Decision candidate review v0** — aceitar/rejeitar/supersedar decisions propostas com provenance de review e sem writeback externo
 - [x] **Signal -> Finding/Guidance extractor v0** — gerar alignment finding e guidance candidatos a partir de signal existente, com provenance e review pendente
 - [x] **Review Cohesion v0** — unificar candidates de decision/signal/finding/guidance em fila derivada com next action, provenance e acoes internas sem writeback externo
+- [x] **Writeback Governance v0** — definir politica A/B/C, criar fila `ExternalActionProposal`, gerar proposta a partir de guidance aceita, aprovar/rejeitar com HITL e audit trail completo sem executar writeback externo
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
@@ -87,7 +90,7 @@ Proximo corte planejado: writeback controlado somente com `action_policy`, `risk
 - [x] **GitHub notifications watcher v0** — observar notificacoes autenticadas do GitHub em modo read-only, criando Artifact/WatcherRun/Signal sem marcar como lidas
 - [x] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente. Implementado como importer manual e adapter real de canal Slack.
 - [x] **Slack threads/incremental sync v0** — usar cursor incremental por source e importar replies de threads como artifacts read-only com provenance e metadata de thread
-- [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
+- [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/external action proposal/work item/workflow run/watcher.
 - [x] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
 - [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates
 - [x] **Demo Felhen v0.1** — demonstrar estrategia -> evidencia -> drift/guidance -> workflow run -> learning usando dogfood interno

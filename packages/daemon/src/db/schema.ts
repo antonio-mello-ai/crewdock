@@ -7,6 +7,11 @@ import type {
   AgentContextValidationStatus,
   AlignmentClassification,
   DecisionStatus,
+  ExternalActionApprovalStatus,
+  ExternalActionAuditEvent,
+  ExternalActionDestination,
+  ExternalActionExecutionStatus,
+  ExternalActionKind,
   GateStatus,
   GoalStatus,
   GuidanceAudience,
@@ -393,6 +398,56 @@ export const cbGuidanceItems = sqliteTable("cb_guidance_items", {
   feedbackNote: text("feedback_note"),
   feedbackAt: integer("feedback_at", { mode: "number" }),
   generatedFrom: text("generated_from", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbExternalActionProposals = sqliteTable("cb_external_action_proposals", {
+  id: text("id").primaryKey(),
+  guidanceItemId: text("guidance_item_id").notNull(),
+  signalId: text("signal_id"),
+  findingId: text("finding_id"),
+  workItemId: text("work_item_id"),
+  workflowRunId: text("workflow_run_id"),
+  title: text("title").notNull(),
+  rationale: text("rationale"),
+  destinationType: text("destination_type")
+    .$type<ExternalActionDestination>()
+    .notNull()
+    .default("unknown"),
+  destinationRef: text("destination_ref"),
+  actionType: text("action_type").$type<ExternalActionKind>().notNull().default("unknown"),
+  payload: text("payload", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
+  riskClass: text("risk_class").$type<RiskClass>().notNull().default("unknown"),
+  actionPolicy: text("action_policy")
+    .$type<ActionPolicy>()
+    .notNull()
+    .default("observe_only"),
+  policySummary: text("policy_summary").notNull(),
+  approvalStatus: text("approval_status")
+    .$type<ExternalActionApprovalStatus>()
+    .notNull()
+    .default("pending"),
+  approvalRequired: integer("approval_required", { mode: "boolean" }).notNull().default(true),
+  requestedBy: text("requested_by"),
+  approvedBy: text("approved_by"),
+  approvedAt: integer("approved_at", { mode: "number" }),
+  rejectionReason: text("rejection_reason"),
+  executionStatus: text("execution_status")
+    .$type<ExternalActionExecutionStatus>()
+    .notNull()
+    .default("not_started"),
+  externalId: text("external_id"),
+  externalUrl: text("external_url"),
+  errorSummary: text("error_summary"),
+  rollbackRef: text("rollback_ref"),
+  idempotencyKey: text("idempotency_key").notNull(),
+  auditTrail: text("audit_trail", { mode: "json" })
+    .$type<ExternalActionAuditEvent[]>()
+    .notNull()
+    .default([]),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
