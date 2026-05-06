@@ -267,6 +267,260 @@ server.registerTool(
 );
 
 // ---------------------------------------------------------------------------
+// Company Brain
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "get_company_brain_summary",
+  {
+    title: "Get Company Brain summary",
+    description:
+      "List the current AIOS Company Brain kernel: sources, artifacts, priorities, goals, work items, workflow blueprints/runs, gates and unlinked work.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/summary"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_source",
+  {
+    title: "Register Company Brain source",
+    description:
+      "Register a real source with area, source type, owner, visibility and external reference.",
+    inputSchema: {
+      name: z.string().min(1),
+      sourceType: z
+        .enum([
+          "local_doc",
+          "github_issue",
+          "github_repo",
+          "git",
+          "slack",
+          "meeting",
+          "manual",
+          "runtime",
+          "other",
+        ])
+        .default("manual"),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("unknown"),
+      externalRef: z.string().optional(),
+      owner: z.string().optional(),
+      visibility: z.enum(["internal", "restricted", "public"]).default("internal"),
+    },
+  },
+  async ({ name, sourceType, area, externalRef, owner, visibility }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/sources",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          sourceType,
+          area,
+          externalRef,
+          owner,
+          ownerType: owner ? "human" : "unknown",
+          visibility,
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_artifact",
+  {
+    title: "Register Company Brain artifact",
+    description:
+      "Register normalized evidence with source, raw reference, title, summary, visibility and provenance.",
+    inputSchema: {
+      sourceId: z.string().min(1),
+      title: z.string().min(1),
+      rawRef: z.string().min(1),
+      summary: z.string().optional(),
+      artifactType: z.string().default("manual"),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("unknown"),
+      author: z.string().optional(),
+      visibility: z.enum(["internal", "restricted", "public"]).default("internal"),
+    },
+  },
+  async ({ sourceId, title, rawRef, summary, artifactType, area, author, visibility }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/artifacts",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          sourceId,
+          title,
+          rawRef,
+          summary,
+          artifactType,
+          area,
+          author,
+          visibility,
+          humanReviewStatus: "approved",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_work_item",
+  {
+    title: "Register Company Brain work item",
+    description:
+      "Register a canonical AIOS work item, optionally linked to priority/goal and an external ticket URL. Missing priority/goal remains visible as unlinked.",
+    inputSchema: {
+      title: z.string().min(1),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("unknown"),
+      owner: z.string().optional(),
+      status: z
+        .enum([
+          "new",
+          "triage",
+          "planned",
+          "in_progress",
+          "review",
+          "qa",
+          "security_review",
+          "ready_to_deploy",
+          "deployed",
+          "monitoring",
+          "done",
+          "blocked",
+          "needs_human",
+          "reopened",
+          "cancelled",
+          "rolled_back",
+        ])
+        .default("new"),
+      priorityId: z.string().optional(),
+      goalId: z.string().optional(),
+      externalProvider: z.string().optional(),
+      externalId: z.string().optional(),
+      externalUrl: z.string().optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).default("unknown"),
+      sourceId: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/work-items",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          ownerType: input.owner ? "human" : "unknown",
+          visibility: "internal",
+          labels: ["mcp"],
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_workflow_run",
+  {
+    title: "Register Company Brain workflow run",
+    description:
+      "Create a workflow run from a blueprint. For Development Blueprint v0 this materializes all steps and initial gate state.",
+    inputSchema: {
+      blueprintId: z.string().default("development-blueprint-v0"),
+      title: z.string().min(1),
+      workItemId: z.string().optional(),
+      owner: z.string().optional(),
+      status: z
+        .enum([
+          "planned",
+          "running",
+          "blocked",
+          "needs_human",
+          "completed",
+          "cancelled",
+          "rolled_back",
+        ])
+        .default("running"),
+      gateStatus: z
+        .enum(["not_started", "pending", "passed", "failed", "waived", "blocked"])
+        .default("pending"),
+      slaStatus: z.enum(["on_track", "at_risk", "breached", "not_set"]).default("on_track"),
+    },
+  },
+  async ({ blueprintId, title, workItemId, owner, status, gateStatus, slaStatus }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/workflow-runs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          blueprintId,
+          title,
+          workItemId,
+          owner,
+          ownerType: owner ? "human" : "unknown",
+          status,
+          gateStatus,
+          slaStatus,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 

@@ -219,6 +219,463 @@ export interface Briefing {
   sections: BriefingSection[];
 }
 
+// --- Company Brain ---
+
+export type CompanyBrainArea =
+  | "strategy"
+  | "development"
+  | "operations"
+  | "product"
+  | "marketing"
+  | "sales"
+  | "finance"
+  | "people"
+  | "customer"
+  | "platform"
+  | "unknown";
+
+export type OwnerType = "human" | "team" | "agent" | "system" | "unknown";
+export type Visibility = "internal" | "restricted" | "public";
+export type SourceType =
+  | "local_doc"
+  | "github_issue"
+  | "github_repo"
+  | "git"
+  | "slack"
+  | "meeting"
+  | "manual"
+  | "runtime"
+  | "other";
+export type SourceStatus = "active" | "paused" | "error" | "archived";
+export type HealthStatus = "healthy" | "stale" | "error" | "unknown";
+export type ReviewStatus = "pending" | "approved" | "rejected" | "needs_review";
+export type PriorityStatus = "active" | "paused" | "done" | "archived";
+export type GoalStatus =
+  | "not_started"
+  | "on_track"
+  | "at_risk"
+  | "blocked"
+  | "done"
+  | "cancelled";
+export type WorkItemStatus =
+  | "new"
+  | "triage"
+  | "planned"
+  | "in_progress"
+  | "review"
+  | "qa"
+  | "security_review"
+  | "ready_to_deploy"
+  | "deployed"
+  | "monitoring"
+  | "done"
+  | "blocked"
+  | "needs_human"
+  | "reopened"
+  | "cancelled"
+  | "rolled_back";
+export type RiskClass = "A" | "B" | "C" | "unknown";
+export type WorkflowStatus =
+  | "draft"
+  | "active"
+  | "paused"
+  | "completed"
+  | "cancelled"
+  | "archived";
+export type WorkflowRunStatus =
+  | "planned"
+  | "running"
+  | "blocked"
+  | "needs_human"
+  | "completed"
+  | "cancelled"
+  | "rolled_back";
+export type GateStatus =
+  | "not_started"
+  | "pending"
+  | "passed"
+  | "failed"
+  | "waived"
+  | "blocked";
+export type SlaStatus = "on_track" | "at_risk" | "breached" | "not_set";
+export type WorkflowStepStatus =
+  | "not_started"
+  | "running"
+  | "blocked"
+  | "completed"
+  | "skipped";
+
+export interface Provenance {
+  sourceId?: string;
+  rawRef?: string;
+  artifactId?: string;
+  createdFrom?: string;
+  confidence?: number;
+  extractedAt?: number;
+  humanReviewStatus?: ReviewStatus;
+  visibility?: Visibility;
+  retentionPolicy?: string;
+  notes?: string;
+}
+
+export interface Source {
+  id: string;
+  name: string;
+  sourceType: SourceType;
+  area: CompanyBrainArea;
+  externalRef: string | null;
+  status: SourceStatus;
+  healthStatus: HealthStatus;
+  owner: string | null;
+  ownerType: OwnerType;
+  visibility: Visibility;
+  lastSyncAt: number | null;
+  syncError: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateSourceRequest {
+  name: string;
+  sourceType: SourceType;
+  area?: CompanyBrainArea;
+  externalRef?: string | null;
+  status?: SourceStatus;
+  healthStatus?: HealthStatus;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  visibility?: Visibility;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface Artifact {
+  id: string;
+  sourceId: string;
+  artifactType: string;
+  area: CompanyBrainArea;
+  title: string;
+  summary: string | null;
+  contentRef: string | null;
+  rawRef: string;
+  author: string | null;
+  occurredAt: number;
+  ingestedAt: number;
+  hash: string;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  humanReviewStatus: ReviewStatus;
+  confidence: number;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface CreateArtifactRequest {
+  sourceId: string;
+  artifactType?: string;
+  area?: CompanyBrainArea;
+  title: string;
+  summary?: string | null;
+  contentRef?: string | null;
+  rawRef: string;
+  author?: string | null;
+  occurredAt?: number;
+  hash?: string;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+  humanReviewStatus?: ReviewStatus;
+  confidence?: number;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface StrategicPriority {
+  id: string;
+  title: string;
+  description: string | null;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  status: PriorityStatus;
+  timeHorizon: string | null;
+  reviewCadence: string | null;
+  successCriteria: string | null;
+  visibility: Visibility;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateStrategicPriorityRequest {
+  title: string;
+  description?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  status?: PriorityStatus;
+  timeHorizon?: string | null;
+  reviewCadence?: string | null;
+  successCriteria?: string | null;
+  visibility?: Visibility;
+}
+
+export interface Goal {
+  id: string;
+  priorityId: string | null;
+  title: string;
+  description: string | null;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  targetMetric: string | null;
+  targetValue: string | null;
+  currentValue: string | null;
+  dueAt: number | null;
+  reviewCadence: string | null;
+  status: GoalStatus;
+  confidence: number;
+  slaStatus: SlaStatus;
+  visibility: Visibility;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateGoalRequest {
+  priorityId?: string | null;
+  title: string;
+  description?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  targetMetric?: string | null;
+  targetValue?: string | null;
+  currentValue?: string | null;
+  dueAt?: number | null;
+  reviewCadence?: string | null;
+  status?: GoalStatus;
+  confidence?: number;
+  slaStatus?: SlaStatus;
+  visibility?: Visibility;
+}
+
+export interface Milestone {
+  id: string;
+  goalId: string | null;
+  priorityId: string | null;
+  title: string;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  dueAt: number | null;
+  status: GoalStatus;
+  readyCriteria: string | null;
+  evidenceRequired: string | null;
+  slaStatus: SlaStatus;
+  visibility: Visibility;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateMilestoneRequest {
+  goalId?: string | null;
+  priorityId?: string | null;
+  title: string;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  dueAt?: number | null;
+  status?: GoalStatus;
+  readyCriteria?: string | null;
+  evidenceRequired?: string | null;
+  slaStatus?: SlaStatus;
+  visibility?: Visibility;
+}
+
+export interface WorkItem {
+  id: string;
+  title: string;
+  description: string | null;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  status: WorkItemStatus;
+  priorityId: string | null;
+  goalId: string | null;
+  milestoneId: string | null;
+  externalProvider: string | null;
+  externalId: string | null;
+  externalUrl: string | null;
+  riskClass: RiskClass;
+  dueAt: number | null;
+  blockedReason: string | null;
+  labels: string[];
+  sourceId: string | null;
+  artifactId: string | null;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateWorkItemRequest {
+  title: string;
+  description?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  status?: WorkItemStatus;
+  priorityId?: string | null;
+  goalId?: string | null;
+  milestoneId?: string | null;
+  externalProvider?: string | null;
+  externalId?: string | null;
+  externalUrl?: string | null;
+  riskClass?: RiskClass;
+  dueAt?: number | null;
+  blockedReason?: string | null;
+  labels?: string[];
+  sourceId?: string | null;
+  artifactId?: string | null;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
+export interface WorkflowBlueprintStage {
+  key: string;
+  title: string;
+  ownerType: OwnerType;
+  gate: string;
+  artifactExpected: string;
+  riskClass: RiskClass;
+}
+
+export interface WorkflowBlueprint {
+  id: string;
+  title: string;
+  description: string | null;
+  workflowArea: CompanyBrainArea;
+  version: string;
+  status: WorkflowStatus;
+  owner: string | null;
+  ownerType: OwnerType;
+  reviewCadence: string | null;
+  riskClass: RiskClass;
+  stages: WorkflowBlueprintStage[];
+  gates: string[];
+  requiredArtifacts: string[];
+  visibility: Visibility;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateWorkflowBlueprintRequest {
+  title: string;
+  description?: string | null;
+  workflowArea?: CompanyBrainArea;
+  version?: string;
+  status?: WorkflowStatus;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  reviewCadence?: string | null;
+  riskClass?: RiskClass;
+  stages?: WorkflowBlueprintStage[];
+  gates?: string[];
+  requiredArtifacts?: string[];
+  visibility?: Visibility;
+}
+
+export interface WorkflowRun {
+  id: string;
+  blueprintId: string;
+  workItemId: string | null;
+  title: string;
+  workflowArea: CompanyBrainArea;
+  status: WorkflowRunStatus;
+  currentStep: string | null;
+  gateStatus: GateStatus;
+  slaStatus: SlaStatus;
+  owner: string | null;
+  ownerType: OwnerType;
+  dueAt: number | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+  sourceArtifactIds: string[];
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateWorkflowRunRequest {
+  blueprintId: string;
+  workItemId?: string | null;
+  title: string;
+  workflowArea?: CompanyBrainArea;
+  status?: WorkflowRunStatus;
+  currentStep?: string | null;
+  gateStatus?: GateStatus;
+  slaStatus?: SlaStatus;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  dueAt?: number | null;
+  startedAt?: number | null;
+  sourceArtifactIds?: string[];
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
+export interface WorkflowStep {
+  id: string;
+  runId: string;
+  blueprintId: string;
+  stepKey: string;
+  title: string;
+  position: number;
+  owner: string | null;
+  ownerType: OwnerType;
+  status: WorkflowStepStatus;
+  gateStatus: GateStatus;
+  slaStatus: SlaStatus;
+  dueAt: number | null;
+  evidenceArtifactIds: string[];
+  requiredArtifact: string | null;
+  completedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ArtifactLink {
+  id: string;
+  artifactId: string;
+  targetType: string;
+  targetId: string;
+  relationship: string;
+  confidence: number;
+  rationale: string | null;
+  createdAt: number;
+}
+
+export interface CompanyBrainSummary {
+  sources: Source[];
+  artifacts: Artifact[];
+  priorities: StrategicPriority[];
+  goals: Goal[];
+  milestones: Milestone[];
+  workItems: WorkItem[];
+  workflowBlueprints: WorkflowBlueprint[];
+  workflowRuns: WorkflowRun[];
+  workflowSteps: WorkflowStep[];
+  artifactLinks: ArtifactLink[];
+  stats: {
+    sourceCount: number;
+    artifactCount: number;
+    priorityCount: number;
+    goalCount: number;
+    workItemCount: number;
+    unlinkedWorkItemCount: number;
+    activeWorkflowRunCount: number;
+    gateBlockedCount: number;
+    slaAtRiskCount: number;
+  };
+}
+
 // --- Terminal WebSocket messages ---
 
 export type TerminalWsMessage =

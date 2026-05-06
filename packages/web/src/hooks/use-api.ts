@@ -22,6 +22,19 @@ import type {
   HitlRequest,
   ApiResponse,
   ApiListResponse,
+  CompanyBrainSummary,
+  CreateArtifactRequest,
+  CreateGoalRequest,
+  CreateSourceRequest,
+  CreateStrategicPriorityRequest,
+  CreateWorkflowRunRequest,
+  CreateWorkItemRequest,
+  Artifact,
+  Goal,
+  Source,
+  StrategicPriority,
+  WorkflowRun,
+  WorkItem,
 } from "@aios/shared";
 import { DAEMON_URL } from "@/lib/utils";
 
@@ -387,5 +400,93 @@ export function useRespondHitl() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hitl"] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Company Brain
+// ---------------------------------------------------------------------------
+
+export function useCompanyBrainSummary() {
+  return useQuery<ApiResponse<CompanyBrainSummary>>({
+    queryKey: ["company-brain", "summary"],
+    queryFn: () => api("/api/company-brain/summary"),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useCreateCompanyBrainSource() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Source>, Error, CreateSourceRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/sources", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainArtifact() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Artifact>, Error, CreateArtifactRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/artifacts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainPriority() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<StrategicPriority>,
+    Error,
+    CreateStrategicPriorityRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/priorities", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainGoal() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Goal>, Error, CreateGoalRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/goals", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainWorkItem() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<WorkItem>, Error, CreateWorkItemRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/work-items", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainWorkflowRun() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<WorkflowRun>, Error, CreateWorkflowRunRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/workflow-runs", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });
 }

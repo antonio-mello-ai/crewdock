@@ -109,9 +109,359 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_endpoint ON push_subscriptions(endpoint);
+
+CREATE TABLE IF NOT EXISTS cb_sources (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT 'unknown',
+  external_ref TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  health_status TEXT NOT NULL DEFAULT 'unknown',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  last_sync_at INTEGER,
+  sync_error TEXT,
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_artifacts (
+  id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  artifact_type TEXT NOT NULL DEFAULT 'manual',
+  area TEXT NOT NULL DEFAULT 'unknown',
+  title TEXT NOT NULL,
+  summary TEXT,
+  content_ref TEXT,
+  raw_ref TEXT NOT NULL,
+  author TEXT,
+  occurred_at INTEGER NOT NULL,
+  ingested_at INTEGER NOT NULL,
+  hash TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  human_review_status TEXT NOT NULL DEFAULT 'pending',
+  confidence REAL NOT NULL DEFAULT 1,
+  metadata TEXT
+);
+
+CREATE TABLE IF NOT EXISTS cb_strategic_priorities (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  area TEXT NOT NULL DEFAULT 'strategy',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'human',
+  status TEXT NOT NULL DEFAULT 'active',
+  time_horizon TEXT,
+  review_cadence TEXT,
+  success_criteria TEXT,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_goals (
+  id TEXT PRIMARY KEY,
+  priority_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  area TEXT NOT NULL DEFAULT 'strategy',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'human',
+  target_metric TEXT,
+  target_value TEXT,
+  current_value TEXT,
+  due_at INTEGER,
+  review_cadence TEXT,
+  status TEXT NOT NULL DEFAULT 'not_started',
+  confidence REAL NOT NULL DEFAULT 1,
+  sla_status TEXT NOT NULL DEFAULT 'not_set',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_milestones (
+  id TEXT PRIMARY KEY,
+  goal_id TEXT,
+  priority_id TEXT,
+  title TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT 'strategy',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'human',
+  due_at INTEGER,
+  status TEXT NOT NULL DEFAULT 'not_started',
+  ready_criteria TEXT,
+  evidence_required TEXT,
+  sla_status TEXT NOT NULL DEFAULT 'not_set',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_work_items (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  area TEXT NOT NULL DEFAULT 'unknown',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL DEFAULT 'new',
+  priority_id TEXT,
+  goal_id TEXT,
+  milestone_id TEXT,
+  external_provider TEXT,
+  external_id TEXT,
+  external_url TEXT,
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  due_at INTEGER,
+  blocked_reason TEXT,
+  labels TEXT NOT NULL DEFAULT '[]',
+  source_id TEXT,
+  artifact_id TEXT,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_workflow_blueprints (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  workflow_area TEXT NOT NULL DEFAULT 'unknown',
+  version TEXT NOT NULL DEFAULT 'v0',
+  status TEXT NOT NULL DEFAULT 'draft',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  review_cadence TEXT,
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  stages TEXT NOT NULL DEFAULT '[]',
+  gates TEXT NOT NULL DEFAULT '[]',
+  required_artifacts TEXT NOT NULL DEFAULT '[]',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_workflow_runs (
+  id TEXT PRIMARY KEY,
+  blueprint_id TEXT NOT NULL,
+  work_item_id TEXT,
+  title TEXT NOT NULL,
+  workflow_area TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL DEFAULT 'planned',
+  current_step TEXT,
+  gate_status TEXT NOT NULL DEFAULT 'not_started',
+  sla_status TEXT NOT NULL DEFAULT 'not_set',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  due_at INTEGER,
+  started_at INTEGER,
+  finished_at INTEGER,
+  source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_workflow_steps (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  blueprint_id TEXT NOT NULL,
+  step_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL DEFAULT 'not_started',
+  gate_status TEXT NOT NULL DEFAULT 'not_started',
+  sla_status TEXT NOT NULL DEFAULT 'not_set',
+  due_at INTEGER,
+  evidence_artifact_ids TEXT NOT NULL DEFAULT '[]',
+  required_artifact TEXT,
+  completed_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS cb_artifact_links (
+  id TEXT PRIMARY KEY,
+  artifact_id TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id TEXT NOT NULL,
+  relationship TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 1,
+  rationale TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cb_sources_type_area ON cb_sources(source_type, area);
+CREATE INDEX IF NOT EXISTS idx_cb_artifacts_source_id ON cb_artifacts(source_id);
+CREATE INDEX IF NOT EXISTS idx_cb_artifacts_review ON cb_artifacts(human_review_status);
+CREATE INDEX IF NOT EXISTS idx_cb_priorities_area_status ON cb_strategic_priorities(area, status);
+CREATE INDEX IF NOT EXISTS idx_cb_goals_priority_id ON cb_goals(priority_id);
+CREATE INDEX IF NOT EXISTS idx_cb_milestones_goal_id ON cb_milestones(goal_id);
+CREATE INDEX IF NOT EXISTS idx_cb_work_items_status ON cb_work_items(status);
+CREATE INDEX IF NOT EXISTS idx_cb_work_items_external ON cb_work_items(external_provider, external_id);
+CREATE INDEX IF NOT EXISTS idx_cb_work_items_links ON cb_work_items(priority_id, goal_id);
+CREATE INDEX IF NOT EXISTS idx_cb_workflow_blueprints_area ON cb_workflow_blueprints(workflow_area);
+CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_status ON cb_workflow_runs(status);
+CREATE INDEX IF NOT EXISTS idx_cb_workflow_runs_work_item_id ON cb_workflow_runs(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_cb_workflow_steps_run_id ON cb_workflow_steps(run_id);
+CREATE INDEX IF NOT EXISTS idx_cb_artifact_links_target ON cb_artifact_links(target_type, target_id);
 `;
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;
+
+const DEVELOPMENT_BLUEPRINT_STAGES = [
+  {
+    key: "intake",
+    title: "Intake / ticket",
+    ownerType: "human",
+    gate: "problem clear, source registered, priority or unlinked status explicit",
+    artifactExpected: "ticket or intake artifact",
+    riskClass: "A",
+  },
+  {
+    key: "triage",
+    title: "Triagem",
+    ownerType: "agent",
+    gate: "type, scope, risk class and blast radius classified",
+    artifactExpected: "triage note",
+    riskClass: "A",
+  },
+  {
+    key: "execution_plan",
+    title: "Plano de execucao",
+    ownerType: "agent",
+    gate: "plan approved or safe-to-run, success and failure criteria defined",
+    artifactExpected: "execution plan",
+    riskClass: "B",
+  },
+  {
+    key: "implementation",
+    title: "Execucao",
+    ownerType: "agent",
+    gate: "patch produced and touched files registered",
+    artifactExpected: "diff or commit candidate",
+    riskClass: "B",
+  },
+  {
+    key: "technical_review",
+    title: "Revisao tecnica",
+    ownerType: "agent",
+    gate: "critical blockers absent and warnings classified",
+    artifactExpected: "review report",
+    riskClass: "B",
+  },
+  {
+    key: "test_plan",
+    title: "Plano de testes",
+    ownerType: "agent",
+    gate: "risk-scaled tests defined",
+    artifactExpected: "test plan",
+    riskClass: "B",
+  },
+  {
+    key: "automated_tests",
+    title: "Testes automatizados",
+    ownerType: "agent",
+    gate: "relevant suite passes or failure is registered",
+    artifactExpected: "test output",
+    riskClass: "B",
+  },
+  {
+    key: "visual_qa",
+    title: "QA visual / browser",
+    ownerType: "agent",
+    gate: "expected browser flow validated with evidence",
+    artifactExpected: "QA report",
+    riskClass: "B",
+  },
+  {
+    key: "security_qa",
+    title: "Security QA",
+    ownerType: "agent",
+    gate: "security findings become tickets or blockers",
+    artifactExpected: "security report",
+    riskClass: "C",
+  },
+  {
+    key: "deploy_gate",
+    title: "Deploy gate",
+    ownerType: "human",
+    gate: "final tests, rollback and target defined",
+    artifactExpected: "deploy checklist",
+    riskClass: "C",
+  },
+  {
+    key: "deploy_monitoring",
+    title: "Deploy + monitoramento",
+    ownerType: "agent",
+    gate: "deploy completed and monitored, failures become rollback or tickets",
+    artifactExpected: "deploy log / health evidence",
+    riskClass: "C",
+  },
+  {
+    key: "closeout",
+    title: "Fechamento",
+    ownerType: "agent",
+    gate: "tickets closed or residual tickets opened",
+    artifactExpected: "status updates",
+    riskClass: "B",
+  },
+  {
+    key: "official_docs",
+    title: "Documentacao oficial",
+    ownerType: "agent",
+    gate: "docs, changelog or roadmap updated with final state",
+    artifactExpected: "official doc update",
+    riskClass: "B",
+  },
+] as const;
+
+function seedCompanyBrain(sqlite: Database.Database) {
+  const now = Date.now();
+  sqlite
+    .prepare(
+      `INSERT OR IGNORE INTO cb_workflow_blueprints (
+        id, title, description, workflow_area, version, status, owner, owner_type,
+        review_cadence, risk_class, stages, gates, required_artifacts,
+        visibility, created_at, updated_at
+      ) VALUES (
+        @id, @title, @description, @workflowArea, @version, @status, @owner, @ownerType,
+        @reviewCadence, @riskClass, @stages, @gates, @requiredArtifacts,
+        @visibility, @createdAt, @updatedAt
+      )`
+    )
+    .run({
+      id: "development-blueprint-v0",
+      title: "Development Blueprint v0",
+      description:
+        "Ticket-to-production workflow with triage, planning, implementation, review, tests, QA, security, deploy, monitoring and official documentation gates.",
+      workflowArea: "development",
+      version: "v0",
+      status: "active",
+      owner: "Felhen",
+      ownerType: "team",
+      reviewCadence: "weekly",
+      riskClass: "B",
+      stages: JSON.stringify(DEVELOPMENT_BLUEPRINT_STAGES),
+      gates: JSON.stringify(DEVELOPMENT_BLUEPRINT_STAGES.map((stage) => stage.gate)),
+      requiredArtifacts: JSON.stringify(
+        DEVELOPMENT_BLUEPRINT_STAGES.map((stage) => stage.artifactExpected)
+      ),
+      visibility: "internal",
+      createdAt: now,
+      updatedAt: now,
+    });
+}
 
 export function getDb() {
   if (!dbInstance) {
@@ -129,6 +479,8 @@ export function getDb() {
     if (!colNames.has("claude_session_id")) {
       sqlite.exec("ALTER TABLE sessions ADD COLUMN claude_session_id TEXT");
     }
+
+    seedCompanyBrain(sqlite);
 
     dbInstance = drizzle(sqlite, { schema });
   }

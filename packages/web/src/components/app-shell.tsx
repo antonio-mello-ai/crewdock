@@ -14,6 +14,7 @@ import {
   DollarSign,
   Inbox,
   Settings,
+  BrainCircuit,
   PanelLeftClose,
   PanelLeft,
   Menu,
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/schedules", label: "Schedules", icon: Clock },
   { href: "/costs", label: "Costs", icon: DollarSign },
   { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/company-brain", label: "Company Brain", icon: BrainCircuit },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

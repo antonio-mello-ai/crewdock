@@ -107,24 +107,31 @@ MCP atual em `packages/mcp-server/src/index.ts` expoe ferramentas para briefing,
 
 ## Gap atual
 
+Atualizacao em 2026-05-05 23h BRT: Slice 1 do Company Brain foundation foi implementado neste repo como primeira unidade versionada do kernel operacional. O runtime atual agora tem tipos, schema, API, UI e MCP minimos para o primeiro kernel operacional.
+
+Agora existem:
+
+- tabelas `cb_sources`, `cb_artifacts`, `cb_strategic_priorities`, `cb_goals`, `cb_milestones`, `cb_work_items`, `cb_workflow_blueprints`, `cb_workflow_runs`, `cb_workflow_steps` e `cb_artifact_links`;
+- migration inline idempotente em `packages/daemon/src/db/client.ts`;
+- seed idempotente do `development-blueprint-v0`;
+- rota `/api/company-brain/*` com summary e criacao/listagem de sources, artifacts, priorities, goals, milestones, work items, workflow blueprints/runs e artifact links;
+- UI `/company-brain` com Strategy Map, Evidence Inbox, Unlinked Work e Workflow Runs;
+- MCP tools `get_company_brain_summary`, `create_company_brain_source`, `create_company_brain_artifact`, `create_company_brain_work_item` e `create_company_brain_workflow_run`.
+
 Ainda nao existem:
 
-- tabelas Company Brain;
-- operating architecture kernel;
-- source registry;
-- raw artifact store;
-- strategy layer;
-- goal/cadence layer;
-- work items canonicos;
-- workflow blueprints/runs/gates;
 - drift/alignment findings;
 - guidance items;
 - agent context generator;
 - improvement proposals;
 - conectores Slack/GitHub/docs com envelope comum;
-- UI Company Brain;
-- MCP tools Company Brain.
 - adoption dashboard para enxergar quais frentes estao em closed loop.
+
+Parciais que precisam evoluir:
+
+- Strategy layer ainda nao tem tradeoffs/decisions.
+- Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
+- MCP cobre sources/artifacts/work items/runs, mas ainda nao cobre guidance/signals.
 
 ## Dogfood ERP
 
@@ -134,8 +141,10 @@ Estado observado no momento deste handoff:
 
 - Repo: `/Users/antoniomello/felhencloud/projetos/erp-desmanches`
 - Issue #18 `[ERP-REF-00] Triage de worktree e contrato de execucao`: fechada em 2026-05-06T01:02:25Z.
-- Issue #19 `[ERP-REF-01] Baseline de runtime, testes e ambiente local`: aberta.
-- Issue #20 `[ERP-REF-02] Arquitetura base e ownership modular`: aberta.
+- Issue #19 `[ERP-REF-01] Baseline de runtime, testes e ambiente local`: fechada em 2026-05-06T01:26:15Z.
+- Issue #20 `[ERP-REF-02] Arquitetura base e ownership modular`: fechada em 2026-05-06T01:33:54Z.
+- Issue #33 `[ERP-REF-10] OperationalEvent v2 alinhado a CompanyUnit, role efetivo e contrato de eventos`: aberta em 2026-05-06T01:45:27Z e usada como WorkItem linkado no dogfood local.
+- Issue #32 `[ERP-REF-09] Marketplace channels: contas, listings e identidades externas`: aberta em 2026-05-06T01:35:58Z e usada como WorkItem real sem priority/goal para validar visibilidade `unlinked`.
 - Branch ERP atual observada: `codex/erp-ref-01-runtime-tests`.
 
 Como usar no AIOS:
@@ -148,19 +157,33 @@ Como usar no AIOS:
 
 Nao fazer o AIOS depender da implementacao do ERP. O ERP e fonte de dogfood, nao pre-requisito arquitetural do runtime.
 
+Dogfood local validado em DB temporario `/tmp/aios-runtime-company-brain-dogfood.sqlite`, daemon em `127.0.0.1:43101`:
+
+- Source real `ERP GitHub Issues`: `zeK1VXPOAvOq`.
+- Priority `Company Brain dogfood: ERP development blueprint`: `xn0zSLoXNx2J`.
+- Goal com due date/cadence/SLA: `rnXEfGuu4C_n`.
+- Artifact de evidence para ERP issue #33: `lQUSXF8VgYyu`.
+- WorkItem linkado a GitHub Issue `erp-desmanches#33`: `M51GCwU4mFg2`.
+- WorkflowRun no `development-blueprint-v0`: `s4e6By4NONLR`.
+- Steps materializados no run: `13`.
+- WorkItem real sem priority/goal para validar `unlinked`: `ctVgz7efVXqm`, externo `erp-desmanches#32`.
+- Summary retornou `unlinkedWorkItemCount=1` e `activeWorkflowRunCount=1`.
+
 ## Primeiro slice de implementacao recomendado
 
 Objetivo: transformar o runtime de docs + control plane em primeira base consultavel de Company Brain, preservando o runtime atual.
 
 ### Slice 1 - Company Brain foundation
 
+Status em 2026-05-05 23h BRT: implementado no corte operacional minimo. O que falta e hardening/adapters reais, nao recriar o slice do zero.
+
 Implementar no menor corte util:
 
-1. Tipos em `packages/shared/src/types.ts`.
-2. Schema incremental em `packages/daemon/src/db/schema.ts` e `packages/daemon/src/db/client.ts`.
-3. Rotas basicas em `packages/daemon/src/routes/`.
-4. UI minima em `packages/web/src/app/`.
-5. MCP tools minimas em `packages/mcp-server/src/index.ts`.
+1. Tipos em `packages/shared/src/types.ts`. Implementado.
+2. Schema incremental em `packages/daemon/src/db/schema.ts` e `packages/daemon/src/db/client.ts`. Implementado.
+3. Rotas basicas em `packages/daemon/src/routes/`. Implementado em `company-brain.ts`.
+4. UI minima em `packages/web/src/app/`. Implementado em `/company-brain`.
+5. MCP tools minimas em `packages/mcp-server/src/index.ts`. Implementado para summary/source/artifact/work item/workflow run.
 
 Objetos minimos do primeiro corte:
 
@@ -175,7 +198,7 @@ Objetos minimos do primeiro corte:
 - `WorkflowStep` ou gate equivalente
 - `ArtifactLink`
 
-Objetos que podem entrar no mesmo corte se o diff continuar pequeno:
+Objetos que ficam para Slice 2+:
 
 - `Metric`
 - `Cadence`
@@ -188,19 +211,19 @@ Se o diff crescer, deixar `Decision/Signal/Alignment/Guidance` para Slice 2.
 
 ### Aceite do Slice 1
 
-- Build passa.
-- Runtime atual nao quebra.
-- Schema e migrations sao idempotentes.
-- Pelo menos uma prioridade estrategica pode ser criada/listada.
-- Pelo menos uma meta/prazo/cadencia pode ser ligada a uma prioridade ou work item.
-- Pelo menos uma fonte pode ser criada/listada.
-- Pelo menos um artifact manual/local-doc pode ser criado/listado.
-- Pelo menos um `WorkItem` pode apontar para uma GitHub Issue externa.
-- O Development Blueprint v0 existe como dado inicial ou seed.
-- Pelo menos um `WorkflowRun` pode apontar para `ERP-REF-01` ou `ERP-REF-02`.
-- O sistema consegue apontar work item sem prioridade/meta como `unlinked`.
-- UI mostra uma tela minima de Evidence/Workflow ou Strategy.
-- MCP consegue listar/criar pelo menos artifacts ou work items.
+- Build passa: `npx turbo build`.
+- Runtime atual nao quebra no build.
+- Schema e migrations sao idempotentes pelo `CREATE TABLE IF NOT EXISTS` + `INSERT OR IGNORE` do blueprint.
+- Pelo menos uma prioridade estrategica pode ser criada/listada: validado via API local.
+- Pelo menos uma meta/prazo/cadencia pode ser ligada a uma prioridade ou work item: validado via API local.
+- Pelo menos uma fonte pode ser criada/listada: validado via API local.
+- Pelo menos um artifact pode ser criado/listado com source/raw_ref/hash/visibility/provenance: validado via API local.
+- Pelo menos um `WorkItem` pode apontar para uma GitHub Issue externa: validado com `erp-desmanches#33`.
+- O Development Blueprint v0 existe como dado inicial/seed: `development-blueprint-v0`.
+- Pelo menos um `WorkflowRun` pode apontar para issue ERP real: validado com issue #33.
+- O sistema consegue apontar work item sem prioridade/meta como `unlinked`: validado com issue #32.
+- UI mostra Strategy Map, Evidence Inbox, Unlinked Work e Workflow Runs em `/company-brain`.
+- MCP consegue listar/criar summary, sources, artifacts, work items e workflow runs.
 
 ## Cuidados tecnicos
 
@@ -226,16 +249,14 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o Slice 1 de Company Brain foundation.
+Objetivo da sessao: continuar apos o Slice 1 de Company Brain foundation, sem recriar o kernel do zero.
 
-Antes de editar, confirme git status, commit atual, schema atual e rotas atuais. Depois implemente um corte pequeno e validavel:
-- tipos compartilhados;
-- schema/tabelas idempotentes;
-- objetos de goal/milestone/due date/cadence no menor corte util;
-- rotas basicas;
-- UI minima;
-- MCP tool minima;
-- seed ou dado inicial do Development Blueprint v0.
+Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e se o dogfood local ainda esta em DB temporario. Depois priorize o proximo corte validavel:
+- criar importer manual/local docs usando o envelope de `Artifact`;
+- criar GitHub Issues adapter real ou comando de sync para `WorkItem`;
+- criar `Decision`/`Signal`/`AlignmentFinding`/`GuidanceItem`;
+- evoluir `/company-brain` para Source Health e Adoption Dashboard;
+- persistir dogfood em ambiente escolhido ou documentar seed/manual import reproduzivel.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.
 
