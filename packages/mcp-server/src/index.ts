@@ -1482,6 +1482,24 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_writeback_evidence_packet",
+  {
+    title: "Get Company Brain writeback evidence packet",
+    description:
+      "Read-only packet for one ExternalActionProposal, including guidance, signal/finding/work/workflow links, approval, preview, execution review, audit trail, payload hashes and external refs. Does not execute or mutate external systems.",
+    inputSchema: {
+      id: z.string().min(1),
+    },
+  },
+  async ({ id }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/evidence-packet`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_github_comment_writeback",
   {
     title: "Execute GitHub comment writeback",

@@ -80,6 +80,7 @@ import type {
   StrategicPriority,
   StrategyTradeoff,
   Watcher,
+  WritebackEvidencePacket,
   WorkflowRun,
   WorkItem,
 } from "@aios/shared";
@@ -815,6 +816,13 @@ export function usePreviewCompanyBrainGitHubCommentWriteback() {
         body: JSON.stringify(body ?? {}),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useGetCompanyBrainWritebackEvidencePacket() {
+  return useMutation<ApiResponse<WritebackEvidencePacket>, Error, { id: string }>({
+    mutationFn: ({ id }) =>
+      api(`/api/company-brain/external-action-proposals/${id}/evidence-packet`),
   });
 }
 

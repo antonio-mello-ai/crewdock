@@ -36,6 +36,7 @@ import {
   useExtractCompanyBrainArtifactInsights,
   useExtractCompanyBrainSignalGuidance,
   useGenerateCompanyBrainAgentContext,
+  useGetCompanyBrainWritebackEvidencePacket,
   useImportCompanyBrainSlackMessages,
   useRunCompanyBrainWatcher,
   useRunFelhenDemo,
@@ -265,6 +266,7 @@ export default function CompanyBrainPage() {
     useCreateCompanyBrainExternalActionProposalFromGuidance();
   const updateExternalActionProposal =
     useUpdateCompanyBrainExternalActionProposal();
+  const getWritebackEvidencePacket = useGetCompanyBrainWritebackEvidencePacket();
   const previewGitHubCommentWriteback =
     usePreviewCompanyBrainGitHubCommentWriteback();
   const previewGitHubLabelProposal = usePreviewCompanyBrainGitHubLabelProposal();
@@ -1096,6 +1098,10 @@ export default function CompanyBrainPage() {
       id,
       body: { actor: "Antonio" },
     });
+  };
+
+  const inspectWritebackEvidencePacket = (id: string) => {
+    getWritebackEvidencePacket.mutate({ id });
   };
 
   const previewSlackThreadReplyProposal = (id: string) => {
@@ -2208,6 +2214,28 @@ export default function CompanyBrainPage() {
                     </pre>
                   </div>
                 ) : null}
+                {getWritebackEvidencePacket.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      evidence ·{" "}
+                      {getWritebackEvidencePacket.data.data.proposal.id} ·{" "}
+                      {getWritebackEvidencePacket.data.data.executionReview.status}
+                    </p>
+                    <p className="mt-2 text-xs text-neutral-300">
+                      events{" "}
+                      {getWritebackEvidencePacket.data.data.auditTrail.length} ·
+                      current hash{" "}
+                      {
+                        getWritebackEvidencePacket.data.data.payloadHashes
+                          .current
+                      }
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-600">
+                      {getWritebackEvidencePacket.data.data.externalRefs.externalUrl ??
+                        "no external url"}
+                    </p>
+                  </div>
+                ) : null}
               </form>
               <div className="divide-y divide-neutral-800/40">
                 {externalActionProposals.length === 0 ? (
@@ -2257,6 +2285,18 @@ export default function CompanyBrainPage() {
                             ) : null}
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={getWritebackEvidencePacket.isPending}
+                              onClick={() =>
+                                inspectWritebackEvidencePacket(proposal.id)
+                              }
+                            >
+                              <FileText className="h-4 w-4" />
+                              Evidence
+                            </Button>
                             {proposal.destinationType === "slack" ? (
                               <>
                                 <Button

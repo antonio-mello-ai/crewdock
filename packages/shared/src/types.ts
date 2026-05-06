@@ -1982,6 +1982,49 @@ export interface CompanyBrainWritebackAuditTrailResponse {
   total: number;
 }
 
+export interface WritebackEvidencePacket {
+  generatedAt: number;
+  proposal: ExternalActionProposal;
+  guidanceItem: GuidanceItem | null;
+  signal: Signal | null;
+  alignmentFinding: AlignmentFinding | null;
+  workItem: WorkItem | null;
+  workflowRun: WorkflowRun | null;
+  executionReview: WritebackExecutionReview;
+  auditReview: WritebackAuditReview;
+  auditTrail: WritebackAuditTrailEntry[];
+  approvalEvent: ExternalActionAuditEvent | null;
+  previewEvent: ExternalActionAuditEvent | null;
+  executionEvent: ExternalActionAuditEvent | null;
+  payloadHashes: {
+    approved: string | null;
+    preview: string | null;
+    current: string;
+  };
+  destinationRefs: {
+    approved: string | null;
+    preview: string | null;
+    current: string | null;
+  };
+  idempotencyKeys: {
+    approved: string | null;
+    preview: string | null;
+    current: string;
+  };
+  externalRefs: {
+    externalId: string | null;
+    externalUrl: string | null;
+    rollbackRef: string | null;
+  };
+  timeline: {
+    createdAt: number;
+    approvedAt: number | null;
+    previewAt: number | null;
+    executionAt: number | null;
+    updatedAt: number;
+  };
+}
+
 export interface CompanyBrainWritebackSafetyDashboard {
   generatedAt: number;
   retryPolicy: WritebackRetryPolicy;

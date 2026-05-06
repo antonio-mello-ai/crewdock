@@ -70,6 +70,7 @@ import type {
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   Visibility,
+  WritebackEvidencePacket,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
@@ -3752,6 +3753,89 @@ function writebackAuditTrailCsv(data: CompanyBrainWritebackAuditTrailResponse) {
   ].join("\n");
 }
 
+function buildWritebackEvidencePacket(
+  proposal: ExternalActionProposal
+): WritebackEvidencePacket {
+  const db = getDb();
+  const executionReview = buildWritebackExecutionReview(proposal);
+  const auditReview = buildWritebackAuditReview(proposal, executionReview);
+  const approvalEvent = latestAuditEvent(proposal, "approved");
+  const previewEvent = executionReview.previewEvent
+    ? latestAuditEvent(proposal, executionReview.previewEvent)
+    : null;
+  const executionEvent = latestWritebackExecutionAudit(proposal);
+  const auditTrail = buildWritebackAuditTrail({
+    proposals: [proposal],
+    reviews: new Map([[proposal.id, executionReview]]),
+    proposalId: proposal.id,
+    limit: 250,
+  }).items;
+  return {
+    generatedAt: now(),
+    proposal,
+    guidanceItem: db
+      .select()
+      .from(cbGuidanceItems)
+      .where(eq(cbGuidanceItems.id, proposal.guidanceItemId))
+      .get() ?? null,
+    signal: proposal.signalId
+      ? db.select().from(cbSignals).where(eq(cbSignals.id, proposal.signalId)).get() ??
+        null
+      : null,
+    alignmentFinding: proposal.findingId
+      ? db
+          .select()
+          .from(cbAlignmentFindings)
+          .where(eq(cbAlignmentFindings.id, proposal.findingId))
+          .get() ?? null
+      : null,
+    workItem: proposal.workItemId
+      ? db.select().from(cbWorkItems).where(eq(cbWorkItems.id, proposal.workItemId)).get() ??
+        null
+      : null,
+    workflowRun: proposal.workflowRunId
+      ? db
+          .select()
+          .from(cbWorkflowRuns)
+          .where(eq(cbWorkflowRuns.id, proposal.workflowRunId))
+          .get() ?? null
+      : null,
+    executionReview,
+    auditReview,
+    auditTrail,
+    approvalEvent,
+    previewEvent,
+    executionEvent,
+    payloadHashes: {
+      approved: executionReview.payloadHashApproved,
+      preview: executionReview.payloadHashPreview,
+      current: executionReview.payloadHashCurrent,
+    },
+    destinationRefs: {
+      approved: executionReview.destinationRefApproved,
+      preview: executionReview.destinationRefPreview,
+      current: executionReview.destinationRefCurrent,
+    },
+    idempotencyKeys: {
+      approved: executionReview.idempotencyKeyApproved,
+      preview: executionReview.idempotencyKeyPreview,
+      current: executionReview.idempotencyKeyCurrent,
+    },
+    externalRefs: {
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+      rollbackRef: proposal.rollbackRef,
+    },
+    timeline: {
+      createdAt: proposal.createdAt,
+      approvedAt: proposal.approvedAt,
+      previewAt: executionReview.previewAt,
+      executionAt: auditReview.executionEventAt,
+      updatedAt: proposal.updatedAt,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -7383,6 +7467,22 @@ app.get("/external-action-proposals/audit-trail", (c) => {
     });
   }
   return c.json({ data });
+});
+
+app.get("/external-action-proposals/:id/evidence-packet", (c) => {
+  const id = c.req.param("id");
+  const proposal = getDb()
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, id))
+    .get();
+  if (!proposal) {
+    return c.json(
+      { error: "not_found", message: "external action proposal not found" },
+      404
+    );
+  }
+  return c.json({ data: buildWritebackEvidencePacket(proposal) });
 });
 
 app.post("/external-action-proposals/from-guidance", async (c) => {

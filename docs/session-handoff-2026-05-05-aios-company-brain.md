@@ -1353,7 +1353,49 @@ Dogfood read-only validado:
 - DB `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43139`: filtro combinado `destinationType=github`, `actionType=github_label`, `riskClass=B`, `executionStatus=completed`, `actor=github-label-executor-dogfood`, `idempotencyKey=github-label-executor`, `externalUrl=crewdock/issues/3`, `search=completed_noop` retornou `total=1`, event `github_label_completed_noop`; CSV por proposal `fx3NheQm3Crv` retornou header e 5 linhas; destination summary `github:antonio-mello-ai/crewdock` retornou `completedCount=1`, `completedNoopCount=1`, `mutationAttemptedCount=0`.
 - DB `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon `127.0.0.1:43140`: filtro `adapter=github_status_check`, `executionStatus=dry_run`, `search=preview-only` retornou 3 eventos do adapter; busca por `target_not_allowlisted` retornou proposals de label bloqueadas; destination summary `github:antonio-mello-ai/crewdock` retornou `total=4`, `blocked=4`, `mutation=0`.
 
-Proximo corte recomendado: gerar Writeback Evidence Packet read-only por proposal com guidance, approval, preview, execution, retry safety, refs externas e payload hashes.
+## Slice Writeback Evidence Packet v0
+
+Objetivo: gerar um pacote auditavel read-only por proposal, sem executar nenhuma acao externa.
+
+Implementado em 2026-05-06:
+
+1. Tipo `WritebackEvidencePacket`.
+2. API `GET /api/company-brain/external-action-proposals/:id/evidence-packet`.
+3. MCP tool `get_company_brain_writeback_evidence_packet`.
+4. UI `/company-brain` com botao `Evidence` em cada proposal e resumo do pacote carregado.
+5. Pacote inclui:
+   - proposal completo;
+   - guidance item;
+   - signal/finding/work item/workflow run ligados;
+   - `executionReview`;
+   - `auditReview`;
+   - audit trail;
+   - approval event;
+   - preview event;
+   - execution event;
+   - payload hashes aprovado/preview/atual;
+   - destination refs aprovado/preview/atual;
+   - idempotency keys aprovado/preview/atual;
+   - external id/url/rollback ref;
+   - timeline created/approved/preview/execution/updated.
+6. Nenhuma rota de execute nova e nenhuma chamada externa.
+
+Dogfood read-only validado em `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43141`, proposal `fx3NheQm3Crv`:
+
+- `hasGuidance=true`.
+- `reviewStatus=duplicate_prevented`.
+- `auditEvent=github_label_completed_noop`.
+- `auditTrailCount=4`.
+- Approval event `approved`.
+- Preview event `github_label_previewed`.
+- Execution event `github_label_completed_noop`.
+- Payload hashes aprovado/preview/atual iguais: `c3e689498f5679b96d3dc8a686ebc832213a117a7e10ea7e4056aa40e0e7097d`.
+- Destination refs aprovado/preview/atual `antonio-mello-ai/crewdock#3`.
+- Idempotency keys aprovado/preview/atual `dogfood:github-label-executor:v0:crewdock-3-enhancement`.
+- External URL `https://github.com/antonio-mello-ai/crewdock/issues/3`.
+- Timeline completo.
+
+Proximo corte recomendado: Operating Loop Metrics v0 para medir tempo guidance -> proposal -> approval -> preview -> execution, taxas de blocked/rejected/failed/noop/completed, duplicates prevented e previews/approvals stale.
 
 ## Dogfood ERP
 
@@ -1473,7 +1515,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0 e Writeback Audit Search/Export v0. O proximo corte recomendado e Writeback Evidence Packet read-only por proposal. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0 e Writeback Evidence Packet v0. O proximo corte recomendado e Operating Loop Metrics v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
