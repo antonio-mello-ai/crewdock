@@ -2320,6 +2320,7 @@ const briefingSectionKeys: CompanyBrainBriefingSection["key"][] = [
   "adoption_dashboard",
   "unlinked_work",
   "gates_sla",
+  "writeback_safety",
   "next_steps",
 ];
 
@@ -2432,6 +2433,7 @@ function buildBriefingSections(args: {
   generatedAt: number;
 }): { sections: CompanyBrainBriefingSection[]; nextSteps: string[] } {
   const { data, adoptionDashboard, sourceHealthReport, generatedAt } = args;
+  const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const weekAgo = generatedAt - 7 * 24 * 60 * 60 * 1000;
   const relevantHealthSources = sourceHealthReport.sources.filter(
     (source) => source.sourceId !== AIOS_BRIEFING_SOURCE_ID
@@ -2467,6 +2469,37 @@ function buildBriefingSections(args: {
   const riskyGoals = data.goals.filter((goal) =>
     ["at_risk", "breached"].includes(goal.slaStatus)
   );
+  const pendingWritebackProposals = data.externalActionProposals.filter(
+    (proposal) => proposal.approvalStatus === "pending"
+  );
+  const failedWritebackProposals = data.externalActionProposals.filter(
+    (proposal) => proposal.executionStatus === "failed"
+  );
+  const riskCOrUnknownWritebacks = data.externalActionProposals.filter(
+    (proposal) => proposal.riskClass === "C" || proposal.riskClass === "unknown"
+  );
+  const blockedWritebackItems = writebackSafetyDashboard.items.filter(
+    (item) => item.reviewStatus === "blocked"
+  );
+  const writebacksNeedingReview = writebackSafetyDashboard.items.filter((item) =>
+    [
+      "needs_preview",
+      "needs_reapproval",
+      "payload_mismatch",
+      "destination_mismatch",
+      "retryable_failed",
+      "unsafe_failed",
+    ].includes(item.reviewStatus)
+  );
+  const recentWritebackExecutions = writebackSafetyDashboard.latestAuditTrail.filter(
+    (event) =>
+      event.externalUrl ||
+      event.event.endsWith("_posted") ||
+      event.event.endsWith("_added") ||
+      event.event.endsWith("_reused") ||
+      event.event.endsWith("_completed_noop")
+  );
+  const writebackLoopMetrics = writebackSafetyDashboard.operatingLoopMetrics;
 
   const sections: CompanyBrainBriefingSection[] = [
     {
@@ -2603,6 +2636,64 @@ function buildBriefingSections(args: {
         ),
       ]),
     },
+    {
+      key: "writeback_safety",
+      title: "Writeback Safety",
+      items: limitOrNone([
+        `${pendingWritebackProposals.length} pending approvals; ${failedWritebackProposals.length} failed; ${writebackSafetyDashboard.stats.completedExternalWriteCount} completed external writes; ${writebackSafetyDashboard.stats.duplicateAvoidedCount} duplicates prevented.`,
+        `${blockedWritebackItems.length} blocked by safety; ${writebackLoopMetrics.counts.staleApproval} stale approvals; ${writebackLoopMetrics.counts.stalePreview} stale previews; ${writebackLoopMetrics.counts.mutationAttempted} mutation attempts.`,
+        ...pendingWritebackProposals.slice(0, 4).map((proposal) =>
+          formatEntityLine({
+            prefix: "pending",
+            title: proposal.title,
+            status: proposal.approvalStatus,
+            detail: `${proposal.destinationType}/${proposal.actionType}`,
+          })
+        ),
+        ...failedWritebackProposals.slice(0, 4).map((proposal) =>
+          formatEntityLine({
+            prefix: "failed",
+            title: proposal.title,
+            status: proposal.executionStatus,
+            detail: proposal.errorSummary ?? proposal.destinationRef,
+          })
+        ),
+        ...recentWritebackExecutions.slice(0, 4).map((event) =>
+          formatEntityLine({
+            prefix: "recent",
+            title: event.title,
+            status: event.event,
+            detail: event.externalUrl ?? event.destinationRef,
+          })
+        ),
+        ...riskCOrUnknownWritebacks.slice(0, 4).map((proposal) =>
+          formatEntityLine({
+            prefix: "risk_blocked",
+            title: proposal.title,
+            status: proposal.riskClass,
+            detail: proposal.policySummary,
+          })
+        ),
+        ...blockedWritebackItems.slice(0, 4).map((item) =>
+          formatEntityLine({
+            prefix: "blocked",
+            title: item.title,
+            status: item.reviewStatus,
+            detail:
+              item.auditReview.blockReasons.slice(0, 3).join(", ") ||
+              item.nextAction,
+          })
+        ),
+        ...writebacksNeedingReview.slice(0, 4).map((item) =>
+          formatEntityLine({
+            prefix: "review",
+            title: item.title,
+            status: item.reviewStatus,
+            detail: item.nextAction,
+          })
+        ),
+      ]),
+    },
   ];
 
   const nextSteps = uniqueStrings([
@@ -2623,6 +2714,24 @@ function buildBriefingSections(args: {
       : "",
     riskyRuns.length || riskyGoals.length
       ? "Review blocked gates and SLA risks before starting new writeback work."
+      : "",
+    pendingWritebackProposals.length
+      ? `Review ${pendingWritebackProposals.length} pending writeback proposals through HITL.`
+      : "",
+    failedWritebackProposals.length
+      ? `Audit ${failedWritebackProposals.length} failed writebacks before any retry.`
+      : "",
+    writebacksNeedingReview.length
+      ? `Refresh preview/reapproval for ${writebacksNeedingReview.length} writeback safety items.`
+      : "",
+    writebackLoopMetrics.counts.staleApproval || writebackLoopMetrics.counts.stalePreview
+      ? "Refresh stale writeback approvals/previews before any execution."
+      : "",
+    riskCOrUnknownWritebacks.length
+      ? "Keep risk C/unknown writeback proposals blocked until policy changes."
+      : "",
+    blockedWritebackItems.length
+      ? `Keep ${blockedWritebackItems.length} safety-blocked writeback items out of execution.`
       : "",
     relevantGaps.length
       ? "Run review cohesion before expanding adapters."
@@ -2897,6 +3006,7 @@ function runAiosBriefingWatcher(args: {
   });
   const gapSignalIds = signalsCreated.map((signal) => signal.id);
   const summary = buildBriefingSummary(sections);
+  const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const artifact = {
     id: artifactId,
     sourceId: source.id,
@@ -2924,6 +3034,8 @@ function runAiosBriefingWatcher(args: {
       gapSignalIds,
       adoptionDashboardStats: adoptionDashboard.stats,
       sourceHealthStats: sourceHealthReport.stats,
+      writebackSafetyStats: writebackSafetyDashboard.stats,
+      writebackOperatingLoopMetrics: writebackSafetyDashboard.operatingLoopMetrics,
       generatedAt: startedAt,
     },
   };

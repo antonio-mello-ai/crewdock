@@ -1736,6 +1736,7 @@ export interface CompanyBrainBriefingSection {
     | "adoption_dashboard"
     | "unlinked_work"
     | "gates_sla"
+    | "writeback_safety"
     | "next_steps";
   title: string;
   items: string[];

@@ -1412,7 +1412,7 @@ export default function CompanyBrainPage() {
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {lastBriefing.sections
                       .filter((section) => section.key !== "next_steps")
-                      .slice(0, 8)
+                      .slice(0, 9)
                       .map((section) => (
                         <div key={section.key} className="space-y-2">
                           <p className="text-xs font-medium uppercase text-neutral-500">
