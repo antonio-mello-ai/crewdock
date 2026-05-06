@@ -1850,12 +1850,30 @@ export interface WritebackRetryPolicy {
   blockedStates: ExternalActionExecutionStatus[];
 }
 
+export interface WritebackAuditReview {
+  eventCount: number;
+  latestEvent: string | null;
+  latestActor: string | null;
+  latestAt: number | null;
+  approvalEventAt: number | null;
+  approvalActor: string | null;
+  previewEventAt: number | null;
+  executionEventAt: number | null;
+  duplicatePrevented: boolean;
+  hasExternalRef: boolean;
+  hasError: boolean;
+  payloadHashCurrent: string;
+  idempotencyKey: string;
+  destinationRef: string | null;
+}
+
 export interface WritebackSafetyQueueItem {
   id: string;
   kind: WritebackSafetyItemKind;
   reviewStatus: WritebackExecutionReviewStatus;
   reviewFlags: WritebackExecutionReviewFlag[];
   executionReview: WritebackExecutionReview;
+  auditReview: WritebackAuditReview;
   proposalId: string;
   title: string;
   destinationType: ExternalActionDestination;

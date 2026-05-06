@@ -3038,6 +3038,50 @@ function isCompletedExternalWriteback(proposal: ExternalActionProposal) {
   );
 }
 
+function buildWritebackAuditReview(
+  proposal: ExternalActionProposal,
+  executionReview: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+): CompanyBrainWritebackSafetyDashboard["items"][number]["auditReview"] {
+  const latestAudit = latestExternalActionAudit(proposal);
+  const approvalAudit = latestAuditEvent(proposal, "approved");
+  const previewAudit = executionReview.previewEvent
+    ? latestAuditEvent(proposal, executionReview.previewEvent)
+    : null;
+  const executionAudit =
+    [...proposal.auditTrail]
+      .reverse()
+      .find((event) =>
+        [
+          "github_comment_posted",
+          "github_comment_reused",
+          "github_comment_failed",
+          "github_comment_execution_blocked",
+          "github_comment_retry_required",
+          "slack_thread_reply_posted",
+          "slack_thread_reply_reused",
+          "slack_thread_reply_failed",
+          "slack_thread_reply_execution_blocked",
+          "slack_thread_reply_retry_required",
+        ].includes(event.event)
+      ) ?? null;
+  return {
+    eventCount: proposal.auditTrail.length,
+    latestEvent: latestAudit?.event ?? null,
+    latestActor: latestAudit?.actor ?? null,
+    latestAt: latestAudit?.at ?? null,
+    approvalEventAt: approvalAudit?.at ?? null,
+    approvalActor: approvalAudit?.actor ?? null,
+    previewEventAt: previewAudit?.at ?? null,
+    executionEventAt: executionAudit?.at ?? null,
+    duplicatePrevented: executionReview.flags.includes("duplicate_prevented"),
+    hasExternalRef: Boolean(proposal.externalId || proposal.externalUrl),
+    hasError: Boolean(proposal.errorSummary),
+    payloadHashCurrent: executionReview.payloadHashCurrent,
+    idempotencyKey: proposal.idempotencyKey,
+    destinationRef: proposal.destinationRef,
+  };
+}
+
 function writebackSafetyItemKind(
   proposal: ExternalActionProposal
 ): CompanyBrainWritebackSafetyDashboard["items"][number]["kind"] | null {
@@ -3139,6 +3183,7 @@ function buildWritebackSafetyDashboard(
       reviewStatus: executionReview.status,
       reviewFlags: executionReview.flags,
       executionReview,
+      auditReview: buildWritebackAuditReview(proposal, executionReview),
       proposalId: proposal.id,
       title: proposal.title,
       destinationType: proposal.destinationType,

@@ -1655,6 +1655,19 @@ export default function CompanyBrainPage() {
                             {item.destinationType} · {item.actionType} ·{" "}
                             {item.auditEvent ?? "no_audit_event"}
                           </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            events {item.auditReview.eventCount} · actor{" "}
+                            {item.auditReview.latestActor ?? "none"} · key{" "}
+                            {item.auditReview.idempotencyKey}
+                          </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            payload {item.auditReview.payloadHashCurrent}
+                          </p>
+                          {item.reviewFlags.length ? (
+                            <p className="mt-1 line-clamp-1 text-neutral-600">
+                              flags {item.reviewFlags.join(", ")}
+                            </p>
+                          ) : null}
                           {item.errorSummary ? (
                             <p className="mt-1 line-clamp-1 text-neutral-500">
                               {item.errorSummary}

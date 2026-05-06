@@ -1135,7 +1135,35 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-github-status-check-p
 - Tentativas em `/github-status-check/execute` retornaram 404 para status e check, confirmando ausencia de executor.
 - Safety Dashboard retornou `reviewStatus=blocked` para ambas as proposals.
 
-Proximo corte recomendado: reforcar visual/audit review da fila de writeback antes de qualquer executor real de label.
+## Slice Writeback Audit Review v0
+
+Objetivo: reforcar a revisao visual/audit da fila de writeback antes de qualquer executor real de label ou outra acao mais forte.
+
+Implementado em 2026-05-06:
+
+1. Tipo `WritebackAuditReview` em `packages/shared/src/types.ts`.
+2. Cada item de `CompanyBrainWritebackSafetyDashboard.items` agora inclui `auditReview`.
+3. `auditReview` expõe:
+   - `eventCount`;
+   - ultimo evento, ator e timestamp;
+   - timestamps de approval, preview e execution;
+   - duplicate prevention;
+   - presenca de external ref;
+   - erro;
+   - payloadHash atual;
+   - idempotencyKey;
+   - destinationRef.
+4. UI `/company-brain` mostra event count, actor, idempotency key, payload hash e review flags no painel Writeback Safety.
+5. Nenhuma mudanca de schema, nenhuma rota nova de mutacao e nenhuma chamada externa.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-writeback-audit-review-dogfood.sqlite`, daemon em `127.0.0.1:43133`, sem writeback externo:
+
+- Proposal preview-only criada: `Qni3wKUqM4Mo`, `actionType=github_status`, destination `https://github.com/home-assistant/core/pull/169942`, idempotency `dogfood:writeback-audit-review:v0:github-status`.
+- Preview status/check retornou 200 e audit `github_status_check_previewed`.
+- Safety Dashboard retornou `reviewStatus=blocked`.
+- `auditReview` retornou `eventCount=2`, `latestEvent=github_status_check_previewed`, `latestActor=writeback-audit-review-dogfood`, `approvalEventAt=null`, `previewEventAt=1778096098054`, `executionEventAt=null`, `hasExternalRef=false`, `hasError=false`, payloadHash `aef16370c0fe82d50e1e0c009df51a487d0a321cfcebb48aa4a9ec37e308f18a`.
+
+Proximo corte recomendado: avaliar executor real de GitHub label somente em repo controlado, com um unico label, approval, preview, retry safety, idempotency e audit review.
 
 ## Dogfood ERP
 
@@ -1255,7 +1283,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only e GitHub Status/Check Proposal v0 preview-only. O proximo corte recomendado e reforco de visual/audit review da fila de writeback antes de qualquer executor real de label.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only e Writeback Audit Review v0. O proximo corte recomendado e avaliar executor real de GitHub label somente em repo controlado, com um unico label, approval, preview, retry safety, idempotency e audit review.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
