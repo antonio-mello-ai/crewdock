@@ -8,8 +8,8 @@ Este handoff existe para a proxima sessao comecar implementacao sem reabrir a es
 
 - Repo: `/Users/antoniomello/felhencloud/projetos/felhen/aios-runtime`
 - Branch: `main`
-- Commit atual: `eca6ff7 docs: align aios runtime company brain direction`
-- Estado remoto no momento do registro: `main` local esta `ahead 1` de `origin/main`
+- Commit de referencia documental anterior a esta atualizacao: `6331b3d docs: add aios company brain implementation handoff`
+- Estado remoto observado antes desta atualizacao: `main` local estava `ahead 2` de `origin/main`
 - Mudancas Company Brain ate aqui sao documentais. Ainda nao existe implementacao de schema/API/UI Company Brain.
 
 Antes de implementar, rode:
@@ -32,7 +32,7 @@ Ler nesta ordem:
 5. `../../../../corp/docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`
 6. `../../../../corp/docs/estrategia/felhen-autoimprove-core.md`
 
-Observacao: no momento deste handoff, o repo `corp` contem docs AIOS novos/modificados ainda nao necessariamente commitados. Verificar `git -C ../../../../corp status -sb` antes de tratar esses arquivos como publicados.
+Observacao: os docs estrategicos AIOS no repo `corp` foram consolidados no commit `41b14d2 docs: consolidate aios yc thesis roadmap`. Mesmo assim, verificar `git -C ../../../../corp status -sb` antes de assumir que nao houve mudanca posterior.
 
 ## Decisoes travadas
 
@@ -44,6 +44,10 @@ Observacao: no momento deste handoff, o repo `corp` contem docs AIOS novos/modif
 - Tickets sao `WorkItem` canonico. GitHub Issues e a primeira superficie humana para dogfood interno. Jira/Linear entram como adapters depois.
 - O primeiro Workflow Blueprint e desenvolvimento ticket-to-production.
 - O primeiro dogfood externo real e o refactor do ERP em `projetos/erp-desmanches`.
+- QMD, embeddings, search e memory sao Context/Retrieval Layer. Nao sao o core operacional.
+- O core operacional multi-area precisa modelar sources, artifacts/events, graph, goals/cadence, workflow orchestration, agent runtime, governance, context, writeback, observability/audit e UI.
+- Metas e prazos precisam ser objetos operacionais, nao texto solto em roadmap. Prioridades, goals, milestones, work items, workflow runs e guidance devem carregar owner, due date/cadence e status.
+- A Felhen deve operar pelo AIOS enquanto constroi o produto: projetos relevantes precisam registrar sources, work items, artifacts, workflow runs, gates, signals, guidance e improvement proposals.
 
 ## Estado atual da plataforma
 
@@ -106,9 +110,11 @@ MCP atual em `packages/mcp-server/src/index.ts` expoe ferramentas para briefing,
 Ainda nao existem:
 
 - tabelas Company Brain;
+- operating architecture kernel;
 - source registry;
 - raw artifact store;
 - strategy layer;
+- goal/cadence layer;
 - work items canonicos;
 - workflow blueprints/runs/gates;
 - drift/alignment findings;
@@ -118,6 +124,7 @@ Ainda nao existem:
 - conectores Slack/GitHub/docs com envelope comum;
 - UI Company Brain;
 - MCP tools Company Brain.
+- adoption dashboard para enxergar quais frentes estao em closed loop.
 
 ## Dogfood ERP
 
@@ -160,6 +167,8 @@ Objetos minimos do primeiro corte:
 - `Source`
 - `Artifact`
 - `StrategicPriority`
+- `Goal`
+- `Milestone`
 - `WorkItem`
 - `WorkflowBlueprint`
 - `WorkflowRun`
@@ -168,6 +177,8 @@ Objetos minimos do primeiro corte:
 
 Objetos que podem entrar no mesmo corte se o diff continuar pequeno:
 
+- `Metric`
+- `Cadence`
 - `Decision`
 - `Signal`
 - `AlignmentFinding`
@@ -181,11 +192,13 @@ Se o diff crescer, deixar `Decision/Signal/Alignment/Guidance` para Slice 2.
 - Runtime atual nao quebra.
 - Schema e migrations sao idempotentes.
 - Pelo menos uma prioridade estrategica pode ser criada/listada.
+- Pelo menos uma meta/prazo/cadencia pode ser ligada a uma prioridade ou work item.
 - Pelo menos uma fonte pode ser criada/listada.
 - Pelo menos um artifact manual/local-doc pode ser criado/listado.
 - Pelo menos um `WorkItem` pode apontar para uma GitHub Issue externa.
 - O Development Blueprint v0 existe como dado inicial ou seed.
 - Pelo menos um `WorkflowRun` pode apontar para `ERP-REF-01` ou `ERP-REF-02`.
+- O sistema consegue apontar work item sem prioridade/meta como `unlinked`.
 - UI mostra uma tela minima de Evidence/Workflow ou Strategy.
 - MCP consegue listar/criar pelo menos artifacts ou work items.
 
@@ -198,6 +211,8 @@ Se o diff crescer, deixar `Decision/Signal/Alignment/Guidance` para Slice 2.
 - Nao criar schema escolar ou ERP-specific no core.
 - Nao acoplar o core a GitHub. Core fala `WorkItem`; GitHub e adapter/surface.
 - Nao criar conector que so ingere dado sem provenance e sem caminho para linking/guidance.
+- Nao tratar QMD/retrieval como fonte unica de verdade operacional.
+- Nao deixar metas e prazos apenas em markdown quando eles impactam workflow/guidance.
 
 ## Prompt sugerido para proxima sessao
 
@@ -216,6 +231,7 @@ Objetivo da sessao: implementar o Slice 1 de Company Brain foundation.
 Antes de editar, confirme git status, commit atual, schema atual e rotas atuais. Depois implemente um corte pequeno e validavel:
 - tipos compartilhados;
 - schema/tabelas idempotentes;
+- objetos de goal/milestone/due date/cadence no menor corte util;
 - rotas basicas;
 - UI minima;
 - MCP tool minima;

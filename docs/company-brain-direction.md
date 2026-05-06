@@ -23,7 +23,9 @@ O alvo agora adiciona:
 
 - source connectors;
 - Company Brain schema;
+- operating architecture kernel;
 - Intelligence Graph;
+- Goal/Cadence Layer;
 - Strategy Map;
 - Evidence Inbox;
 - Drift Inbox;
@@ -45,11 +47,33 @@ O alvo agora adiciona:
 
 Regra: novas features de produto devem ser registradas primeiro no roadmap de produto em `corp`. Este repo pode detalhar implementacao, boundaries e backlog local, mas nao deve manter uma lista concorrente de features.
 
+## Arquitetura operacional
+
+QMD, embeddings, search e memory sao camada de contexto. Eles ajudam humanos e agentes a recuperar conhecimento, mas nao sao o core operacional do AIOS.
+
+O core deste repo precisa sustentar operacao multi-area com estado e provenance:
+
+| Camada | Responsabilidade no runtime |
+|--------|-----------------------------|
+| Source | Sistemas e repos conectados. |
+| Artifact/Event | Evidencia normalizada do que aconteceu. |
+| Company Brain/Graph | Estrategia, metas, decisoes, owners, work items, artifacts, signals e proposals. |
+| Goal/Cadence | Metas, prazos, milestones, metricas, review cadence e SLA status. |
+| Workflow Orchestration | Blueprints/runs/gates por area. |
+| Agent Runtime | Agentes executando etapas sob gates e policies. |
+| Governance/Policy | Risco A/B/C, HITL, rollback, tenant/source visibility, retention e write permissions. |
+| Context/Retrieval | QMD, search, embeddings e memory. |
+| Action/Writeback | Comentarios em issues, replies no Slack, docs, PRs, tasks e briefings. |
+| Observability/Audit | Evidence packets, logs, outcomes, drift, SLA e historico de decisoes. |
+| Product UI | Strategy Map, Evidence Inbox, Drift Inbox, Workflow Runs, Source Health, Guidance e AutoImprove. |
+
+Regra: se um trabalho nao tem prioridade/meta, prazo, owner ou workflow, o AIOS deve mostrar a lacuna em vez de forcar alinhamento artificial.
+
 ## Separacao de responsabilidades
 
 | Camada | Dono | O que vive aqui |
 |--------|------|-----------------|
-| AIOS Runtime / Company Brain | `projetos/felhen/aios-runtime` | Objetos horizontais como `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`. |
+| AIOS Runtime / Company Brain | `projetos/felhen/aios-runtime` | Objetos horizontais como `Source`, `Artifact`, `StrategicPriority`, `Goal`, `Milestone`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`. |
 | AutoImprove Core | `corp/docs/estrategia/felhen-autoimprove-core.md` | Contrato horizontal de signal -> hypothesis -> patch -> validation -> impact review -> promotion. |
 | Juntos em Sala | `projetos/spadavida/juntos-em-sala` | Produto vertical de escolas, adapter vertical, tenant profile por escola e AutoImprove especifico do dominio. |
 | `corp/aios/` | `corp` | Identidade, julgamento, guardrails, criterios de qualidade e governanca upstream. |
@@ -109,18 +133,19 @@ Se uma feature so ingere informacao e nao ajuda a fechar o loop, ela e suporte, 
 ## Primeiro slice recomendado
 
 1. Criar schema minimo de Company Brain.
-2. Criar `WorkItem` canonico com `external_provider`, `external_id` e `external_url`.
-3. Criar `WorkflowBlueprint` e `WorkflowRun`.
-4. Registrar o Development Blueprint v0:
+2. Criar `Goal`/`Milestone`/campos de prazo e cadencia no menor corte util, ligados a prioridade e work item.
+3. Criar `WorkItem` canonico com `external_provider`, `external_id` e `external_url`.
+4. Criar `WorkflowBlueprint` e `WorkflowRun`.
+5. Registrar o Development Blueprint v0:
 
    `ticket -> triagem -> plano -> execucao -> revisao -> plano de testes -> testes -> QA visual -> security QA -> deploy gate -> deploy + monitoramento -> fechamento -> documentacao oficial`
 
-5. Implementar `Evidence Inbox` simples para artifacts manuais/local docs.
-6. Implementar `Strategy Map` simples com prioridades e evidencias ligadas.
-7. Implementar adapter inicial para GitHub Issues ou modo nativo espelhavel de `WorkItem`.
-8. Gerar o primeiro `WorkflowRun` real a partir de um ticket pequeno deste repo.
-9. Registrar failures/residuais como novos signals ou work items.
-10. Fazer o fechamento do run atualizar docs oficiais.
+6. Implementar `Evidence Inbox` simples para artifacts manuais/local docs.
+7. Implementar `Strategy Map` simples com prioridades, metas, prazos e evidencias ligadas.
+8. Implementar adapter inicial para GitHub Issues ou modo nativo espelhavel de `WorkItem`.
+9. Gerar o primeiro `WorkflowRun` real a partir de um ticket pequeno deste repo ou do dogfood ERP.
+10. Registrar failures/residuais como novos signals ou work items.
+11. Fazer o fechamento do run atualizar docs oficiais.
 
 ## O que nao fazer agora
 
