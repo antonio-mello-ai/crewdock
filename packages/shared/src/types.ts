@@ -1741,6 +1741,57 @@ export interface CompanyBrainReviewCohesion {
   };
 }
 
+export type WritebackSafetyItemKind =
+  | "completed_external_writeback"
+  | "duplicate_avoided"
+  | "failed_execution"
+  | "approved_ready"
+  | "pending_approval"
+  | "rejected_proposal"
+  | "blocked_proposal";
+
+export interface WritebackSafetyQueueItem {
+  id: string;
+  kind: WritebackSafetyItemKind;
+  proposalId: string;
+  title: string;
+  destinationType: ExternalActionDestination;
+  destinationRef: string | null;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  externalId: string | null;
+  externalUrl: string | null;
+  idempotencyKey: string;
+  errorSummary: string | null;
+  auditEvent: string | null;
+  auditActor: string | null;
+  auditAt: number | null;
+  updatedAt: number;
+  nextAction: string;
+}
+
+export interface CompanyBrainWritebackSafetyDashboard {
+  generatedAt: number;
+  items: WritebackSafetyQueueItem[];
+  stats: {
+    proposalCount: number;
+    pendingApprovalCount: number;
+    approvedReadyCount: number;
+    completedExternalWriteCount: number;
+    failedExecutionCount: number;
+    rejectedProposalCount: number;
+    blockedProposalCount: number;
+    githubCommentWriteCount: number;
+    slackThreadReplyWriteCount: number;
+    duplicateAvoidedCount: number;
+    riskCOrUnknownCount: number;
+    completedMissingExternalRefCount: number;
+  };
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -1766,6 +1817,7 @@ export interface CompanyBrainSummary {
   sourceHealthReport: CompanyBrainSourceHealthReport;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   reviewCohesion: CompanyBrainReviewCohesion;
+  writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
   stats: {
     sourceCount: number;
     artifactCount: number;
@@ -1798,6 +1850,9 @@ export interface CompanyBrainSummary {
     pendingExternalActionCount: number;
     approvedExternalActionCount: number;
     blockedExternalActionCount: number;
+    completedExternalActionCount: number;
+    failedExternalActionCount: number;
+    duplicateAvoidedExternalActionCount: number;
   };
 }
 

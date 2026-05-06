@@ -15,6 +15,7 @@ import type {
   CompanyBrainReviewCohesion,
   CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
+  CompanyBrainWritebackSafetyDashboard,
   CreateAgentContextRequest,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
@@ -2499,6 +2500,170 @@ function buildReviewCohesion(
   };
 }
 
+function latestExternalActionAudit(proposal: ExternalActionProposal) {
+  return proposal.auditTrail[proposal.auditTrail.length - 1] ?? null;
+}
+
+function hasDuplicateAvoidanceAudit(proposal: ExternalActionProposal) {
+  return proposal.auditTrail.some((event) => {
+    const metadata = event.metadata as
+      | {
+          response?: {
+            reusedExisting?: unknown;
+          };
+        }
+      | null
+      | undefined;
+    return event.event.endsWith("_reused") || metadata?.response?.reusedExisting === true;
+  });
+}
+
+function isExternalWritebackDestination(proposal: ExternalActionProposal) {
+  return proposal.destinationType === "github" || proposal.destinationType === "slack";
+}
+
+function isCompletedExternalWriteback(proposal: ExternalActionProposal) {
+  return (
+    isExternalWritebackDestination(proposal) &&
+    ["completed", "executed"].includes(proposal.executionStatus)
+  );
+}
+
+function writebackSafetyItemKind(
+  proposal: ExternalActionProposal
+): CompanyBrainWritebackSafetyDashboard["items"][number]["kind"] | null {
+  if (hasDuplicateAvoidanceAudit(proposal)) return "duplicate_avoided";
+  if (isCompletedExternalWriteback(proposal)) return "completed_external_writeback";
+  if (proposal.executionStatus === "failed") return "failed_execution";
+  if (
+    proposal.approvalStatus === "approved" &&
+    ["not_started", "dry_run"].includes(proposal.executionStatus)
+  ) {
+    return "approved_ready";
+  }
+  if (proposal.approvalStatus === "pending") return "pending_approval";
+  if (proposal.approvalStatus === "rejected") return "rejected_proposal";
+  if (proposal.approvalStatus === "blocked") return "blocked_proposal";
+  return null;
+}
+
+function writebackSafetyNextAction(
+  proposal: ExternalActionProposal,
+  kind: CompanyBrainWritebackSafetyDashboard["items"][number]["kind"]
+) {
+  if (
+    kind === "completed_external_writeback" &&
+    (!proposal.externalId || !proposal.externalUrl)
+  ) {
+    return "Review completed writeback with missing external id or URL.";
+  }
+  if (kind === "completed_external_writeback") {
+    return "Include in audit review and monitor for follow-up signal.";
+  }
+  if (kind === "duplicate_avoided") {
+    return "Confirm idempotency marker reuse and keep the proposal closed.";
+  }
+  if (kind === "failed_execution") {
+    return "Review error summary before retrying or rejecting the proposal.";
+  }
+  if (kind === "approved_ready") {
+    return "Run adapter preview before any approved execution.";
+  }
+  if (kind === "pending_approval") {
+    return "Approve or reject through HITL review.";
+  }
+  if (kind === "rejected_proposal") {
+    return "Keep rejection rationale available for audit.";
+  }
+  return "Blocked by governance; do not execute without a new risk policy.";
+}
+
+function buildWritebackSafetyDashboard(
+  data: ReturnType<typeof listAll>
+): CompanyBrainWritebackSafetyDashboard {
+  const generatedAt = now();
+  const proposals = data.externalActionProposals;
+  const completedExternal = proposals.filter(isCompletedExternalWriteback);
+  const items: CompanyBrainWritebackSafetyDashboard["items"] = [];
+  for (const proposal of proposals) {
+    const kind = writebackSafetyItemKind(proposal);
+    if (!kind) continue;
+    const latestAudit = latestExternalActionAudit(proposal);
+    items.push({
+      id: `writeback_safety:${kind}:${proposal.id}`,
+      kind,
+      proposalId: proposal.id,
+      title: proposal.title,
+      destinationType: proposal.destinationType,
+      destinationRef: proposal.destinationRef,
+      actionType: proposal.actionType,
+      riskClass: proposal.riskClass,
+      actionPolicy: proposal.actionPolicy,
+      approvalStatus: proposal.approvalStatus,
+      executionStatus: proposal.executionStatus,
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+      idempotencyKey: proposal.idempotencyKey,
+      errorSummary: proposal.errorSummary,
+      auditEvent: latestAudit?.event ?? null,
+      auditActor: latestAudit?.actor ?? null,
+      auditAt: latestAudit?.at ?? null,
+      updatedAt: proposal.updatedAt,
+      nextAction: writebackSafetyNextAction(proposal, kind),
+    });
+  }
+  items.sort((a, b) => (b.auditAt ?? b.updatedAt) - (a.auditAt ?? a.updatedAt));
+
+  return {
+    generatedAt,
+    items,
+    stats: {
+      proposalCount: proposals.length,
+      pendingApprovalCount: proposals.filter(
+        (proposal) =>
+          proposal.approvalStatus === "pending" &&
+          !["blocked", "cancelled", "failed"].includes(proposal.executionStatus)
+      ).length,
+      approvedReadyCount: proposals.filter(
+        (proposal) =>
+          proposal.approvalStatus === "approved" &&
+          ["not_started", "dry_run"].includes(proposal.executionStatus)
+      ).length,
+      completedExternalWriteCount: completedExternal.filter(
+        (proposal) => proposal.externalId || proposal.externalUrl
+      ).length,
+      failedExecutionCount: proposals.filter(
+        (proposal) => proposal.executionStatus === "failed"
+      ).length,
+      rejectedProposalCount: proposals.filter(
+        (proposal) => proposal.approvalStatus === "rejected"
+      ).length,
+      blockedProposalCount: proposals.filter(
+        (proposal) => proposal.approvalStatus === "blocked"
+      ).length,
+      githubCommentWriteCount: completedExternal.filter(
+        (proposal) =>
+          proposal.destinationType === "github" &&
+          isGitHubCommentAction(proposal.actionType) &&
+          (proposal.externalId || proposal.externalUrl)
+      ).length,
+      slackThreadReplyWriteCount: completedExternal.filter(
+        (proposal) =>
+          proposal.destinationType === "slack" &&
+          isSlackThreadReplyAction(proposal.actionType) &&
+          (proposal.externalId || proposal.externalUrl)
+      ).length,
+      duplicateAvoidedCount: proposals.filter(hasDuplicateAvoidanceAudit).length,
+      riskCOrUnknownCount: proposals.filter(
+        (proposal) => proposal.riskClass === "C" || proposal.riskClass === "unknown"
+      ).length,
+      completedMissingExternalRefCount: completedExternal.filter(
+        (proposal) => !proposal.externalId || !proposal.externalUrl
+      ).length,
+    },
+  };
+}
+
 function externalActionPolicy(args: {
   destinationType: ExternalActionDestination;
   actionType: ExternalActionKind;
@@ -2590,6 +2755,7 @@ app.get("/summary", (c) => {
   const sourceHealthReport = buildSourceHealthReport(data);
   const lastBriefing = buildLastBriefing(data);
   const reviewCohesion = buildReviewCohesion(data);
+  const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -2622,6 +2788,7 @@ app.get("/summary", (c) => {
       sourceHealthReport,
       lastBriefing,
       reviewCohesion,
+      writebackSafetyDashboard,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -2669,9 +2836,20 @@ app.get("/summary", (c) => {
         blockedExternalActionCount: data.externalActionProposals.filter(
           (proposal) => proposal.approvalStatus === "blocked"
         ).length,
+        completedExternalActionCount:
+          writebackSafetyDashboard.stats.completedExternalWriteCount,
+        failedExternalActionCount:
+          writebackSafetyDashboard.stats.failedExecutionCount,
+        duplicateAvoidedExternalActionCount:
+          writebackSafetyDashboard.stats.duplicateAvoidedCount,
       },
     },
   });
+});
+
+app.get("/writeback-safety-dashboard", (c) => {
+  const data = buildWritebackSafetyDashboard(listAll());
+  return c.json({ data });
 });
 
 app.get("/adoption-dashboard", (c) => {

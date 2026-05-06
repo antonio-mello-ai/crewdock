@@ -57,7 +57,9 @@ Status GitHub Comment Writeback v0 em 2026-05-06: executor real restrito a `Exte
 
 Status Slack Thread Reply Writeback v0 em 2026-05-06: executor real restrito a `ExternalActionProposal` aprovada, `destinationType=slack`, `actionType=thread_reply`, `riskClass=B`, `actionPolicy=writeback_allowed`, reply em thread existente, dry-run previo, `SLACK_BOT_TOKEN`, marker de idempotencia e audit trail. Sucesso registra `executionStatus=completed`, `externalId` e `externalUrl/permalink`; erro registra `failed/errorSummary`. Sem mensagem fora de thread, DM, edit/delete, react, pin, invite, topic, rename, GitHub action nova ou risk C/unknown.
 
-Proximo corte planejado: Writeback Safety Dashboard / audit review para mostrar tudo que o AIOS ja escreveu fora, proposals aprovadas/rejeitadas, falhas e duplicacoes evitadas antes de labels/status/assign ou acoes de maior impacto.
+Status Writeback Safety Dashboard v0 em 2026-05-06: dashboard derivado/read-only implementado em summary/API/UI/MCP para auditar writeback externo: completed GitHub/Slack writes, approved-ready proposals, pending approvals, falhas, rejeicoes, bloqueios, risk C/unknown, refs externas faltantes e duplicacoes evitadas por idempotencia. Sem novas mutacoes externas.
+
+Proximo corte planejado: HITL hardening / retry safety antes de qualquer label/status/assign: approval/rejection reason mais forte, dry-run como precondicao rastreavel, idempotency review, retry seguro e visao de payload/diff antes de executar.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -74,6 +76,7 @@ Proximo corte planejado: Writeback Safety Dashboard / audit review para mostrar 
 - [x] **Writeback Governance v0** — definir politica A/B/C, criar fila `ExternalActionProposal`, gerar proposta a partir de guidance aceita, aprovar/rejeitar com HITL e audit trail completo sem executar writeback externo
 - [x] **GitHub comment writeback v0** — postar somente comentario aprovado em issue/PR GitHub com preview, idempotency marker, HITL, audit trail e sem mutacoes de status/labels/assign/merge/deploy
 - [x] **Slack thread reply writeback v0** — postar somente reply aprovado em thread Slack existente com preview, idempotency marker, HITL, audit trail e sem mensagem nova fora de thread, DM, edit/delete/reaction/pin/invite/topic/rename
+- [x] **Writeback Safety Dashboard v0** — auditar em summary/API/UI/MCP writebacks completados, proposals prontas, falhas, rejeicoes, bloqueios e duplicacoes evitadas antes de acoes externas mais fortes
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
@@ -96,7 +99,7 @@ Proximo corte planejado: Writeback Safety Dashboard / audit review para mostrar 
 - [x] **GitHub notifications watcher v0** — observar notificacoes autenticadas do GitHub em modo read-only, criando Artifact/WatcherRun/Signal sem marcar como lidas
 - [x] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente. Implementado como importer manual e adapter real de canal Slack.
 - [x] **Slack threads/incremental sync v0** — usar cursor incremental por source e importar replies de threads como artifacts read-only com provenance e metadata de thread
-- [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/external action proposal/GitHub comment writeback/Slack thread reply writeback/work item/workflow run/watcher.
+- [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/briefing/review cohesion/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/external action proposal/GitHub comment writeback/Slack thread reply writeback/writeback safety dashboard/work item/workflow run/watcher.
 - [x] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
 - [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates
 - [x] **Demo Felhen v0.1** — demonstrar estrategia -> evidencia -> drift/guidance -> workflow run -> learning usando dogfood interno

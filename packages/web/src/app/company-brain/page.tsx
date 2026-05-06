@@ -306,6 +306,7 @@ export default function CompanyBrainPage() {
   const sourceHealthReport = summary?.sourceHealthReport;
   const lastBriefing = summary?.lastBriefing ?? null;
   const reviewCohesion = summary?.reviewCohesion;
+  const writebackSafetyDashboard = summary?.writebackSafetyDashboard;
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -1478,6 +1479,85 @@ export default function CompanyBrainPage() {
                 </div>
               </div>
             </div>
+            {writebackSafetyDashboard ? (
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-3 xl:grid-cols-6">
+                  <MiniMetric
+                    label="written"
+                    value={
+                      writebackSafetyDashboard.stats.completedExternalWriteCount
+                    }
+                  />
+                  <MiniMetric
+                    label="failed"
+                    value={writebackSafetyDashboard.stats.failedExecutionCount}
+                  />
+                  <MiniMetric
+                    label="ready"
+                    value={writebackSafetyDashboard.stats.approvedReadyCount}
+                  />
+                  <MiniMetric
+                    label="reused"
+                    value={writebackSafetyDashboard.stats.duplicateAvoidedCount}
+                  />
+                  <MiniMetric
+                    label="rejected"
+                    value={writebackSafetyDashboard.stats.rejectedProposalCount}
+                  />
+                  <MiniMetric
+                    label="blocked"
+                    value={writebackSafetyDashboard.stats.blockedProposalCount}
+                  />
+                </div>
+                <div className="mt-3 divide-y divide-neutral-800/40">
+                  {writebackSafetyDashboard.items.length === 0 ? (
+                    <p className="py-2 text-xs text-neutral-600">
+                      No writeback audit items yet
+                    </p>
+                  ) : (
+                    writebackSafetyDashboard.items.slice(0, 4).map((item) => (
+                      <div
+                        key={item.id}
+                        className="grid gap-2 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-medium text-neutral-300">
+                              {item.title}
+                            </p>
+                            <StatusBadge value={item.kind} />
+                            <StatusBadge value={item.executionStatus} />
+                          </div>
+                          <p className="mt-1 truncate text-neutral-600">
+                            {item.destinationType} · {item.actionType} ·{" "}
+                            {item.auditEvent ?? "no_audit_event"}
+                          </p>
+                          {item.errorSummary ? (
+                            <p className="mt-1 line-clamp-1 text-neutral-500">
+                              {item.errorSummary}
+                            </p>
+                          ) : (
+                            <p className="mt-1 line-clamp-1 text-neutral-500">
+                              {item.nextAction}
+                            </p>
+                          )}
+                        </div>
+                        {item.externalUrl ? (
+                          <a
+                            href={item.externalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="truncate text-neutral-400 underline-offset-4 hover:underline lg:max-w-72"
+                          >
+                            {item.externalUrl}
+                          </a>
+                        ) : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div className="grid gap-0 lg:grid-cols-[0.85fr_1.15fr]">
               <form
                 onSubmit={handleCreateWritebackProposal}

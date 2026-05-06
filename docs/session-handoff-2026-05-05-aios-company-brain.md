@@ -907,7 +907,43 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-slack-thread-reply-wr
 - Preview retornou `dry_run`, target normalizado, body com marker `aios-writeback`, `externalId=null`.
 - Caminho proibido validado: proposal sem aprovacao `zQp7_ttOCwUk` retornou 400 `proposal must be approved before Slack writeback`, sem chamada Slack de escrita.
 
-Proximo corte recomendado: Writeback Safety Dashboard / audit review, mostrando GitHub comments, Slack replies, proposals aprovadas/rejeitadas, falhas e duplicacoes evitadas antes de labels/status/assign ou qualquer acao de maior impacto.
+## Slice Writeback Safety Dashboard v0
+
+Objetivo: tornar auditavel em uma unica superficie tudo que o AIOS ja escreveu fora ou tentou preparar para writeback, antes de permitir labels/status/assign ou qualquer acao externa mais forte.
+
+Implementado em 2026-05-06:
+
+1. Tipos `WritebackSafetyItemKind`, `WritebackSafetyQueueItem` e `CompanyBrainWritebackSafetyDashboard` em `packages/shared/src/types.ts`.
+2. Daemon adiciona dashboard derivado a partir de `ExternalActionProposal.auditTrail`, sem tabela nova e sem mutacao externa.
+3. Summary passa a incluir `writebackSafetyDashboard` e stats:
+   - `completedExternalActionCount`
+   - `failedExternalActionCount`
+   - `duplicateAvoidedExternalActionCount`
+4. API dedicada:
+   - `GET /api/company-brain/writeback-safety-dashboard`
+5. O dashboard classifica items como:
+   - `completed_external_writeback`
+   - `duplicate_avoided`
+   - `failed_execution`
+   - `approved_ready`
+   - `pending_approval`
+   - `rejected_proposal`
+   - `blocked_proposal`
+6. Stats cobrem completed external writes, GitHub comments, Slack thread replies, approved-ready, pending approval, failed execution, rejected, blocked, risk C/unknown, refs externas faltantes e duplicate avoided.
+7. UI `/company-brain` adiciona painel compacto dentro de Writeback Governance com written/failed/ready/reused/rejected/blocked e ultimos audit items com next action, external URL ou erro.
+8. MCP tool adicionada:
+   - `get_company_brain_writeback_safety_dashboard`
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-writeback-safety-dashboard-dogfood.sqlite`, daemon em `127.0.0.1:43127`, sem writeback externo:
+
+- 5 proposals artificiais criadas para cobrir pending, approved-ready, rejected, blocked risk C e failed execution.
+- IDs: pending `nDpLQ30DzgxP`, approved `51ra1f3LgbPa`, rejected `guAKeYeKUjvK`, blocked `k983qJ-v_7qc`, failed `Zv7cAukr-igf`.
+- Falha controlada validada por tentativa sem aprovacao: 400 `proposal must be approved before GitHub writeback`; nenhuma chamada externa de escrita ocorreu.
+- Dashboard retornou `proposalCount=5`, `pendingApprovalCount=1`, `approvedReadyCount=1`, `failedExecutionCount=1`, `rejectedProposalCount=1`, `blockedProposalCount=1`, `riskCOrUnknownCount=1`.
+- `itemKinds` retornou `approved_ready`, `blocked_proposal`, `failed_execution`, `pending_approval`, `rejected_proposal`.
+- Summary refletiu `completedExternalActionCount=0`, `failedExternalActionCount=1`, `duplicateAvoidedExternalActionCount=0`.
+
+Proximo corte recomendado: HITL hardening / retry safety antes de qualquer label/status/assign: approval/rejection reason mais forte, dry-run como precondicao rastreavel, idempotency review, retry seguro e visao de payload/diff antes de executar.
 
 ## Dogfood ERP
 
@@ -1027,13 +1063,13 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0 e Slack Thread Reply Writeback v0. O proximo corte recomendado e Writeback Safety Dashboard / audit review para expor tudo que o AIOS ja escreveu fora, proposals aprovadas/rejeitadas, falhas e duplicacoes evitadas antes de labels/status/assign ou qualquer acao de maior impacto.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0 e Writeback Safety Dashboard v0. O proximo corte recomendado e HITL hardening / retry safety antes de labels/status/assign ou qualquer acao externa mais forte.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- preservar provenance, status, human review e idempotency;
+- preservar provenance, status, human review, idempotency e audit trail;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter labels/status/assign/merge/deploy/Slack top-level/DM bloqueados sem novo escopo explicito;
-- qualquer writeback novo deve passar por action_policy, risk_class, HITL, dry-run e audit trail.
+- qualquer writeback novo deve passar por action_policy, risk_class, HITL, dry-run, idempotency e audit trail.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.
 

@@ -351,6 +351,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_writeback_safety_dashboard",
+  {
+    title: "Get Company Brain writeback safety dashboard",
+    description:
+      "Show read-only writeback audit review: completed GitHub/Slack writes, approved-ready proposals, failures, rejections, blocks and duplicate avoidance.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/writeback-safety-dashboard"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_felhen_demo_v0_1",
   {
     title: "Run Felhen Demo v0.1",
