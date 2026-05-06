@@ -330,6 +330,8 @@ export const cbGuidanceItems = sqliteTable("cb_guidance_items", {
     .$type<GuidanceFeedbackStatus>()
     .notNull()
     .default("pending"),
+  feedbackNote: text("feedback_note"),
+  feedbackAt: integer("feedback_at", { mode: "number" }),
   generatedFrom: text("generated_from", { mode: "json" }).$type<Record<string, unknown> | null>(),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),

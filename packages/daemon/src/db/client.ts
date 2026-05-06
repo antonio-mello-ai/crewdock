@@ -291,6 +291,8 @@ CREATE TABLE IF NOT EXISTS cb_guidance_items (
   severity TEXT NOT NULL DEFAULT 'info',
   status TEXT NOT NULL DEFAULT 'open',
   feedback_status TEXT NOT NULL DEFAULT 'pending',
+  feedback_note TEXT,
+  feedback_at INTEGER,
   generated_from TEXT,
   visibility TEXT NOT NULL DEFAULT 'internal',
   provenance TEXT,
@@ -653,6 +655,17 @@ export function getDb() {
       sqlite.exec(
         "ALTER TABLE cb_watcher_runs ADD COLUMN alignment_findings_created TEXT NOT NULL DEFAULT '[]'"
       );
+    }
+
+    const guidanceCols = sqlite.prepare("PRAGMA table_info(cb_guidance_items)").all() as Array<{
+      name: string;
+    }>;
+    const guidanceColNames = new Set(guidanceCols.map((c) => c.name));
+    if (!guidanceColNames.has("feedback_note")) {
+      sqlite.exec("ALTER TABLE cb_guidance_items ADD COLUMN feedback_note TEXT");
+    }
+    if (!guidanceColNames.has("feedback_at")) {
+      sqlite.exec("ALTER TABLE cb_guidance_items ADD COLUMN feedback_at INTEGER");
     }
 
     seedCompanyBrain(sqlite);

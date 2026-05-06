@@ -19,6 +19,7 @@ import type {
   GuidanceAudience,
   SignalSeverity,
   RunWatcherRequest,
+  UpdateGuidanceItemRequest,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
@@ -672,6 +673,8 @@ app.post("/guidance-items", async (c) => {
       severity: body.severity ?? "info",
       status: body.status ?? "open",
       feedbackStatus: body.feedbackStatus ?? "pending",
+      feedbackNote: body.feedbackNote ?? null,
+      feedbackAt: body.feedbackNote || body.feedbackStatus ? timestamp : null,
       generatedFrom: body.generatedFrom ?? null,
       visibility: body.visibility ?? "internal",
       provenance: body.provenance ?? {
@@ -691,6 +694,51 @@ app.post("/guidance-items", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.put("/guidance-items/:id", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = await c.req.json<UpdateGuidanceItemRequest>();
+    const existing = db
+      .select()
+      .from(cbGuidanceItems)
+      .where(eq(cbGuidanceItems.id, id))
+      .get();
+    if (!existing) throw new Error("guidance item not found");
+
+    const timestamp = now();
+    const hasFeedback =
+      body.feedbackStatus !== undefined || body.feedbackNote !== undefined;
+    const update = {
+      audience: body.audience ?? existing.audience,
+      action: body.action ?? existing.action,
+      dueAt: body.dueAt !== undefined ? body.dueAt : existing.dueAt,
+      severity: body.severity ?? existing.severity,
+      status: body.status ?? existing.status,
+      feedbackStatus: body.feedbackStatus ?? existing.feedbackStatus,
+      feedbackNote:
+        body.feedbackNote !== undefined ? body.feedbackNote : existing.feedbackNote,
+      feedbackAt: hasFeedback ? timestamp : existing.feedbackAt,
+      updatedAt: timestamp,
+    };
+
+    db.update(cbGuidanceItems)
+      .set(update)
+      .where(eq(cbGuidanceItems.id, id))
+      .run();
+
+    return c.json({
+      data: {
+        ...existing,
+        ...update,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "update_failed", message }, 400);
   }
 });
 
@@ -1248,6 +1296,8 @@ app.post("/watchers/:id/run", async (c) => {
       severity: signalSeverity,
       status: "open" as const,
       feedbackStatus: "pending" as const,
+      feedbackNote: null,
+      feedbackAt: null,
       generatedFrom: {
         watcherId: watcher.id,
         watcherRunId: runId,

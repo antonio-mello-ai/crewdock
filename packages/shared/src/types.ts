@@ -694,6 +694,8 @@ export interface GuidanceItem {
   severity: SignalSeverity;
   status: GuidanceStatus;
   feedbackStatus: GuidanceFeedbackStatus;
+  feedbackNote: string | null;
+  feedbackAt: number | null;
   generatedFrom: Record<string, unknown> | null;
   visibility: Visibility;
   provenance: Provenance | null;
@@ -716,9 +718,20 @@ export interface CreateGuidanceItemRequest {
   severity?: SignalSeverity;
   status?: GuidanceStatus;
   feedbackStatus?: GuidanceFeedbackStatus;
+  feedbackNote?: string | null;
   generatedFrom?: Record<string, unknown> | null;
   visibility?: Visibility;
   provenance?: Provenance | null;
+}
+
+export interface UpdateGuidanceItemRequest {
+  audience?: GuidanceAudience;
+  action?: string;
+  dueAt?: number | null;
+  severity?: SignalSeverity;
+  status?: GuidanceStatus;
+  feedbackStatus?: GuidanceFeedbackStatus;
+  feedbackNote?: string | null;
 }
 
 export interface WorkflowBlueprintStage {

@@ -35,6 +35,7 @@ import type {
   CreateWorkItemRequest,
   RunWatcherRequest,
   RunWatcherResponse,
+  UpdateGuidanceItemRequest,
   AlignmentFinding,
   Artifact,
   Goal,
@@ -523,6 +524,22 @@ export function useCreateCompanyBrainGuidanceItem() {
     mutationFn: (body) =>
       api("/api/company-brain/guidance-items", {
         method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useUpdateCompanyBrainGuidanceItem() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GuidanceItem>,
+    Error,
+    { id: string; body: UpdateGuidanceItemRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/guidance-items/${id}`, {
+        method: "PUT",
         body: JSON.stringify(body),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),

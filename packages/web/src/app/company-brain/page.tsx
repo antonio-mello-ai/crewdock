@@ -24,6 +24,7 @@ import {
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
   useRunCompanyBrainWatcher,
+  useUpdateCompanyBrainGuidanceItem,
 } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -143,6 +144,7 @@ export default function CompanyBrainPage() {
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
   const runWatcher = useRunCompanyBrainWatcher();
+  const updateGuidance = useUpdateCompanyBrainGuidanceItem();
 
   const summary = data?.data;
   const sources = summary?.sources ?? [];
@@ -369,6 +371,21 @@ export default function CompanyBrainPage() {
         createWorkItem: watcherRunForm.createWorkItem,
         workItemTitle: watcherRunForm.title,
         externalUrl: watcherRunForm.rawRef || null,
+      },
+    });
+  };
+
+  const updateGuidanceFeedback = (
+    id: string,
+    status: "accepted" | "done" | "ignored",
+    feedbackStatus: "accepted" | "completed" | "ignored"
+  ) => {
+    updateGuidance.mutate({
+      id,
+      body: {
+        status,
+        feedbackStatus,
+        feedbackNote: `Updated from Company Brain UI as ${status}.`,
       },
     });
   };
@@ -1187,11 +1204,54 @@ export default function CompanyBrainPage() {
                           <p className="mt-1 line-clamp-2 text-xs text-neutral-600">
                             {item.action}
                           </p>
+                          {item.feedbackNote && (
+                            <p className="mt-2 line-clamp-1 text-xs text-neutral-500">
+                              {item.feedbackNote}
+                            </p>
+                          )}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <StatusBadge value={item.status} />
                           <StatusBadge value={item.feedbackStatus} />
                         </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={updateGuidance.isPending}
+                          onClick={() =>
+                            updateGuidanceFeedback(item.id, "accepted", "accepted")
+                          }
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Accept
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={updateGuidance.isPending}
+                          onClick={() =>
+                            updateGuidanceFeedback(item.id, "done", "completed")
+                          }
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          Done
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={updateGuidance.isPending}
+                          onClick={() =>
+                            updateGuidanceFeedback(item.id, "ignored", "ignored")
+                          }
+                        >
+                          <AlertTriangle className="h-4 w-4" />
+                          Ignore
+                        </Button>
                       </div>
                     </div>
                   ))

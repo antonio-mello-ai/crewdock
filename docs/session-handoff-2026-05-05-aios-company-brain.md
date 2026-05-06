@@ -220,9 +220,39 @@ Dogfood local Closed Loop v0 validado em DB temporario `/tmp/aios-runtime-loop-d
 Proximos cortes recomendados:
 
 - Melhorar Drift/Alignment alem da heuristica v0, incluindo `drift` e `contradiction` a partir de regras de strategy/decision.
-- Adicionar `GuidanceItem` feedback/update workflow na UI/API.
 - Adicionar `Decision`, `AgentContext` e `ImprovementProposal`.
 - Depois disso, avaliar adapters/read-only reais e writeback gated, sem auto-writeback por default.
+
+## Slice Guidance Feedback v0
+
+Objetivo: permitir que a guidance gerada pelo closed loop receba resposta humana/agente sem writeback externo automatico.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Campos `feedback_note` e `feedback_at` em `cb_guidance_items`, com migration incremental idempotente.
+2. Tipo `UpdateGuidanceItemRequest` em `packages/shared/src/types.ts`.
+3. Endpoint `PUT /api/company-brain/guidance-items/:id` para atualizar `status`, `feedback_status`, `feedback_note`, `action`, `due_at`, `severity` e `audience`.
+4. UI `/company-brain` com botoes na Guidance Queue para `Accept`, `Done` e `Ignore`.
+5. MCP tool `update_company_brain_guidance_item`.
+6. Nenhum writeback externo automatico.
+
+Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-guidance-feedback-dogfood.sqlite`, daemon em `127.0.0.1:43104`:
+
+- Guidance gerada por watcher: `qkMKzA3y8Pk6`, inicial `status=open`, `feedbackStatus=pending`.
+- Update via API: `status=accepted`, `feedbackStatus=accepted`, `feedbackNote="Dogfood accepted via Guidance feedback/update API."`.
+- `feedbackAt` foi preenchido.
+- Summary apos update: `guidanceItemCount=1`, `openGuidanceCount=0`, `signalCount=1`, `alignmentFindingCount=1`, `watcherErrorCount=0`.
+
+Proximos cortes recomendados:
+
+- `Decision v0`.
+- `AgentContext v0`.
+- `ImprovementProposal v0`.
+- Importer local docs/corp.
+- GitHub Issues sync adapter real sem writeback automatico agressivo.
+- Adoption Dashboard.
 
 ## Dogfood ERP
 

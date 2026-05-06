@@ -551,6 +551,39 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_company_brain_guidance_item",
+  {
+    title: "Update Company Brain guidance feedback",
+    description:
+      "Update GuidanceItem status, feedback status, feedback note, action, due date, severity, or audience without external writeback.",
+    inputSchema: {
+      id: z.string().min(1),
+      status: z
+        .enum(["new", "open", "accepted", "rejected", "done", "ignored"])
+        .optional(),
+      feedbackStatus: z
+        .enum(["pending", "accepted", "rejected", "ignored", "completed"])
+        .optional(),
+      feedbackNote: z.string().optional(),
+      action: z.string().optional(),
+      dueAt: z.number().int().optional(),
+      severity: z.enum(["info", "warn", "critical"]).optional(),
+      audience: z.enum(["human", "team", "agent", "system"]).optional(),
+    },
+  },
+  async ({ id, ...body }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/guidance-items/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_work_item",
   {
     title: "Register Company Brain work item",
