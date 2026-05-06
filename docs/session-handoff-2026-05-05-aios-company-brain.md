@@ -1070,7 +1070,7 @@ Implementado em 2026-05-06:
 2. Matriz A/B/C para `risk_class` e `action_policy`.
 3. Matriz por `destination_type` e `action_type`, marcando:
    - executavel agora: GitHub issue/PR comment e Slack thread reply;
-   - preview-only planejado: GitHub label proposal v0;
+   - preview-only: GitHub label proposal v0 e GitHub status/check proposal v0;
    - bloqueado: assign/unassign, close/reopen, merge, deploy, notification read, Slack top-level/DM/edit/delete/react/pin/invite/topic/rename e unknown.
 4. Gates obrigatorios documentados para GitHub comment e Slack thread reply, alinhados com HITL, preview, idempotencia e Retry Safety.
 5. Requisitos para preview-only candidates: target, payload diff, rationale de risco, idempotency key, approvals futuros e audit event sem mutacao externa.
@@ -1101,7 +1101,41 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-github-label-preview-
 - Tentativa em `/github-label/execute` retornou 404, confirmando ausencia de executor.
 - Safety Dashboard retornou `reviewStatus=blocked` para a proposal, impedindo `ready_to_execute`.
 
-Proximo corte recomendado: avaliar GitHub status/check proposal v0 em modo preview-only ou endurecer visual/audit review antes de qualquer executor de label.
+## Slice GitHub Status/Check Proposal v0 Preview-Only
+
+Objetivo: modelar como o AIOS sugeriria feedback operacional para PR/CI no GitHub sem executar nenhuma mutacao real.
+
+Implementado em 2026-05-06:
+
+1. `ExternalActionKind` aceita `github_status` e `github_check`.
+2. Tipos `GitHubStatusCheckTarget` e `GitHubStatusCheckProposalPreviewResponse` em `packages/shared/src/types.ts`.
+3. `externalActionPolicy` permite Risk B GitHub status/check como proposal preview-only para `request_human` ou `writeback_allowed`.
+4. Daemon adiciona `POST /api/company-brain/external-action-proposals/:id/github-status-check/preview`.
+5. Preview valida payload:
+   - `repo`;
+   - `pullNumber` ou `sha`;
+   - `context` ou `name`;
+   - `state` para `github_status` ou `conclusion` para `github_check`;
+   - `title`, `summary`, `description`, `targetUrl` opcional e `rationale`.
+6. Preview retorna target exato, payloadHash, idempotencyKey, risk rationale, `executionBlocked=true` e `status=preview_only`.
+7. Preview registra audit event `github_status_check_previewed` com target, payload, hash, policy e rationale.
+8. Safety review marca status/check proposals como `blocked`, impedindo que elas aparecam como `ready_to_execute`.
+9. UI `/company-brain` permite criar status/check proposals com campos de PR/CI e botao `Preview status`, sem botao de execute.
+10. MCP tool `preview_company_brain_github_status_check_proposal`.
+11. Nenhuma chamada GitHub write API e nenhuma rota de execute foram adicionadas.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-github-status-check-preview-dogfood.sqlite`, daemon em `127.0.0.1:43132`, usando `GITHUB_TOKEN` somente para leitura:
+
+- GitHub PR/CI watcher read-only rodou em `home-assistant/core`, `state=open`, `limit=1`.
+- WatcherRun: `X4KQxjNU_DQH`.
+- Artifact `github_pr_ci`: `IkNiaN5OqR3F`, raw_ref `https://github.com/home-assistant/core/pull/169942@c3a3f29b46cd6e95508f3fa8f69010b57f26c70b`.
+- PR/CI target usado: repo `home-assistant/core`, PR `169942`, head SHA `c3a3f29b46cd6e95508f3fa8f69010b57f26c70b`.
+- Proposal `github_status`: `tqIheZVYAL-5`, preview retornou `status=preview_only`, target exato, context `aios/preview-status`, state `success`, payloadHash `556bf9a8a66c18586aa4763052caa2596c7886c371a5739e1562d44bddc4ec4a`, `executionBlocked=true`, `externalId=null`, `externalUrl=null`.
+- Proposal `github_check`: `6aO84WGXVO30`, preview retornou `status=preview_only`, target exato, name `aios/preview-check`, conclusion `success`, payloadHash `4f8a65ed8d0520e1722f6751b0b6295024ddaaff80434bd41e23e7afe260f60d`, `executionBlocked=true`, `externalId=null`, `externalUrl=null`.
+- Tentativas em `/github-status-check/execute` retornaram 404 para status e check, confirmando ausencia de executor.
+- Safety Dashboard retornou `reviewStatus=blocked` para ambas as proposals.
+
+Proximo corte recomendado: reforcar visual/audit review da fila de writeback antes de qualquer executor real de label.
 
 ## Dogfood ERP
 
@@ -1221,7 +1255,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0 e GitHub Label Proposal v0 preview-only. O proximo corte recomendado e GitHub status/check proposal v0 em modo preview-only ou reforco de visual/audit review antes de qualquer executor de label.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only e GitHub Status/Check Proposal v0 preview-only. O proximo corte recomendado e reforco de visual/audit review da fila de writeback antes de qualquer executor real de label.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

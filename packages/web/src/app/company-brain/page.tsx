@@ -44,6 +44,7 @@ import {
   useSyncCompanyBrainSlackChannel,
   usePreviewCompanyBrainGitHubCommentWriteback,
   usePreviewCompanyBrainGitHubLabelProposal,
+  usePreviewCompanyBrainGitHubStatusCheckProposal,
   usePreviewCompanyBrainSlackThreadReplyWriteback,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
@@ -174,6 +175,8 @@ const externalActionDestinations: ExternalActionDestination[] = [
 const externalActionKinds: ExternalActionKind[] = [
   "comment",
   "label",
+  "github_status",
+  "github_check",
   "thread_reply",
   "draft",
   "unknown",
@@ -264,6 +267,8 @@ export default function CompanyBrainPage() {
   const previewGitHubCommentWriteback =
     usePreviewCompanyBrainGitHubCommentWriteback();
   const previewGitHubLabelProposal = usePreviewCompanyBrainGitHubLabelProposal();
+  const previewGitHubStatusCheckProposal =
+    usePreviewCompanyBrainGitHubStatusCheckProposal();
   const executeGitHubCommentWriteback =
     useExecuteCompanyBrainGitHubCommentWriteback();
   const previewSlackThreadReplyWriteback =
@@ -458,6 +463,19 @@ export default function CompanyBrainPage() {
     actionPolicy: "writeback_allowed" as ActionPolicy,
     requestedBy: "Antonio",
     labelNames: "",
+    statusRepo: "",
+    statusPullNumber: "",
+    statusSha: "",
+    statusContextName: "aios/preview",
+    statusState: "pending",
+    statusConclusion: "neutral",
+    statusTitle: "AIOS preview-only PR/CI feedback",
+    statusSummary: "AIOS would publish this as PR/CI operational feedback.",
+    statusDescription:
+      "Preview-only proposal; no GitHub status or check-run is created.",
+    statusTargetUrl: "",
+    statusRationale:
+      "Preview-only design validation for AIOS writeback governance.",
   });
 
   const [workItemForm, setWorkItemForm] = useState({
@@ -903,10 +921,14 @@ export default function CompanyBrainPage() {
     const isLabelProposal =
       writebackForm.actionType === "label" ||
       writebackForm.actionType === "github_label";
+    const isStatusCheckProposal =
+      writebackForm.actionType === "github_status" ||
+      writebackForm.actionType === "github_check";
     const labelNames = writebackForm.labelNames
       .split(",")
       .map((label) => label.trim())
       .filter(Boolean);
+    const pullNumber = Number(writebackForm.statusPullNumber);
     createExternalActionProposal.mutate({
       guidanceItemId: writebackForm.guidanceItemId,
       destinationType: writebackForm.destinationType,
@@ -918,6 +940,30 @@ export default function CompanyBrainPage() {
             mode: "add",
             body: `Preview-only GitHub label proposal: ${labelNames.join(", ")}`,
           }
+        : isStatusCheckProposal
+          ? {
+              repo: writebackForm.statusRepo,
+              pullNumber:
+                Number.isInteger(pullNumber) && pullNumber > 0
+                  ? pullNumber
+                  : undefined,
+              sha: writebackForm.statusSha || undefined,
+              context: writebackForm.statusContextName,
+              name: writebackForm.statusContextName,
+              state:
+                writebackForm.actionType === "github_status"
+                  ? writebackForm.statusState
+                  : undefined,
+              conclusion:
+                writebackForm.actionType === "github_check"
+                  ? writebackForm.statusConclusion
+                  : undefined,
+              title: writebackForm.statusTitle,
+              summary: writebackForm.statusSummary,
+              description: writebackForm.statusDescription,
+              targetUrl: writebackForm.statusTargetUrl || undefined,
+              rationale: writebackForm.statusRationale,
+            }
         : undefined,
       riskClass: writebackForm.riskClass,
       actionPolicy: writebackForm.actionPolicy,
@@ -975,6 +1021,18 @@ export default function CompanyBrainPage() {
     !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
     proposal.approvalStatus !== "rejected";
 
+  const canPreviewGitHubStatusCheckProposal = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    (proposal.actionType === "github_status" ||
+      proposal.actionType === "github_check") &&
+    proposal.riskClass === "B" &&
+    (proposal.actionPolicy === "request_human" ||
+      proposal.actionPolicy === "writeback_allowed") &&
+    !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
+    proposal.approvalStatus !== "rejected";
+
   const canPreviewSlackThreadReplyWriteback = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
@@ -1002,6 +1060,13 @@ export default function CompanyBrainPage() {
 
   const previewGitHubLabelProposalDryRun = (id: string) => {
     previewGitHubLabelProposal.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const previewGitHubStatusCheckProposalDryRun = (id: string) => {
+    previewGitHubStatusCheckProposal.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -1756,6 +1821,136 @@ export default function CompanyBrainPage() {
                     />
                   </>
                 ) : null}
+                {writebackForm.actionType === "github_status" ||
+                writebackForm.actionType === "github_check" ? (
+                  <div className="space-y-3 rounded-md border border-neutral-800/70 bg-neutral-950/30 p-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <FieldLabel>Repo</FieldLabel>
+                        <Input
+                          value={writebackForm.statusRepo}
+                          onChange={(event) =>
+                            setWritebackForm({
+                              ...writebackForm,
+                              statusRepo: event.target.value,
+                            })
+                          }
+                          placeholder="owner/repo"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Pull number</FieldLabel>
+                        <Input
+                          value={writebackForm.statusPullNumber}
+                          onChange={(event) =>
+                            setWritebackForm({
+                              ...writebackForm,
+                              statusPullNumber: event.target.value,
+                            })
+                          }
+                          placeholder="123"
+                        />
+                      </div>
+                    </div>
+                    <FieldLabel>SHA</FieldLabel>
+                    <Input
+                      value={writebackForm.statusSha}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          statusSha: event.target.value,
+                        })
+                      }
+                      placeholder="optional when pull number is set"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <FieldLabel>Context/name</FieldLabel>
+                        <Input
+                          value={writebackForm.statusContextName}
+                          onChange={(event) =>
+                            setWritebackForm({
+                              ...writebackForm,
+                              statusContextName: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>
+                          {writebackForm.actionType === "github_check"
+                            ? "Conclusion"
+                            : "State"}
+                        </FieldLabel>
+                        <Input
+                          value={
+                            writebackForm.actionType === "github_check"
+                              ? writebackForm.statusConclusion
+                              : writebackForm.statusState
+                          }
+                          onChange={(event) =>
+                            setWritebackForm({
+                              ...writebackForm,
+                              [writebackForm.actionType === "github_check"
+                                ? "statusConclusion"
+                                : "statusState"]: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <FieldLabel>Title</FieldLabel>
+                    <Input
+                      value={writebackForm.statusTitle}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          statusTitle: event.target.value,
+                        })
+                      }
+                    />
+                    <FieldLabel>Summary</FieldLabel>
+                    <Input
+                      value={writebackForm.statusSummary}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          statusSummary: event.target.value,
+                        })
+                      }
+                    />
+                    <FieldLabel>Description</FieldLabel>
+                    <Input
+                      value={writebackForm.statusDescription}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          statusDescription: event.target.value,
+                        })
+                      }
+                    />
+                    <FieldLabel>Target URL</FieldLabel>
+                    <Input
+                      value={writebackForm.statusTargetUrl}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          statusTargetUrl: event.target.value,
+                        })
+                      }
+                    />
+                    <FieldLabel>Rationale</FieldLabel>
+                    <Input
+                      value={writebackForm.statusRationale}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          statusRationale: event.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                ) : null}
                 <FieldLabel>Requested by</FieldLabel>
                 <Input
                   value={writebackForm.requestedBy}
@@ -1774,7 +1969,17 @@ export default function CompanyBrainPage() {
                     !writebackForm.guidanceItemId ||
                     ((writebackForm.actionType === "label" ||
                       writebackForm.actionType === "github_label") &&
-                      !writebackForm.labelNames.trim())
+                      !writebackForm.labelNames.trim()) ||
+                    ((writebackForm.actionType === "github_status" ||
+                      writebackForm.actionType === "github_check") &&
+                      (!writebackForm.statusRepo.trim() ||
+                        (!writebackForm.statusPullNumber.trim() &&
+                          !writebackForm.statusSha.trim()) ||
+                        !writebackForm.statusContextName.trim() ||
+                        !writebackForm.statusTitle.trim() ||
+                        !writebackForm.statusSummary.trim() ||
+                        !writebackForm.statusDescription.trim() ||
+                        !writebackForm.statusRationale.trim()))
                   }
                 >
                   {createExternalActionProposal.isPending ? (
@@ -1807,6 +2012,26 @@ export default function CompanyBrainPage() {
                     </p>
                     <p className="mt-1 text-xs text-neutral-600">
                       preview-only · no GitHub label writeback executor
+                    </p>
+                  </div>
+                ) : null}
+                {previewGitHubStatusCheckProposal.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {previewGitHubStatusCheckProposal.data.data.target.repo} ·{" "}
+                      {previewGitHubStatusCheckProposal.data.data.target.ref} ·{" "}
+                      {previewGitHubStatusCheckProposal.data.data.actionType}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-neutral-300">
+                      {previewGitHubStatusCheckProposal.data.data.contextName} ·{" "}
+                      {previewGitHubStatusCheckProposal.data.data.state ??
+                        previewGitHubStatusCheckProposal.data.data.conclusion}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs text-neutral-500">
+                      {previewGitHubStatusCheckProposal.data.data.summary}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-600">
+                      {previewGitHubStatusCheckProposal.data.data.payloadHash}
                     </p>
                   </div>
                 ) : null}
@@ -1920,6 +2145,24 @@ export default function CompanyBrainPage() {
                               >
                                 <FileText className="h-4 w-4" />
                                 Preview labels
+                              </Button>
+                            ) : proposal.destinationType === "github" &&
+                              (proposal.actionType === "github_status" ||
+                                proposal.actionType === "github_check") ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={
+                                  previewGitHubStatusCheckProposal.isPending ||
+                                  !canPreviewGitHubStatusCheckProposal(proposal)
+                                }
+                                onClick={() =>
+                                  previewGitHubStatusCheckProposalDryRun(proposal.id)
+                                }
+                              >
+                                <FileText className="h-4 w-4" />
+                                Preview status
                               </Button>
                             ) : (
                               <>

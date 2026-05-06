@@ -414,6 +414,8 @@ export type ExternalActionKind =
   | "github_comment"
   | "label"
   | "github_label"
+  | "github_status"
+  | "github_check"
   | "thread_reply"
   | "slack_thread_reply"
   | "draft"
@@ -1204,6 +1206,37 @@ export interface GitHubLabelProposalPreviewResponse {
   labels: string[];
   mode: GitHubLabelActionMode;
   idempotencyKey: string;
+  dryRun: true;
+  status: "preview_only";
+  executionBlocked: true;
+  policySummary: string;
+}
+
+export interface GitHubStatusCheckTarget {
+  repo: string;
+  owner: string;
+  name: string;
+  pullNumber: number | null;
+  sha: string | null;
+  ref: string;
+  url: string | null;
+}
+
+export interface GitHubStatusCheckProposalPreviewResponse {
+  proposal: ExternalActionProposal;
+  target: GitHubStatusCheckTarget;
+  actionType: "github_status" | "github_check";
+  contextName: string;
+  state: string | null;
+  conclusion: string | null;
+  title: string;
+  summary: string;
+  description: string;
+  targetUrl: string | null;
+  rationale: string;
+  payloadHash: string;
+  idempotencyKey: string;
+  riskRationale: string;
   dryRun: true;
   status: "preview_only";
   executionBlocked: true;

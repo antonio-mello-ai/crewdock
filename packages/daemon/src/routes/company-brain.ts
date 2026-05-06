@@ -43,6 +43,8 @@ import type {
   GitHubCommentWritebackTarget,
   GitHubLabelActionMode,
   GitHubLabelProposalPreviewResponse,
+  GitHubStatusCheckProposalPreviewResponse,
+  GitHubStatusCheckTarget,
   ExecuteExternalActionProposalRequest,
   SlackThreadReplyWritebackResponse,
   SlackThreadReplyWritebackTarget,
@@ -633,6 +635,10 @@ function isGitHubLabelAction(actionType: ExternalActionKind) {
   return actionType === "label" || actionType === "github_label";
 }
 
+function isGitHubStatusCheckAction(actionType: ExternalActionKind) {
+  return actionType === "github_status" || actionType === "github_check";
+}
+
 function isSlackThreadReplyAction(actionType: ExternalActionKind) {
   return actionType === "thread_reply" || actionType === "slack_thread_reply";
 }
@@ -693,6 +699,96 @@ function gitHubLabelPayloadMode(
   return "add";
 }
 
+function payloadString(
+  payload: Record<string, unknown>,
+  keys: string[],
+  fieldName: string
+) {
+  const value = keys.map((key) => payload[key]).find((item) => item !== undefined);
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`payload.${fieldName} is required`);
+  }
+  return value.trim();
+}
+
+function payloadOptionalString(payload: Record<string, unknown>, keys: string[]) {
+  const value = keys.map((key) => payload[key]).find((item) => item !== undefined);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function payloadNumber(
+  payload: Record<string, unknown>,
+  keys: string[]
+) {
+  const value = keys.map((key) => payload[key]).find((item) => item !== undefined);
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+  return null;
+}
+
+function parseGitHubRepoName(repo: string) {
+  const match = repo.trim().match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (!match) throw new Error("payload.repo must be owner/repo");
+  return {
+    owner: match[1],
+    name: match[2],
+    fullName: `${match[1]}/${match[2]}`,
+  };
+}
+
+function gitHubStatusCheckTarget(
+  proposal: ExternalActionProposal
+): GitHubStatusCheckTarget {
+  const repo = parseGitHubRepoName(payloadString(proposal.payload, ["repo"], "repo"));
+  const pullNumber = payloadNumber(proposal.payload, ["pullNumber", "pull_number"]);
+  const sha = payloadOptionalString(proposal.payload, ["sha", "headSha", "head_sha"]);
+  if (!pullNumber && !sha) {
+    throw new Error("payload.pullNumber or payload.sha is required");
+  }
+  const ref = sha ?? `pull/${pullNumber}`;
+  return {
+    repo: repo.fullName,
+    owner: repo.owner,
+    name: repo.name,
+    pullNumber,
+    sha,
+    ref,
+    url: pullNumber
+      ? `https://github.com/${repo.fullName}/pull/${pullNumber}`
+      : `https://github.com/${repo.fullName}/commit/${sha}`,
+  };
+}
+
+function normalizeGitHubStatusState(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (["error", "failure", "pending", "success"].includes(normalized)) {
+    return normalized;
+  }
+  throw new Error("payload.state must be error, failure, pending or success");
+}
+
+function normalizeGitHubCheckConclusion(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (
+    [
+      "success",
+      "failure",
+      "neutral",
+      "cancelled",
+      "skipped",
+      "timed_out",
+      "action_required",
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+  throw new Error(
+    "payload.conclusion must be success, failure, neutral, cancelled, skipped, timed_out or action_required"
+  );
+}
+
 function buildGitHubLabelProposalPreview(
   proposal: ExternalActionProposal
 ): Omit<GitHubLabelProposalPreviewResponse, "proposal" | "policySummary"> {
@@ -708,6 +804,56 @@ function buildGitHubLabelProposalPreview(
     labels: gitHubLabelPayloadLabels(proposal),
     mode: gitHubLabelPayloadMode(proposal),
     idempotencyKey: proposal.idempotencyKey,
+    dryRun: true,
+    status: "preview_only",
+    executionBlocked: true,
+  };
+}
+
+function buildGitHubStatusCheckProposalPreview(
+  proposal: ExternalActionProposal
+): Omit<GitHubStatusCheckProposalPreviewResponse, "proposal" | "policySummary"> {
+  if (!proposal.idempotencyKey?.trim()) {
+    throw new Error("idempotencyKey is required for GitHub status/check preview");
+  }
+  const target = gitHubStatusCheckTarget(proposal);
+  const contextName = payloadString(
+    proposal.payload,
+    proposal.actionType === "github_check" ? ["name", "context"] : ["context", "name"],
+    proposal.actionType === "github_check" ? "name" : "context"
+  );
+  const title = payloadString(proposal.payload, ["title"], "title");
+  const summary = payloadString(proposal.payload, ["summary"], "summary");
+  const description = payloadString(proposal.payload, ["description"], "description");
+  const rationale = payloadString(proposal.payload, ["rationale"], "rationale");
+  const targetUrl = payloadOptionalString(proposal.payload, ["targetUrl", "target_url"]);
+  const state =
+    proposal.actionType === "github_status"
+      ? normalizeGitHubStatusState(
+          payloadString(proposal.payload, ["state"], "state")
+        )
+      : payloadOptionalString(proposal.payload, ["state"]);
+  const conclusion =
+    proposal.actionType === "github_check"
+      ? normalizeGitHubCheckConclusion(
+          payloadString(proposal.payload, ["conclusion"], "conclusion")
+        )
+      : payloadOptionalString(proposal.payload, ["conclusion"]);
+  return {
+    target,
+    actionType: proposal.actionType as "github_status" | "github_check",
+    contextName,
+    state,
+    conclusion,
+    title,
+    summary,
+    description,
+    targetUrl,
+    rationale,
+    payloadHash: stablePayloadHash(proposal.payload),
+    idempotencyKey: proposal.idempotencyKey,
+    riskRationale:
+      "Risk B preview-only operational feedback for PR/CI; no GitHub status or check-run is created in this cut.",
     dryRun: true,
     status: "preview_only",
     executionBlocked: true,
@@ -763,6 +909,33 @@ function validateGitHubLabelProposalPreview(proposal: ExternalActionProposal) {
   return buildGitHubLabelProposalPreview(proposal);
 }
 
+function validateGitHubStatusCheckProposalPreview(proposal: ExternalActionProposal) {
+  if (proposal.destinationType !== "github") {
+    throw new Error("proposal destinationType must be github");
+  }
+  if (!isGitHubStatusCheckAction(proposal.actionType)) {
+    throw new Error("proposal actionType must be github_status or github_check");
+  }
+  if (proposal.riskClass !== "B") {
+    throw new Error("proposal riskClass must be B for status/check preview");
+  }
+  if (
+    proposal.actionPolicy !== "request_human" &&
+    proposal.actionPolicy !== "writeback_allowed"
+  ) {
+    throw new Error(
+      "proposal actionPolicy must be request_human or writeback_allowed for status/check preview"
+    );
+  }
+  if (proposal.approvalStatus === "rejected") {
+    throw new Error("rejected status/check proposals require a new proposal");
+  }
+  if (proposal.executionStatus === "cancelled") {
+    throw new Error("cancelled status/check proposals require a new proposal");
+  }
+  return buildGitHubStatusCheckProposalPreview(proposal);
+}
+
 class WritebackExecutionReviewError extends Error {
   review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"];
 
@@ -810,6 +983,12 @@ function previewEventForProposal(proposal: ExternalActionProposal) {
   }
   if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
     return "github_label_previewed";
+  }
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubStatusCheckAction(proposal.actionType)
+  ) {
+    return "github_status_check_previewed";
   }
   if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
     return "slack_thread_reply_previewed";
@@ -869,6 +1048,12 @@ function buildWritebackExecutionReview(
     addFlag("blocked");
   }
   if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
+    addFlag("blocked");
+  }
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubStatusCheckAction(proposal.actionType)
+  ) {
     addFlag("blocked");
   }
 
@@ -3085,7 +3270,8 @@ function externalActionPolicy(args: {
     (destinationType === "github" && isGitHubCommentAction(actionType)) ||
     (destinationType === "slack" && isSlackThreadReplyAction(actionType));
   const isPreviewOnlyExternal =
-    destinationType === "github" && isGitHubLabelAction(actionType);
+    destinationType === "github" &&
+    (isGitHubLabelAction(actionType) || isGitHubStatusCheckAction(actionType));
 
   if (riskClass === "C") {
     return {
@@ -3114,12 +3300,14 @@ function externalActionPolicy(args: {
       actionPolicy === "request_human" || actionPolicy === "writeback_allowed";
     const allowed = isExternal && isLowRiskExternal && allowedPolicy;
     if (isExternal && isPreviewOnlyExternal && allowedPolicy) {
+      const previewKind = isGitHubStatusCheckAction(actionType)
+        ? "status/check"
+        : "label";
       return {
         approvalStatus: "pending",
         approvalRequired: true,
         executionStatus: "not_started",
-        policySummary:
-          "Risk B GitHub label proposals are preview-only in this cut. They may be reviewed and dry-run, but no label writeback executor exists.",
+        policySummary: `Risk B GitHub ${previewKind} proposals are preview-only in this cut. They may be reviewed and dry-run, but no ${previewKind} writeback executor exists.`,
       };
     }
     return {
@@ -3147,6 +3335,21 @@ function defaultExternalActionPayload(args: {
 }): Record<string, unknown> {
   if (isGitHubLabelAction(args.actionType)) {
     return { labels: [], mode: "add", body: args.guidanceAction };
+  }
+  if (isGitHubStatusCheckAction(args.actionType)) {
+    return {
+      repo: "",
+      pullNumber: null,
+      sha: "",
+      context: "aios/preview",
+      state: "pending",
+      conclusion: "neutral",
+      title: "AIOS preview-only PR/CI feedback",
+      summary: args.guidanceAction,
+      description: args.guidanceAction,
+      targetUrl: "",
+      rationale: args.guidanceAction,
+    };
   }
   if (isGitHubCommentAction(args.actionType) || isSlackThreadReplyAction(args.actionType)) {
     return { body: args.guidanceAction };
@@ -6765,6 +6968,82 @@ app.post("/external-action-proposals/:id/github-label/preview", async (c) => {
       ...preview,
       policySummary:
         "Preview-only GitHub label proposal. No label writeback executor is implemented in this cut.",
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "preview_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/github-status-check/preview", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteExternalActionProposalRequest>()
+      .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, id))
+      .get();
+    if (!existing) throw new Error("external action proposal not found");
+
+    const preview = validateGitHubStatusCheckProposalPreview(existing);
+    const actor = body.actor?.trim() || null;
+    const timestamp = now();
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: "github_status_check_previewed",
+      note:
+        "Preview-only generated the GitHub status/check plan without calling GitHub write APIs.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target: preview.target,
+          actionType: existing.actionType,
+          contextName: preview.contextName,
+          state: preview.state,
+          conclusion: preview.conclusion,
+          title: preview.title,
+          summary: preview.summary,
+          description: preview.description,
+          targetUrl: preview.targetUrl,
+          rationale: preview.rationale,
+          riskClass: existing.riskClass,
+          actionPolicy: existing.actionPolicy,
+          idempotencyKey: existing.idempotencyKey,
+          payloadHash: preview.payloadHash,
+          riskRationale: preview.riskRationale,
+        },
+        response: {
+          dryRun: true,
+          previewOnly: true,
+          executionBlocked: true,
+        },
+      },
+    });
+    const update = {
+      executionStatus:
+        existing.executionStatus === "blocked"
+          ? ("blocked" as const)
+          : ("dry_run" as const),
+      errorSummary: null,
+      auditTrail,
+      updatedAt: timestamp,
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    const proposal = { ...existing, ...update };
+    const result: GitHubStatusCheckProposalPreviewResponse = {
+      proposal,
+      ...preview,
+      policySummary:
+        "Preview-only GitHub status/check proposal. No status or check-run writeback executor is implemented in this cut.",
     };
     return c.json({ data: result });
   } catch (err) {

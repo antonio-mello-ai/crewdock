@@ -44,6 +44,7 @@ execute.
 | `github` | `comment` / `github_comment` | B | Executable. | Issue/PR comments only; requires `GITHUB_TOKEN`/`GH_TOKEN`, approval, preview, idempotency marker and Retry Safety review. |
 | `slack` | `thread_reply` / `slack_thread_reply` | B | Executable. | Existing thread replies only; requires `SLACK_BOT_TOKEN`, approval, preview, idempotency marker and Retry Safety review. |
 | `github` | `label` / `github_label` | B or C depending label semantics | Preview-only proposal implemented. | No execution in v0. Shows target labels and risk classification before any future write. |
+| `github` | `github_status` / `github_check` | B | Preview-only proposal implemented. | No execution in v0. Shows repo, PR/SHA, context/name, proposed state/conclusion and risk rationale before any future write. |
 | `github` | `assign` / `unassign` | C | Blocked. | Changes ownership and routing. |
 | `github` | `close` / `reopen` | C | Blocked. | Changes lifecycle state. |
 | `github` | `merge` | C | Blocked. | Code integration action. |
@@ -103,7 +104,7 @@ Preview-only candidates may create and review `ExternalActionProposal` records,
 but must not call write APIs:
 
 - GitHub label proposal v0. Implemented as preview-only.
-- GitHub status/check conclusion proposal.
+- GitHub status/check conclusion proposal. Implemented as preview-only.
 - GitHub assignee proposal.
 - Slack top-level announcement draft.
 

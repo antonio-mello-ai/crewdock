@@ -1300,6 +1300,8 @@ server.registerTool(
           "github_comment",
           "label",
           "github_label",
+          "github_status",
+          "github_check",
           "thread_reply",
           "slack_thread_reply",
           "draft",
@@ -1423,6 +1425,29 @@ server.registerTool(
   async ({ id, actor }) => {
     const result = await daemonFetch<{ data: unknown }>(
       `/api/company-brain/external-action-proposals/${id}/github-label/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "preview_company_brain_github_status_check_proposal",
+  {
+    title: "Preview GitHub status/check proposal",
+    description:
+      "Dry-run a preview-only GitHub status or check ExternalActionProposal. Returns exact repo/PR/SHA target, context/name, proposed state/conclusion, payload hash, idempotency key and risk rationale without calling GitHub write APIs. There is no status/check execute tool in this cut.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-status-check/preview`,
       {
         method: "POST",
         body: JSON.stringify({ actor }),
