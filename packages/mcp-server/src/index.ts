@@ -1392,7 +1392,7 @@ server.registerTool(
   {
     title: "List Company Brain writeback audit trail",
     description:
-      "Read-only export of ExternalActionProposal audit events, optionally filtered by adapter, proposal, guidance, destination, action, risk, execution status, actor, date range or search text. Does not execute or mutate external systems.",
+      "Read-only export of ExternalActionProposal audit events, optionally filtered by adapter, proposal, guidance, destination, action, risk, execution status, event, actor, date range or search text. Does not execute or mutate external systems.",
     inputSchema: {
       adapter: z
         .enum([
@@ -1433,6 +1433,7 @@ server.registerTool(
           "cancelled",
         ])
         .optional(),
+      event: z.string().optional(),
       actor: z.string().optional(),
       fromAt: z.number().optional(),
       toAt: z.number().optional(),
@@ -1450,6 +1451,7 @@ server.registerTool(
     actionType,
     riskClass,
     executionStatus,
+    event,
     actor,
     fromAt,
     toAt,
@@ -1466,6 +1468,7 @@ server.registerTool(
     if (actionType) params.set("actionType", actionType);
     if (riskClass) params.set("riskClass", riskClass);
     if (executionStatus) params.set("executionStatus", executionStatus);
+    if (event) params.set("event", event);
     if (actor) params.set("actor", actor);
     if (fromAt) params.set("fromAt", String(fromAt));
     if (toAt) params.set("toAt", String(toAt));

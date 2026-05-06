@@ -1701,6 +1701,32 @@ Dogfood read-only validado no DB temporario do status executor `/tmp/aios-runtim
 - Evidence Packet de `35xo7wHd9CBV`: mesmo `targetSummary`, `executionReview=completed`, `gaps=0`.
 - Summary/Evidence Packet Index de `35xo7wHd9CBV`: `targetSummary` presente, `reviewStatus=completed`, `externalUrl` preservada.
 
+## Slice GitHub Status Writeback Observability v0
+
+Objetivo: endurecer observability e evidence read-only para o status writeback real ja executado, sem nova mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. Audit Trail API ganhou filtro explicito `event`, permitindo consultar `github_status_set`, `github_status_completed_noop`, `github_status_failed` e outros eventos.
+2. `WritebackAuditTrailEntry` agora inclui `targetSummary` e `githubStatus` normalizado.
+3. `githubStatus` inclui repo, SHA, shortSha, context, state, statusId, statusUrl, externalUrl, repoPrivate, allowlistMatched, existingStatusesRead, existingStatusesReadCount, duplicateDetected, completedNoop, mutationAttempted e response resumida.
+4. CSV de audit trail inclui `targetSummary` e `githubStatus`.
+5. Evidence Packet inclui `githubStatus` normalizado alem dos eventos `approvalEvent`, `previewEvent`, `executionEvent`, hashes e idempotency ja existentes.
+6. Safety Dashboard/UI separa contadores de GitHub comments, GitHub labels, GitHub statuses e Slack thread replies.
+7. UI de audit trail adiciona filtro por evento e mostra alvo/status id/repo private nos eventos de status.
+8. UI de evidence packet mostra approval/preview/execution events e status id/context/state/repo private.
+9. AIOS briefing agora considera `github_status_set` como execucao recente e mostra o target summary do status writeback.
+10. Executor de status passa a gravar, para execucoes futuras, `allowlistMatched=true`, `existingStatusesRead=true`, `existingStatusesReadCount` e `duplicateDetected` no response auditado.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43149`:
+
+- Audit Trail com `event=github_status_set` retornou `total=1`, proposal `35xo7wHd9CBV`, `externalId=47036420104`, `targetSummary=antonio-mello-ai/felhen | b9e1057f4498 | aios/dogfood-status | success`.
+- `githubStatus` no audit trail mostrou `repoPrivate=true`, `allowlistMatched=true`, `existingStatusesRead=true`, `duplicateDetected=false`, `completedNoop=false`, `mutationAttempted=true`.
+- CSV com `event=github_status_set` exportou colunas `targetSummary` e `githubStatus`.
+- Evidence Packet de `35xo7wHd9CBV` retornou `approval=approved`, `preview=github_status_check_previewed`, `execution=github_status_set`, payloadHash `6737a218dba45d17e183f92ede73276af44a215f00a7e1444ac32558bc3de48f`, idempotency `dogfood:github-status-executor:v0:felhen-main-b9e1057` e status id `47036420104`.
+- Busca textual por `47036420104` retornou eventos do proposal com `targetSummary` e `githubStatus.statusId`.
+- Briefing `writeback_safety` passou a incluir `recent: Dogfood GitHub commit status executor v0 [github_status_set] - antonio-mello-ai/felhen | b9e1057f4498 | aios/dogfood-status | success`.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -1819,7 +1845,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0 e Writeback Target Summary v0. O proximo corte recomendado e melhoria read-only/audit/export/observability para status writeback e evidence packets. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0 e GitHub Status Writeback Observability v0. O proximo corte recomendado e consolidar observability read-only por target/projeto e evidencias de writeback, incluindo rollups por repo/canal/status, freshness de approvals/previews e pacotes de auditoria mais faceis de revisar. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

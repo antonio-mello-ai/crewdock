@@ -98,6 +98,7 @@ export interface CompanyBrainWritebackAuditTrailFilters {
   actionType?: string | null;
   riskClass?: string | null;
   executionStatus?: string | null;
+  event?: string | null;
   actor?: string | null;
   fromAt?: number | null;
   toAt?: number | null;

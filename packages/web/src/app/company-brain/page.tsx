@@ -222,6 +222,17 @@ const writebackExecutionStatuses = [
   "failed",
   "cancelled",
 ];
+const writebackAuditEvents = [
+  "github_status_set",
+  "github_status_completed_noop",
+  "github_status_failed",
+  "github_comment_posted",
+  "github_comment_reused",
+  "github_label_added",
+  "github_label_completed_noop",
+  "slack_thread_reply_posted",
+  "slack_thread_reply_reused",
+];
 const writebackEvidenceIntegrityGapKinds = [
   "missing_guidance_link",
   "missing_signal_or_finding_link",
@@ -396,6 +407,7 @@ export default function CompanyBrainPage() {
     actionType: "",
     riskClass: "",
     executionStatus: "",
+    event: "",
     actor: "",
     proposalId: "",
     guidanceId: "",
@@ -435,6 +447,7 @@ export default function CompanyBrainPage() {
         actionType: writebackAuditFilters.actionType,
         riskClass: writebackAuditFilters.riskClass,
         executionStatus: writebackAuditFilters.executionStatus,
+        event: writebackAuditFilters.event,
         actor: writebackAuditFilters.actor,
         proposalId: writebackAuditFilters.proposalId,
         guidanceId: writebackAuditFilters.guidanceId,
@@ -1871,12 +1884,22 @@ export default function CompanyBrainPage() {
                     }
                   />
                   <MiniMetric
+                    label="comments"
+                    value={writebackSafetyDashboard.stats.githubCommentWriteCount}
+                  />
+                  <MiniMetric
                     label="labels"
                     value={writebackSafetyDashboard.stats.githubLabelWriteCount}
                   />
                   <MiniMetric
                     label="statuses"
                     value={writebackSafetyDashboard.stats.githubStatusWriteCount}
+                  />
+                  <MiniMetric
+                    label="slack"
+                    value={
+                      writebackSafetyDashboard.stats.slackThreadReplyWriteCount
+                    }
                   />
                   <MiniMetric
                     label="noop"
@@ -1901,10 +1924,6 @@ export default function CompanyBrainPage() {
                   <MiniMetric
                     label="reapprove"
                     value={writebackSafetyDashboard.stats.needsReapprovalCount}
-                  />
-                  <MiniMetric
-                    label="payload"
-                    value={writebackSafetyDashboard.stats.payloadMismatchCount}
                   />
                   <MiniMetric
                     label="failed"
@@ -2434,6 +2453,19 @@ export default function CompanyBrainPage() {
                         </option>
                       ))}
                     </Select>
+                    <Select
+                      value={writebackAuditFilters.event}
+                      onChange={(event) =>
+                        updateWritebackAuditFilter("event", event.target.value)
+                      }
+                    >
+                      <option value="">event</option>
+                      {writebackAuditEvents.map((eventName) => (
+                        <option key={eventName} value={eventName}>
+                          {eventName}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                   <div className="mt-2 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
                     <Input
@@ -2509,6 +2541,7 @@ export default function CompanyBrainPage() {
                           actionType: "",
                           riskClass: "",
                           executionStatus: "",
+                          event: "",
                           actor: "",
                           proposalId: "",
                           guidanceId: "",
@@ -2540,6 +2573,22 @@ export default function CompanyBrainPage() {
                               {event.destinationType}/{event.actionType} ·{" "}
                               {event.reviewStatus} · {event.idempotencyKey}
                             </p>
+                            {event.targetSummary ? (
+                              <p className="mt-1 truncate text-neutral-700">
+                                target {event.targetSummary}
+                              </p>
+                            ) : null}
+                            {event.githubStatus ? (
+                              <p className="mt-1 truncate text-neutral-700">
+                                status id{" "}
+                                {event.githubStatus.statusId ?? "none"} · repo{" "}
+                                {event.githubStatus.repoPrivate === null
+                                  ? "unknown"
+                                  : event.githubStatus.repoPrivate
+                                    ? "private"
+                                    : "public"}
+                              </p>
+                            ) : null}
                           </div>
                           <p className="text-neutral-700">
                             {event.actor ?? "system"} · {formatTimeAgo(event.at)}
@@ -3120,6 +3169,17 @@ export default function CompanyBrainPage() {
                       }
                     </p>
                     <p className="mt-1 truncate text-xs text-neutral-600">
+                      approval{" "}
+                      {getWritebackEvidencePacket.data.data.approvalEvent?.event ??
+                        "none"}{" "}
+                      · preview{" "}
+                      {getWritebackEvidencePacket.data.data.previewEvent?.event ??
+                        "none"}{" "}
+                      · execution{" "}
+                      {getWritebackEvidencePacket.data.data.executionEvent?.event ??
+                        "none"}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-600">
                       integrity gaps{" "}
                       {getWritebackEvidencePacket.data.data.integrityGaps.length} ·{" "}
                       {getWritebackEvidencePacket.data.data.integrityGaps
@@ -3150,6 +3210,27 @@ export default function CompanyBrainPage() {
                           getWritebackEvidencePacket.data.data.auditReview
                             .targetSummary
                         }
+                      </p>
+                    ) : null}
+                    {getWritebackEvidencePacket.data.data.githubStatus ? (
+                      <p className="mt-1 truncate text-xs text-neutral-600">
+                        status id{" "}
+                        {getWritebackEvidencePacket.data.data.githubStatus.statusId ??
+                          "none"}{" "}
+                        · context{" "}
+                        {getWritebackEvidencePacket.data.data.githubStatus.context ??
+                          "none"}{" "}
+                        · state{" "}
+                        {getWritebackEvidencePacket.data.data.githubStatus.state ??
+                          "none"}{" "}
+                        · repo{" "}
+                        {getWritebackEvidencePacket.data.data.githubStatus
+                          .repoPrivate === null
+                          ? "unknown"
+                          : getWritebackEvidencePacket.data.data.githubStatus
+                              .repoPrivate
+                            ? "private"
+                            : "public"}
                       </p>
                     ) : null}
                     <a

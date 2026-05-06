@@ -50,6 +50,7 @@ import type {
   GitHubStatusCheckProposalPreviewResponse,
   GitHubStatusCheckWritebackResponse,
   GitHubStatusCheckTarget,
+  GitHubStatusWritebackEvidence,
   ExecuteExternalActionProposalRequest,
   SlackThreadReplyWritebackResponse,
   SlackThreadReplyWritebackTarget,
@@ -1251,6 +1252,14 @@ function metadataRecord(value: unknown) {
 
 function metadataString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function metadataBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
 }
 
 function latestAuditEvent(proposal: ExternalActionProposal, eventName: string) {
@@ -2844,9 +2853,9 @@ function buildBriefingSections(args: {
   );
   const recentWritebackExecutions = writebackSafetyDashboard.latestAuditTrail.filter(
     (event) =>
-      event.externalUrl ||
       event.event.endsWith("_posted") ||
       event.event.endsWith("_added") ||
+      event.event.endsWith("_set") ||
       event.event.endsWith("_reused") ||
       event.event.endsWith("_completed_noop")
   );
@@ -3019,7 +3028,7 @@ function buildBriefingSections(args: {
             prefix: "recent",
             title: event.title,
             status: event.event,
-            detail: event.externalUrl ?? event.destinationRef,
+            detail: event.targetSummary ?? event.externalUrl ?? event.destinationRef,
           })
         ),
         ...riskCOrUnknownWritebacks.slice(0, 4).map((proposal) =>
@@ -3891,6 +3900,73 @@ function writebackTargetSummary(proposal: ExternalActionProposal) {
   return proposal.destinationRef;
 }
 
+function githubStatusWritebackEvidence(
+  proposal: ExternalActionProposal
+): GitHubStatusWritebackEvidence | null {
+  if (proposal.destinationType !== "github" || proposal.actionType !== "github_status") {
+    return null;
+  }
+  const executionEvent = latestWritebackExecutionAudit(proposal);
+  const metadata = auditMetadata(executionEvent);
+  const request = metadataRecord(metadata.request);
+  const response = metadataRecord(metadata.response);
+  const target = metadataRecord(request.target);
+  const repo =
+    metadataString(target.repo) ?? metadataString(proposal.payload.repo) ?? null;
+  const sha =
+    metadataString(target.sha) ??
+    metadataString(proposal.payload.sha) ??
+    metadataString(proposal.payload.headSha) ??
+    null;
+  const context =
+    metadataString(request.contextName) ??
+    metadataString(proposal.payload.context) ??
+    metadataString(proposal.payload.name) ??
+    null;
+  const state =
+    metadataString(request.state) ??
+    metadataString(proposal.payload.state) ??
+    metadataString(proposal.payload.conclusion) ??
+    null;
+  const completedNoop =
+    metadataBoolean(response.completedNoop) ?? hasCompletedNoopAudit(proposal);
+  const mutationAttempted =
+    metadataBoolean(response.mutationAttempted) ??
+    hasExternalMutationAttemptAudit(proposal);
+  const existingStatusesReadCount =
+    metadataNumber(response.existingStatusesReadCount) ??
+    metadataNumber(response.existingStatusesRead) ??
+    null;
+  const successfulStatusEvent =
+    executionEvent?.event === "github_status_set" ||
+    executionEvent?.event === "github_status_completed_noop";
+  return {
+    repo,
+    sha,
+    shortSha: sha ? sha.slice(0, 12) : null,
+    context,
+    state,
+    statusId: metadataString(response.statusId) ?? proposal.externalId,
+    statusUrl: metadataString(response.statusUrl),
+    externalUrl: metadataString(response.externalUrl) ?? proposal.externalUrl,
+    repoPrivate: metadataBoolean(response.repoPrivate),
+    allowlistMatched:
+      metadataBoolean(response.allowlistMatched) ??
+      (successfulStatusEvent ? true : null),
+    existingStatusesRead:
+      metadataBoolean(response.existingStatusesRead) ??
+      (existingStatusesReadCount !== null || successfulStatusEvent),
+    existingStatusesReadCount,
+    duplicateDetected:
+      metadataBoolean(response.duplicateDetected) ??
+      metadataBoolean(response.reusedExisting) ??
+      completedNoop,
+    completedNoop,
+    mutationAttempted,
+    response: Object.keys(response).length ? response : null,
+  };
+}
+
 function buildWritebackAuditReview(
   proposal: ExternalActionProposal,
   executionReview: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
@@ -3901,6 +3977,7 @@ function buildWritebackAuditReview(
     ? latestAuditEvent(proposal, executionReview.previewEvent)
     : null;
   const executionAudit = latestWritebackExecutionAudit(proposal);
+  const githubStatus = githubStatusWritebackEvidence(proposal);
   return {
     eventCount: proposal.auditTrail.length,
     latestEvent: latestAudit?.event ?? null,
@@ -3921,6 +3998,7 @@ function buildWritebackAuditReview(
     idempotencyKey: proposal.idempotencyKey,
     destinationRef: proposal.destinationRef,
     targetSummary: writebackTargetSummary(proposal),
+    githubStatus,
   };
 }
 
@@ -4296,9 +4374,11 @@ function auditTrailTextMatches(
     proposal.idempotencyKey,
     proposal.externalId,
     proposal.externalUrl,
+    writebackTargetSummary(proposal),
     event?.event,
     event?.actor,
     event?.note,
+    event?.metadata ? JSON.stringify(event.metadata) : null,
     ...blockReasons,
   ]
     .filter((item): item is string => typeof item === "string")
@@ -4320,6 +4400,7 @@ function buildWritebackAuditTrail(args: {
   actionType?: CompanyBrainWritebackAuditTrailResponse["filters"]["actionType"];
   riskClass?: CompanyBrainWritebackAuditTrailResponse["filters"]["riskClass"];
   executionStatus?: CompanyBrainWritebackAuditTrailResponse["filters"]["executionStatus"];
+  event?: string | null;
   actor?: string | null;
   fromAt?: number | null;
   toAt?: number | null;
@@ -4377,6 +4458,9 @@ function buildWritebackAuditTrail(args: {
       if (args.toAt !== undefined && args.toAt !== null && event.at > args.toAt) {
         continue;
       }
+      if (args.event && event.event !== args.event) {
+        continue;
+      }
       if (
         args.search &&
         !auditTrailTextMatches(args.search, proposal, event, blockReasons)
@@ -4395,8 +4479,10 @@ function buildWritebackAuditTrail(args: {
         approvalStatus: proposal.approvalStatus,
         executionStatus: proposal.executionStatus,
         idempotencyKey: proposal.idempotencyKey,
+        targetSummary: writebackTargetSummary(proposal),
         externalId: proposal.externalId,
         externalUrl: proposal.externalUrl,
+        githubStatus: githubStatusWritebackEvidence(proposal),
         reviewStatus: review.status,
         blockReasons,
         event: event.event,
@@ -4418,6 +4504,7 @@ function buildWritebackAuditTrail(args: {
       actionType: args.actionType ?? null,
       riskClass: args.riskClass ?? null,
       executionStatus: args.executionStatus ?? null,
+      event: args.event ?? null,
       actor: args.actor ?? null,
       fromAt: args.fromAt ?? null,
       toAt: args.toAt ?? null,
@@ -4459,8 +4546,10 @@ function writebackAuditTrailCsv(data: CompanyBrainWritebackAuditTrailResponse) {
       "executionStatus",
       "reviewStatus",
       "idempotencyKey",
+      "targetSummary",
       "externalId",
       "externalUrl",
+      "githubStatus",
       "blockReasons",
       "note",
       "metadata",
@@ -5157,6 +5246,7 @@ function buildWritebackEvidencePacket(
       preview: executionReview.idempotencyKeyPreview,
       current: executionReview.idempotencyKeyCurrent,
     },
+    githubStatus: githubStatusWritebackEvidence(proposal),
     externalRefs: {
       externalId: proposal.externalId,
       externalUrl: proposal.externalUrl,
@@ -8803,6 +8893,7 @@ app.get("/external-action-proposals/audit-trail", (c) => {
   const actionTypeParam = c.req.query("actionType")?.trim() || null;
   const riskClassParam = c.req.query("riskClass")?.trim() || null;
   const executionStatusParam = c.req.query("executionStatus")?.trim() || null;
+  const eventParam = c.req.query("event")?.trim() || null;
   const actor = c.req.query("actor")?.trim() || null;
   const idempotencyKey = c.req.query("idempotencyKey")?.trim() || null;
   const externalUrl = c.req.query("externalUrl")?.trim() || null;
@@ -8897,6 +8988,7 @@ app.get("/external-action-proposals/audit-trail", (c) => {
     actionType,
     riskClass,
     executionStatus,
+    event: eventParam,
     actor,
     fromAt: fromAtParam,
     toAt: toAtParam,
@@ -9812,7 +9904,11 @@ app.post("/external-action-proposals/:id/github-status-check/execute", async (c)
         response: {
           reusedExisting: completedNoop,
           completedNoop,
+          duplicateDetected: completedNoop,
           mutationAttempted: !completedNoop,
+          allowlistMatched: true,
+          existingStatusesRead: true,
+          existingStatusesReadCount: statuses.length,
           statusId: String(status.id),
           statusUrl: status.url,
           externalUrl,

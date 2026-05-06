@@ -1913,6 +1913,7 @@ export interface WritebackAuditReview {
   idempotencyKey: string;
   destinationRef: string | null;
   targetSummary: string | null;
+  githubStatus: GitHubStatusWritebackEvidence | null;
 }
 
 export interface WritebackSafetyQueueItem {
@@ -2010,6 +2011,25 @@ export interface WritebackOperatingLoopMetrics {
   };
 }
 
+export interface GitHubStatusWritebackEvidence {
+  repo: string | null;
+  sha: string | null;
+  shortSha: string | null;
+  context: string | null;
+  state: string | null;
+  statusId: string | null;
+  statusUrl: string | null;
+  externalUrl: string | null;
+  repoPrivate: boolean | null;
+  allowlistMatched: boolean | null;
+  existingStatusesRead: boolean;
+  existingStatusesReadCount: number | null;
+  duplicateDetected: boolean;
+  completedNoop: boolean;
+  mutationAttempted: boolean;
+  response: Record<string, unknown> | null;
+}
+
 export interface WritebackAuditTrailEntry {
   proposalId: string;
   adapter: WritebackAdapterKey;
@@ -2022,8 +2042,10 @@ export interface WritebackAuditTrailEntry {
   approvalStatus: ExternalActionApprovalStatus;
   executionStatus: ExternalActionExecutionStatus;
   idempotencyKey: string;
+  targetSummary: string | null;
   externalId: string | null;
   externalUrl: string | null;
+  githubStatus: GitHubStatusWritebackEvidence | null;
   reviewStatus: WritebackExecutionReviewStatus;
   blockReasons: string[];
   event: string;
@@ -2043,6 +2065,7 @@ export interface CompanyBrainWritebackAuditTrailResponse {
     actionType: ExternalActionKind | null;
     riskClass: RiskClass | null;
     executionStatus: ExternalActionExecutionStatus | null;
+    event: string | null;
     actor: string | null;
     fromAt: number | null;
     toAt: number | null;
@@ -2204,6 +2227,7 @@ export interface WritebackEvidencePacket {
     preview: string | null;
     current: string;
   };
+  githubStatus: GitHubStatusWritebackEvidence | null;
   externalRefs: {
     externalId: string | null;
     externalUrl: string | null;
