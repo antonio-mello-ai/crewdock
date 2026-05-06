@@ -323,6 +323,13 @@ export default function CompanyBrainPage() {
       ),
     [guidanceItems]
   );
+  const writebackReviewByProposalId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const item of writebackSafetyDashboard?.items ?? []) {
+      map.set(item.proposalId, item.reviewStatus);
+    }
+    return map;
+  }, [writebackSafetyDashboard]);
 
   const stepsByRun = useMemo(() => {
     const map = new Map<string, typeof steps>();
@@ -934,7 +941,10 @@ export default function CompanyBrainPage() {
 
   const canExecuteGitHubCommentWriteback = (
     proposal: (typeof externalActionProposals)[number]
-  ) => canPreviewGitHubCommentWriteback(proposal) && proposal.executionStatus === "dry_run";
+  ) =>
+    canPreviewGitHubCommentWriteback(proposal) &&
+    proposal.executionStatus === "dry_run" &&
+    writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
 
   const canPreviewSlackThreadReplyWriteback = (
     proposal: (typeof externalActionProposals)[number]
@@ -951,7 +961,8 @@ export default function CompanyBrainPage() {
     proposal: (typeof externalActionProposals)[number]
   ) =>
     canPreviewSlackThreadReplyWriteback(proposal) &&
-    proposal.executionStatus === "dry_run";
+    proposal.executionStatus === "dry_run" &&
+    writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
 
   const previewGitHubCommentProposal = (id: string) => {
     previewGitHubCommentWriteback.mutate({
@@ -1499,24 +1510,24 @@ export default function CompanyBrainPage() {
                     }
                   />
                   <MiniMetric
+                    label="ready"
+                    value={writebackSafetyDashboard.stats.readyToExecuteCount}
+                  />
+                  <MiniMetric
+                    label="preview"
+                    value={writebackSafetyDashboard.stats.needsPreviewCount}
+                  />
+                  <MiniMetric
+                    label="reapprove"
+                    value={writebackSafetyDashboard.stats.needsReapprovalCount}
+                  />
+                  <MiniMetric
+                    label="payload"
+                    value={writebackSafetyDashboard.stats.payloadMismatchCount}
+                  />
+                  <MiniMetric
                     label="failed"
                     value={writebackSafetyDashboard.stats.failedExecutionCount}
-                  />
-                  <MiniMetric
-                    label="ready"
-                    value={writebackSafetyDashboard.stats.approvedReadyCount}
-                  />
-                  <MiniMetric
-                    label="reused"
-                    value={writebackSafetyDashboard.stats.duplicateAvoidedCount}
-                  />
-                  <MiniMetric
-                    label="rejected"
-                    value={writebackSafetyDashboard.stats.rejectedProposalCount}
-                  />
-                  <MiniMetric
-                    label="blocked"
-                    value={writebackSafetyDashboard.stats.blockedProposalCount}
                   />
                 </div>
                 <div className="mt-3 divide-y divide-neutral-800/40">
@@ -1536,6 +1547,7 @@ export default function CompanyBrainPage() {
                               {item.title}
                             </p>
                             <StatusBadge value={item.kind} />
+                            <StatusBadge value={item.reviewStatus} />
                             <StatusBadge value={item.executionStatus} />
                           </div>
                           <p className="mt-1 truncate text-neutral-600">

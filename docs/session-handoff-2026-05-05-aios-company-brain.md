@@ -962,7 +962,7 @@ Objetivo: endurecer a fronteira de execucao externa sem criar novas acoes extern
 
 Implementado em 2026-05-06:
 
-1. Daemon adiciona `WritebackPreviewRequiredError` e helper `requireWritebackPreviewAfterApproval`.
+1. Daemon registra snapshot de preview no audit trail e, no corte Retry Safety, centraliza a regra em `buildWritebackExecutionReview` / `assertWritebackExecutionReview`.
 2. `execute` de GitHub comment exige audit event `github_comment_previewed` com timestamp posterior ou igual a `approvedAt` antes de buscar comentarios ou chamar POST no GitHub.
 3. `execute` de Slack thread reply exige audit event `slack_thread_reply_previewed` com timestamp posterior ou igual a `approvedAt` antes de buscar thread replies ou chamar Slack write API.
 4. Tentativa de execute sem preview retorna 400, registra audit event recuperavel:
@@ -1003,7 +1003,64 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-hitl-rationale-dogfoo
 - Proposal reject `olsaKbBNaGEU`: reject sem reason retornou 400 `rejection reason is required to reject writeback proposals`.
 - Reject com actor/reason concluiu `approvalStatus=rejected`, audit `rejected`, `payloadHash` e `idempotencyKey` presentes.
 
-Proximo corte recomendado: retry safety / idempotent execution review antes de qualquer label/status/assign: explicitar retries seguros, replay detection, payload/diff review em UI e limites por destino/acao.
+## Slice Retry Safety / Idempotent Execution Review v0
+
+Objetivo: impedir duplicacao, replay indevido, payload alterado depois da aprovacao/preview e retry perigoso antes de permitir actions mais fortes como label/status/assign.
+
+Implementado em 2026-05-06:
+
+1. Tipos `WritebackExecutionReview`, `WritebackExecutionReviewStatus`, `WritebackExecutionReviewFlag` e `WritebackRetryPolicy` em `packages/shared/src/types.ts`.
+2. `ExecuteExternalActionProposalRequest` aceita `retryRationale` para retry manual de falha recuperavel.
+3. Daemon adiciona hash estavel de payload e snapshots em audit trail de approve/preview.
+4. `buildWritebackExecutionReview` compara:
+   - payloadHash aprovado;
+   - payloadHash do preview;
+   - payloadHash atual;
+   - destinationRef aprovado/preview/atual;
+   - idempotencyKey aprovado/preview/atual;
+   - approvedAt, previewAt, actor e rationale.
+5. `assertWritebackExecutionReview` bloqueia execute quando:
+   - falta preview posterior a aprovacao;
+   - preview aconteceu antes da aprovacao;
+   - preview ficou stale;
+   - payload mudou depois da aprovacao ou do preview;
+   - destinationRef mudou;
+   - idempotencyKey mudou;
+   - proposal esta failed sem novo `retryRationale`;
+   - proposal esta blocked/cancelled/rejected/risk C/unknown.
+6. Estados de execucao mapeados para o review: `not_started`, `dry_run`, `completed`, `already_completed` em resposta de replay, `failed`, `cancelled` e `blocked`.
+7. Retry policy exposta em API/UI/MCP:
+   - GET/read pode ter retry automatico;
+   - POST/write nao faz retry automatico;
+   - retry manual de failed exige nova rationale humana;
+   - completed/already_completed nunca executa de novo;
+   - blocked/cancelled exigem nova proposal.
+8. Safety Dashboard passa a expor status/flags derivados:
+   - `ready_to_execute`
+   - `needs_preview`
+   - `needs_reapproval`
+   - `retryable_failed`
+   - `unsafe_failed`
+   - `payload_mismatch`
+   - `destination_mismatch`
+   - `duplicate_prevented`
+   - `completed`
+   - `blocked`
+9. UI `/company-brain` mostra o review status por proposal, novos contadores de safety e so habilita Execute/Reply quando o dashboard marca `ready_to_execute`.
+10. MCP execute tools de GitHub/Slack aceitam `retryRationale` e descrevem os gates de review.
+11. Nenhuma action externa nova foi adicionada: sem label, assign, close/reopen, merge, deploy, mark notification read, Slack top-level, DM, edit/delete/react/pin/invite/topic/rename.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-retry-safety-dogfood.sqlite`, daemon em `127.0.0.1:43130`:
+
+- Execute GitHub sem preview retornou 400, `reviewStatus=needs_preview`, `executionStatus=not_started`.
+- Preview sintetico antes da aprovacao bloqueou execute com `reviewStatus=needs_preview` e flag `preview_before_approval`.
+- Payload alterado depois do preview bloqueou execute com `reviewStatus=payload_mismatch`.
+- Proposal `failed` sem `retryRationale` bloqueou retry com `reviewStatus=retryable_failed`, `executionStatus=failed` preservado e audit `github_comment_retry_required`.
+- Proposal ja `completed` retornou `already_completed` em reexecute, sem chamada externa.
+- Slack duplicate-prevention foi validado contra a thread segura `https://felhen.slack.com/archives/C0B1ZM0JULA/p1778092775577459`, reutilizando a proposal `gx7PrLKf4iJF` e idempotency key `dogfood:slack-thread-reply-v0:C0B1ZM0JULA:1778092775.577459`: marker count antes/depois ficou `1`, execute retornou `reusedExisting=true`, `reviewStatus=duplicate_prevented`, `externalId=C0B1ZM0JULA:1778092928.052089`, e reexecute retornou `already_completed`.
+- Dashboard final retornou `proposalCount=6`, `needsPreviewCount=2`, `payloadMismatchCount=1`, `retryableFailedCount=1`, `completedExternalWriteCount=2`, `duplicateAvoidedCount=1`, `readyToExecuteCount=0`.
+
+Proximo corte recomendado: writeback policy doc/matrix A-B-C dentro do repo, alinhando action types permitidos/bloqueados antes de qualquer label/status/assign preview-only.
 
 ## Dogfood ERP
 
@@ -1123,7 +1180,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0 e Writeback HITL Rationale v0. O proximo corte recomendado e retry safety / idempotent execution review antes de labels/status/assign ou qualquer acao externa mais forte.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0 e Retry Safety / Idempotent Execution Review v0. O proximo corte recomendado e writeback policy doc/matrix A-B-C dentro do repo, antes de qualquer label/status/assign preview-only ou qualquer acao externa mais forte.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

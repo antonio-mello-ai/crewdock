@@ -1169,6 +1169,7 @@ export interface UpdateExternalActionProposalRequest {
 
 export interface ExecuteExternalActionProposalRequest {
   actor?: string | null;
+  retryRationale?: string | null;
 }
 
 export interface GitHubCommentWritebackTarget {
@@ -1750,9 +1751,62 @@ export type WritebackSafetyItemKind =
   | "rejected_proposal"
   | "blocked_proposal";
 
+export type WritebackExecutionReviewStatus =
+  | "ready_to_execute"
+  | "needs_preview"
+  | "needs_reapproval"
+  | "retryable_failed"
+  | "unsafe_failed"
+  | "payload_mismatch"
+  | "destination_mismatch"
+  | "duplicate_prevented"
+  | "completed"
+  | "blocked";
+
+export type WritebackExecutionReviewFlag =
+  | WritebackExecutionReviewStatus
+  | "idempotency_mismatch"
+  | "preview_before_approval"
+  | "stale_preview"
+  | "missing_approval_snapshot"
+  | "missing_preview_snapshot"
+  | "retry_rationale_required";
+
+export interface WritebackExecutionReview {
+  status: WritebackExecutionReviewStatus;
+  flags: WritebackExecutionReviewFlag[];
+  payloadHashApproved: string | null;
+  payloadHashPreview: string | null;
+  payloadHashCurrent: string;
+  destinationRefApproved: string | null;
+  destinationRefPreview: string | null;
+  destinationRefCurrent: string | null;
+  idempotencyKeyApproved: string | null;
+  idempotencyKeyPreview: string | null;
+  idempotencyKeyCurrent: string;
+  approvedAt: number | null;
+  previewAt: number | null;
+  previewEvent: string | null;
+  actor: string | null;
+  rationale: string | null;
+  staleAfterMs: number;
+}
+
+export interface WritebackRetryPolicy {
+  executionStates: Array<ExternalActionExecutionStatus | "already_completed">;
+  readRetryPolicy: "automatic_get_only";
+  writeRetryPolicy: "no_automatic_post_retry";
+  manualRetryRequires: string[];
+  terminalStates: ExternalActionExecutionStatus[];
+  blockedStates: ExternalActionExecutionStatus[];
+}
+
 export interface WritebackSafetyQueueItem {
   id: string;
   kind: WritebackSafetyItemKind;
+  reviewStatus: WritebackExecutionReviewStatus;
+  reviewFlags: WritebackExecutionReviewFlag[];
+  executionReview: WritebackExecutionReview;
   proposalId: string;
   title: string;
   destinationType: ExternalActionDestination;
@@ -1775,6 +1829,7 @@ export interface WritebackSafetyQueueItem {
 
 export interface CompanyBrainWritebackSafetyDashboard {
   generatedAt: number;
+  retryPolicy: WritebackRetryPolicy;
   items: WritebackSafetyQueueItem[];
   stats: {
     proposalCount: number;
@@ -1789,6 +1844,13 @@ export interface CompanyBrainWritebackSafetyDashboard {
     duplicateAvoidedCount: number;
     riskCOrUnknownCount: number;
     completedMissingExternalRefCount: number;
+    readyToExecuteCount: number;
+    needsPreviewCount: number;
+    needsReapprovalCount: number;
+    retryableFailedCount: number;
+    unsafeFailedCount: number;
+    payloadMismatchCount: number;
+    destinationMismatchCount: number;
   };
 }
 

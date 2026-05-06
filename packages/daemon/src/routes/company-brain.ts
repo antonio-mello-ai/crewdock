@@ -107,10 +107,29 @@ function stableHash(input: string) {
   return createHash("sha256").update(input).digest("hex");
 }
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function stablePayloadHash(payload: Record<string, unknown>) {
+  return stableHash(stableJson(payload));
+}
+
 const AIOS_BRIEFING_SOURCE_ID = "source-aios-briefing-v0";
 const AIOS_BRIEFING_WATCHER_ID = "watcher-aios-briefing-v0";
 const GITHUB_PR_CI_WATCHER_ID = "watcher-github-pr-ci-v0";
 const GITHUB_NOTIFICATIONS_WATCHER_ID = "watcher-github-notifications-v0";
+const WRITEBACK_PREVIEW_STALE_MS = 24 * 60 * 60 * 1000;
 
 function allowedLocalDocRoots() {
   const envRoots = process.env.AIOS_LOCAL_DOC_IMPORT_ROOTS?.split(",") ?? [];
@@ -647,8 +666,8 @@ function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal
   if (proposal.approvalStatus !== "approved") {
     throw new Error("proposal must be approved before GitHub writeback");
   }
-  if (!["not_started", "dry_run"].includes(proposal.executionStatus)) {
-    throw new Error("proposal executionStatus must be not_started or dry_run");
+  if (!["not_started", "dry_run", "failed"].includes(proposal.executionStatus)) {
+    throw new Error("proposal executionStatus must be not_started, dry_run or failed");
   }
   if (proposal.destinationType !== "github") {
     throw new Error("proposal destinationType must be github");
@@ -665,28 +684,224 @@ function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal
   return buildGitHubCommentWritebackPreview(proposal);
 }
 
-class WritebackPreviewRequiredError extends Error {
-  constructor(message: string) {
+class WritebackExecutionReviewError extends Error {
+  review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"];
+
+  constructor(
+    message: string,
+    review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  ) {
     super(message);
-    this.name = "WritebackPreviewRequiredError";
+    this.name = "WritebackExecutionReviewError";
+    this.review = review;
   }
 }
 
-function requireWritebackPreviewAfterApproval(args: {
+class WritebackRetryApprovalRequiredError extends WritebackExecutionReviewError {
+  constructor(
+    message: string,
+    review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  ) {
+    super(message, review);
+    this.name = "WritebackRetryApprovalRequiredError";
+  }
+}
+
+function auditMetadata(event: ExternalActionAuditEvent | null) {
+  return (event?.metadata ?? {}) as Record<string, unknown>;
+}
+
+function metadataRecord(value: unknown) {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function metadataString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function latestAuditEvent(proposal: ExternalActionProposal, eventName: string) {
+  return [...proposal.auditTrail]
+    .reverse()
+    .find((event) => event.event === eventName) ?? null;
+}
+
+function previewEventForProposal(proposal: ExternalActionProposal) {
+  if (proposal.destinationType === "github" && isGitHubCommentAction(proposal.actionType)) {
+    return "github_comment_previewed";
+  }
+  if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
+    return "slack_thread_reply_previewed";
+  }
+  return null;
+}
+
+function currentPayloadHash(proposal: ExternalActionProposal) {
+  return stablePayloadHash(proposal.payload);
+}
+
+function buildWritebackExecutionReview(
+  proposal: ExternalActionProposal,
+  generatedAt = now()
+): CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"] {
+  const previewEvent = previewEventForProposal(proposal);
+  const approvalAudit = latestAuditEvent(proposal, "approved");
+  const approvalMetadata = auditMetadata(approvalAudit);
+  const previewAny = previewEvent ? latestAuditEvent(proposal, previewEvent) : null;
+  const previewAfterApproval =
+    previewAny && (!proposal.approvedAt || previewAny.at >= proposal.approvedAt)
+      ? previewAny
+      : null;
+  const previewRequest = metadataRecord(auditMetadata(previewAfterApproval).request);
+  const currentHash = currentPayloadHash(proposal);
+  const payloadHashApproved = metadataString(approvalMetadata.payloadHash);
+  const payloadHashPreview = metadataString(previewRequest.payloadHash);
+  const destinationRefApproved = metadataString(approvalMetadata.destinationRef);
+  const destinationRefPreview = metadataString(previewRequest.destinationRef);
+  const idempotencyKeyApproved = metadataString(approvalMetadata.idempotencyKey);
+  const idempotencyKeyPreview = metadataString(previewRequest.idempotencyKey);
+  const flags: CompanyBrainWritebackSafetyDashboard["items"][number]["reviewFlags"] =
+    [];
+  const addFlag = (flag: (typeof flags)[number]) => {
+    if (!flags.includes(flag)) flags.push(flag);
+  };
+
+  if (
+    proposal.approvalStatus !== "approved" ||
+    !approvalAudit ||
+    !proposal.approvedAt ||
+    !payloadHashApproved ||
+    !destinationRefApproved ||
+    !idempotencyKeyApproved
+  ) {
+    addFlag("needs_reapproval");
+    if (proposal.approvalStatus === "approved") addFlag("missing_approval_snapshot");
+  }
+
+  if (proposal.approvalStatus === "blocked" || proposal.executionStatus === "blocked") {
+    addFlag("blocked");
+  }
+  if (proposal.approvalStatus === "rejected" || proposal.executionStatus === "cancelled") {
+    addFlag("blocked");
+  }
+  if (proposal.riskClass === "C" || proposal.riskClass === "unknown") {
+    addFlag("blocked");
+  }
+
+  if (payloadHashApproved && payloadHashApproved !== currentHash) {
+    addFlag("payload_mismatch");
+  }
+  if (payloadHashPreview && payloadHashPreview !== currentHash) {
+    addFlag("payload_mismatch");
+  }
+  if (
+    destinationRefApproved !== null &&
+    destinationRefApproved !== proposal.destinationRef
+  ) {
+    addFlag("destination_mismatch");
+  }
+  if (destinationRefPreview !== null && destinationRefPreview !== proposal.destinationRef) {
+    addFlag("destination_mismatch");
+  }
+  if (
+    idempotencyKeyApproved !== null &&
+    idempotencyKeyApproved !== proposal.idempotencyKey
+  ) {
+    addFlag("idempotency_mismatch");
+    addFlag("needs_reapproval");
+  }
+  if (
+    idempotencyKeyPreview !== null &&
+    idempotencyKeyPreview !== proposal.idempotencyKey
+  ) {
+    addFlag("idempotency_mismatch");
+    addFlag("needs_preview");
+  }
+
+  if (!previewAfterApproval) {
+    addFlag("needs_preview");
+    addFlag("missing_preview_snapshot");
+    if (previewAny && proposal.approvedAt && previewAny.at < proposal.approvedAt) {
+      addFlag("preview_before_approval");
+    }
+  } else if (generatedAt - previewAfterApproval.at > WRITEBACK_PREVIEW_STALE_MS) {
+    addFlag("needs_preview");
+    addFlag("stale_preview");
+  }
+
+  if (hasDuplicateAvoidanceAudit(proposal)) addFlag("duplicate_prevented");
+  if (
+    ["completed", "executed"].includes(proposal.executionStatus)
+  ) {
+    addFlag("completed");
+  }
+  if (proposal.executionStatus === "failed") {
+    const unsafe = flags.some((flag) =>
+      [
+        "needs_reapproval",
+        "needs_preview",
+        "payload_mismatch",
+        "destination_mismatch",
+        "idempotency_mismatch",
+        "blocked",
+      ].includes(flag)
+    );
+    addFlag(unsafe ? "unsafe_failed" : "retryable_failed");
+  }
+
+  let status: CompanyBrainWritebackSafetyDashboard["items"][number]["reviewStatus"] =
+    "ready_to_execute";
+  if (flags.includes("blocked")) status = "blocked";
+  else if (flags.includes("duplicate_prevented")) status = "duplicate_prevented";
+  else if (flags.includes("completed")) status = "completed";
+  else if (flags.includes("unsafe_failed")) status = "unsafe_failed";
+  else if (flags.includes("retryable_failed")) status = "retryable_failed";
+  else if (flags.includes("payload_mismatch")) status = "payload_mismatch";
+  else if (flags.includes("destination_mismatch")) status = "destination_mismatch";
+  else if (flags.includes("needs_reapproval")) status = "needs_reapproval";
+  else if (flags.includes("needs_preview")) status = "needs_preview";
+
+  return {
+    status,
+    flags,
+    payloadHashApproved,
+    payloadHashPreview,
+    payloadHashCurrent: currentHash,
+    destinationRefApproved,
+    destinationRefPreview,
+    destinationRefCurrent: proposal.destinationRef,
+    idempotencyKeyApproved,
+    idempotencyKeyPreview,
+    idempotencyKeyCurrent: proposal.idempotencyKey,
+    approvedAt: proposal.approvedAt,
+    previewAt: previewAfterApproval?.at ?? null,
+    previewEvent,
+    actor: approvalAudit?.actor ?? proposal.approvedBy,
+    rationale: approvalAudit?.note ?? null,
+    staleAfterMs: WRITEBACK_PREVIEW_STALE_MS,
+  };
+}
+
+function assertWritebackExecutionReview(args: {
   proposal: ExternalActionProposal;
-  event: string;
-  label: string;
+  retryRationale?: string | null;
 }) {
-  const preview = args.proposal.auditTrail.find(
-    (event) =>
-      event.event === args.event &&
-      (!args.proposal.approvedAt || event.at >= args.proposal.approvedAt)
-  );
-  if (!preview) {
-    throw new WritebackPreviewRequiredError(
-      `${args.label} preview is required after approval before execution`
+  const review = buildWritebackExecutionReview(args.proposal);
+  if (review.status === "ready_to_execute") return review;
+  if (review.status === "retryable_failed") {
+    if (args.retryRationale?.trim()) return review;
+    throw new WritebackRetryApprovalRequiredError(
+      "failed writeback retry requires a new human retry rationale",
+      {
+        ...review,
+        flags: [...review.flags, "retry_rationale_required"],
+        status: "retryable_failed",
+      }
     );
   }
+  throw new WritebackExecutionReviewError(
+    `writeback execution blocked: ${review.status}`,
+    review
+  );
 }
 
 async function fetchGitHubIssueComments(args: GitHubCommentWritebackTarget) {
@@ -811,8 +1026,8 @@ function validateSlackThreadReplyWritebackProposal(proposal: ExternalActionPropo
   if (proposal.approvalStatus !== "approved") {
     throw new Error("proposal must be approved before Slack writeback");
   }
-  if (!["not_started", "dry_run"].includes(proposal.executionStatus)) {
-    throw new Error("proposal executionStatus must be not_started or dry_run");
+  if (!["not_started", "dry_run", "failed"].includes(proposal.executionStatus)) {
+    throw new Error("proposal executionStatus must be not_started, dry_run or failed");
   }
   if (proposal.destinationType !== "slack") {
     throw new Error("proposal destinationType must be slack");
@@ -2556,7 +2771,8 @@ function isCompletedExternalWriteback(proposal: ExternalActionProposal) {
 function writebackSafetyItemKind(
   proposal: ExternalActionProposal
 ): CompanyBrainWritebackSafetyDashboard["items"][number]["kind"] | null {
-  if (hasDuplicateAvoidanceAudit(proposal)) return "duplicate_avoided";
+  const review = buildWritebackExecutionReview(proposal);
+  if (review.status === "duplicate_prevented") return "duplicate_avoided";
   if (isCompletedExternalWriteback(proposal)) return "completed_external_writeback";
   if (proposal.executionStatus === "failed") return "failed_execution";
   if (
@@ -2573,8 +2789,30 @@ function writebackSafetyItemKind(
 
 function writebackSafetyNextAction(
   proposal: ExternalActionProposal,
-  kind: CompanyBrainWritebackSafetyDashboard["items"][number]["kind"]
+  kind: CompanyBrainWritebackSafetyDashboard["items"][number]["kind"],
+  review: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
 ) {
+  if (review.status === "ready_to_execute") {
+    return "Execute only after confirming payload, destination and idempotency marker.";
+  }
+  if (review.status === "needs_preview") {
+    return "Run a fresh preview after approval before executing.";
+  }
+  if (review.status === "needs_reapproval") {
+    return "Review payload, destination and idempotency key before approving again.";
+  }
+  if (review.status === "payload_mismatch") {
+    return "Create a new preview and approval because payload changed.";
+  }
+  if (review.status === "destination_mismatch") {
+    return "Create a new preview and approval because destination changed.";
+  }
+  if (review.status === "retryable_failed") {
+    return "Retry only with a new human retry rationale.";
+  }
+  if (review.status === "unsafe_failed") {
+    return "Do not retry; create a new proposal or reapprove after review.";
+  }
   if (
     kind === "completed_external_writeback" &&
     (!proposal.externalId || !proposal.externalUrl)
@@ -2608,14 +2846,25 @@ function buildWritebackSafetyDashboard(
   const generatedAt = now();
   const proposals = data.externalActionProposals;
   const completedExternal = proposals.filter(isCompletedExternalWriteback);
+  const reviews = new Map(
+    proposals.map((proposal) => [
+      proposal.id,
+      buildWritebackExecutionReview(proposal, generatedAt),
+    ])
+  );
   const items: CompanyBrainWritebackSafetyDashboard["items"] = [];
   for (const proposal of proposals) {
     const kind = writebackSafetyItemKind(proposal);
     if (!kind) continue;
+    const executionReview =
+      reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal, generatedAt);
     const latestAudit = latestExternalActionAudit(proposal);
     items.push({
       id: `writeback_safety:${kind}:${proposal.id}`,
       kind,
+      reviewStatus: executionReview.status,
+      reviewFlags: executionReview.flags,
+      executionReview,
       proposalId: proposal.id,
       title: proposal.title,
       destinationType: proposal.destinationType,
@@ -2633,13 +2882,36 @@ function buildWritebackSafetyDashboard(
       auditActor: latestAudit?.actor ?? null,
       auditAt: latestAudit?.at ?? null,
       updatedAt: proposal.updatedAt,
-      nextAction: writebackSafetyNextAction(proposal, kind),
+      nextAction: writebackSafetyNextAction(proposal, kind, executionReview),
     });
   }
   items.sort((a, b) => (b.auditAt ?? b.updatedAt) - (a.auditAt ?? a.updatedAt));
 
   return {
     generatedAt,
+    retryPolicy: {
+      executionStates: [
+        "not_started",
+        "dry_run",
+        "completed",
+        "already_completed",
+        "failed",
+        "cancelled",
+        "blocked",
+      ],
+      readRetryPolicy: "automatic_get_only",
+      writeRetryPolicy: "no_automatic_post_retry",
+      manualRetryRequires: [
+        "approved proposal",
+        "fresh preview after approval",
+        "unchanged payloadHash",
+        "unchanged destinationRef",
+        "unchanged idempotencyKey",
+        "human retry rationale for failed proposals",
+      ],
+      terminalStates: ["completed", "executed"],
+      blockedStates: ["cancelled", "blocked"],
+    },
     items,
     stats: {
       proposalCount: proposals.length,
@@ -2683,6 +2955,25 @@ function buildWritebackSafetyDashboard(
       ).length,
       completedMissingExternalRefCount: completedExternal.filter(
         (proposal) => !proposal.externalId || !proposal.externalUrl
+      ).length,
+      readyToExecuteCount: items.filter(
+        (item) => item.reviewStatus === "ready_to_execute"
+      ).length,
+      needsPreviewCount: items.filter((item) => item.reviewStatus === "needs_preview")
+        .length,
+      needsReapprovalCount: items.filter(
+        (item) => item.reviewStatus === "needs_reapproval"
+      ).length,
+      retryableFailedCount: items.filter(
+        (item) => item.reviewStatus === "retryable_failed"
+      ).length,
+      unsafeFailedCount: items.filter((item) => item.reviewStatus === "unsafe_failed")
+        .length,
+      payloadMismatchCount: items.filter(
+        (item) => item.reviewStatus === "payload_mismatch"
+      ).length,
+      destinationMismatchCount: items.filter(
+        (item) => item.reviewStatus === "destination_mismatch"
       ).length,
     },
   };
@@ -6169,7 +6460,7 @@ app.put("/external-action-proposals/:id", async (c) => {
           destinationRef: existing.destinationRef,
           actionType: existing.actionType,
           payload: existing.payload,
-          payloadHash: stableHash(JSON.stringify(existing.payload)),
+          payloadHash: stablePayloadHash(existing.payload),
           idempotencyKey: existing.idempotencyKey,
           executionStatus: "not_started",
           externalId: existing.externalId,
@@ -6211,7 +6502,7 @@ app.put("/external-action-proposals/:id", async (c) => {
           destinationRef: existing.destinationRef,
           actionType: existing.actionType,
           payload: existing.payload,
-          payloadHash: stableHash(JSON.stringify(existing.payload)),
+          payloadHash: stablePayloadHash(existing.payload),
           idempotencyKey: existing.idempotencyKey,
           previousExecutionStatus: existing.executionStatus,
           externalId: existing.externalId,
@@ -6270,6 +6561,7 @@ app.post("/external-action-proposals/:id/github-comment/preview", async (c) => {
           destinationRef: existing.destinationRef,
           target,
           idempotencyKey: existing.idempotencyKey,
+          payloadHash: stablePayloadHash(existing.payload),
           bodyLength: commentBody.length,
           bodyHash: stableHash(commentBody),
         },
@@ -6331,9 +6623,7 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
 
   try {
     if (
-      ["completed", "executed"].includes(existing.executionStatus) &&
-      existing.externalId &&
-      existing.externalUrl
+      ["completed", "executed"].includes(existing.executionStatus)
     ) {
       const { target, marker, body: commentBody } =
         buildGitHubCommentWritebackPreview(existing);
@@ -6354,10 +6644,9 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
 
     const { target, marker, body: commentBody } =
       validateGitHubCommentWritebackProposal(existing);
-    requireWritebackPreviewAfterApproval({
+    const executionReview = assertWritebackExecutionReview({
       proposal: existing,
-      event: "github_comment_previewed",
-      label: "GitHub comment writeback",
+      retryRationale: body.retryRationale,
     });
     const comments = await fetchGitHubIssueComments(target);
     const priorComment = comments.find((comment) => comment.body?.includes(marker));
@@ -6384,6 +6673,8 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
           destinationRef: existing.destinationRef,
           target,
           idempotencyKey: existing.idempotencyKey,
+          executionReview,
+          retryRationale: body.retryRationale?.trim() || null,
           bodyLength: commentBody.length,
           bodyHash: stableHash(commentBody),
         },
@@ -6425,12 +6716,28 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
     return c.json({ data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    const previewRequired = err instanceof WritebackPreviewRequiredError;
+    const retryRequired = err instanceof WritebackRetryApprovalRequiredError;
+    const reviewBlocked = err instanceof WritebackExecutionReviewError;
+    const executionReview = reviewBlocked
+      ? err.review
+      : buildWritebackExecutionReview(existing);
+    const previewRequired =
+      reviewBlocked && executionReview.status === "needs_preview";
+    const governanceBlocked =
+      retryRequired ||
+      previewRequired ||
+      reviewBlocked ||
+      executionReview.status === "blocked" ||
+      executionReview.status === "needs_reapproval";
     const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
       actor,
-      event: previewRequired
-        ? "github_comment_preview_required"
-        : "github_comment_failed",
+      event: retryRequired
+        ? "github_comment_retry_required"
+        : previewRequired
+          ? "github_comment_preview_required"
+          : governanceBlocked
+            ? "github_comment_execution_blocked"
+            : "github_comment_failed",
       note: message,
       metadata: {
         request: {
@@ -6442,6 +6749,7 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
           approvalStatus: existing.approvalStatus,
           executionStatus: existing.executionStatus,
           idempotencyKey: existing.idempotencyKey,
+          executionReview,
         },
         response: {
           error: message,
@@ -6449,7 +6757,8 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
       },
     });
     const update = {
-      executionStatus: previewRequired ? existing.executionStatus : ("failed" as const),
+      executionStatus:
+        governanceBlocked ? existing.executionStatus : ("failed" as const),
       errorSummary: message,
       auditTrail,
       updatedAt: now(),
@@ -6490,6 +6799,7 @@ app.post("/external-action-proposals/:id/slack-thread-reply/preview", async (c) 
           destinationRef: existing.destinationRef,
           target,
           idempotencyKey: existing.idempotencyKey,
+          payloadHash: stablePayloadHash(existing.payload),
           bodyLength: replyBody.length,
           bodyHash: stableHash(replyBody),
         },
@@ -6551,9 +6861,7 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
 
   try {
     if (
-      ["completed", "executed"].includes(existing.executionStatus) &&
-      existing.externalId &&
-      existing.externalUrl
+      ["completed", "executed"].includes(existing.executionStatus)
     ) {
       const { target, marker, body: replyBody } =
         buildSlackThreadReplyWritebackPreview(existing);
@@ -6574,10 +6882,9 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
 
     const { target, marker, body: replyBody } =
       validateSlackThreadReplyWritebackProposal(existing);
-    requireWritebackPreviewAfterApproval({
+    const executionReview = assertWritebackExecutionReview({
       proposal: existing,
-      event: "slack_thread_reply_previewed",
-      label: "Slack thread reply writeback",
+      retryRationale: body.retryRationale,
     });
     const token = slackBotTokenForWriteback();
     const replies = await fetchSlackThreadReplies(token, target);
@@ -6620,6 +6927,8 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
           destinationRef: existing.destinationRef,
           target,
           idempotencyKey: existing.idempotencyKey,
+          executionReview,
+          retryRationale: body.retryRationale?.trim() || null,
           bodyLength: replyBody.length,
           bodyHash: stableHash(replyBody),
         },
@@ -6659,12 +6968,28 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
     return c.json({ data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    const previewRequired = err instanceof WritebackPreviewRequiredError;
+    const retryRequired = err instanceof WritebackRetryApprovalRequiredError;
+    const reviewBlocked = err instanceof WritebackExecutionReviewError;
+    const executionReview = reviewBlocked
+      ? err.review
+      : buildWritebackExecutionReview(existing);
+    const previewRequired =
+      reviewBlocked && executionReview.status === "needs_preview";
+    const governanceBlocked =
+      retryRequired ||
+      previewRequired ||
+      reviewBlocked ||
+      executionReview.status === "blocked" ||
+      executionReview.status === "needs_reapproval";
     const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
       actor,
-      event: previewRequired
-        ? "slack_thread_reply_preview_required"
-        : "slack_thread_reply_failed",
+      event: retryRequired
+        ? "slack_thread_reply_retry_required"
+        : previewRequired
+          ? "slack_thread_reply_preview_required"
+          : governanceBlocked
+            ? "slack_thread_reply_execution_blocked"
+            : "slack_thread_reply_failed",
       note: message,
       metadata: {
         request: {
@@ -6676,6 +7001,7 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
           approvalStatus: existing.approvalStatus,
           executionStatus: existing.executionStatus,
           idempotencyKey: existing.idempotencyKey,
+          executionReview,
         },
         response: {
           error: message,
@@ -6683,7 +7009,8 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
       },
     });
     const update = {
-      executionStatus: previewRequired ? existing.executionStatus : ("failed" as const),
+      executionStatus:
+        governanceBlocked ? existing.executionStatus : ("failed" as const),
       errorSummary: message,
       auditTrail,
       updatedAt: now(),

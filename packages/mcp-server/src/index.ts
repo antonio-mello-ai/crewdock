@@ -1388,18 +1388,19 @@ server.registerTool(
   {
     title: "Execute GitHub comment writeback",
     description:
-      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed and a prior preview after approval. This is the only GitHub writeback action exposed here; it does not label, assign, close, merge, deploy, or mark notifications read.",
+      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed, matching payload/destination/idempotency review, and a prior preview after approval. Failed retries require retryRationale. This is the only GitHub writeback action exposed here; it does not label, assign, close, merge, deploy, or mark notifications read.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
+      retryRationale: z.string().optional(),
     },
   },
-  async ({ id, actor }) => {
+  async ({ id, actor, retryRationale }) => {
     const result = await daemonFetch<{ data: unknown }>(
       `/api/company-brain/external-action-proposals/${id}/github-comment/execute`,
       {
         method: "POST",
-        body: JSON.stringify({ actor }),
+        body: JSON.stringify({ actor, retryRationale }),
       }
     );
     return formatJsonResult(result.data);
@@ -1434,18 +1435,19 @@ server.registerTool(
   {
     title: "Execute Slack thread reply writeback",
     description:
-      "Post a Slack reply only inside an existing thread for an approved Risk B Company Brain proposal with action_policy=writeback_allowed and a prior preview after approval. This does not post top-level messages, DMs, edits, deletes, reactions, pins, invites, topic changes, renames, or GitHub actions.",
+      "Post a Slack reply only inside an existing thread for an approved Risk B Company Brain proposal with action_policy=writeback_allowed, matching payload/destination/idempotency review, and a prior preview after approval. Failed retries require retryRationale. This does not post top-level messages, DMs, edits, deletes, reactions, pins, invites, topic changes, renames, or GitHub actions.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
+      retryRationale: z.string().optional(),
     },
   },
-  async ({ id, actor }) => {
+  async ({ id, actor, retryRationale }) => {
     const result = await daemonFetch<{ data: unknown }>(
       `/api/company-brain/external-action-proposals/${id}/slack-thread-reply/execute`,
       {
         method: "POST",
-        body: JSON.stringify({ actor }),
+        body: JSON.stringify({ actor, retryRationale }),
       }
     );
     return formatJsonResult(result.data);

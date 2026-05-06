@@ -63,7 +63,9 @@ Status Writeback Preview Gate v0 em 2026-05-06: GitHub comment e Slack thread re
 
 Status Writeback HITL Rationale v0 em 2026-05-06: approve/reject de `ExternalActionProposal` exige actor humano e rationale (`note` para approve, `rejectionReason` ou `note` para reject). Audit trail de aprovacao/rejeicao inclui `payloadHash` e `idempotencyKey`, mantendo payload/destino revisaveis antes de execute.
 
-Proximo corte planejado: retry safety / idempotent execution review antes de qualquer label/status/assign: explicitar retries seguros, replay detection, payload/diff review em UI e limites por destino/acao.
+Status Retry Safety / Idempotent Execution Review v0 em 2026-05-06: GitHub comment e Slack thread reply agora passam por review derivado antes de execute, com politica explicita de retries, snapshots de payload/destination/idempotency na aprovacao e no preview, bloqueio de payload/destino/idempotency alterados, preview antes de aprovacao, preview stale, failed retry sem rationale e replays completed/already_completed. Safety Dashboard/API/UI/MCP expõem `ready_to_execute`, `needs_preview`, `needs_reapproval`, `retryable_failed`, `unsafe_failed`, `payload_mismatch`, `destination_mismatch`, `duplicate_prevented`, `completed` e `blocked`.
+
+Proximo corte planejado: writeback policy doc/matrix A-B-C dentro do repo, alinhando action types permitidos/bloqueados antes de qualquer label/status/assign preview-only.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -83,6 +85,7 @@ Proximo corte planejado: retry safety / idempotent execution review antes de qua
 - [x] **Writeback Safety Dashboard v0** — auditar em summary/API/UI/MCP writebacks completados, proposals prontas, falhas, rejeicoes, bloqueios e duplicacoes evitadas antes de acoes externas mais fortes
 - [x] **Writeback Preview Gate v0** — exigir preview apos aprovacao antes de qualquer execute real GitHub/Slack, com bloqueio recuperavel e audit event quando alguem tenta executar cedo demais
 - [x] **Writeback HITL Rationale v0** — exigir actor e rationale para approve/reject, com payloadHash/idempotencyKey no audit trail antes de qualquer execute real
+- [x] **Retry Safety / Idempotent Execution Review v0** — revisar payload/destination/idempotency aprovados vs preview vs atual antes de execute, bloquear retries inseguros, exigir rationale para failed retry e expor status/flags derivados no Safety Dashboard/API/UI/MCP
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
