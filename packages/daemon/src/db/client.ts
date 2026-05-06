@@ -248,6 +248,29 @@ CREATE TABLE IF NOT EXISTS cb_decisions (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_strategy_tradeoffs (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  summary TEXT,
+  rationale TEXT,
+  kind TEXT NOT NULL DEFAULT 'tradeoff',
+  area TEXT NOT NULL DEFAULT 'strategy',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL DEFAULT 'proposed',
+  priority_id TEXT,
+  decision_id TEXT,
+  source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+  accepted_option TEXT,
+  rejected_options TEXT NOT NULL DEFAULT '[]',
+  constraints TEXT NOT NULL DEFAULT '[]',
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cb_signals (
   id TEXT PRIMARY KEY,
   source TEXT NOT NULL,
@@ -497,6 +520,9 @@ CREATE INDEX IF NOT EXISTS idx_cb_work_items_external ON cb_work_items(external_
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_links ON cb_work_items(priority_id, goal_id);
 CREATE INDEX IF NOT EXISTS idx_cb_decisions_status ON cb_decisions(status);
 CREATE INDEX IF NOT EXISTS idx_cb_decisions_area ON cb_decisions(area);
+CREATE INDEX IF NOT EXISTS idx_cb_strategy_tradeoffs_status ON cb_strategy_tradeoffs(status);
+CREATE INDEX IF NOT EXISTS idx_cb_strategy_tradeoffs_priority ON cb_strategy_tradeoffs(priority_id);
+CREATE INDEX IF NOT EXISTS idx_cb_strategy_tradeoffs_decision ON cb_strategy_tradeoffs(decision_id);
 CREATE INDEX IF NOT EXISTS idx_cb_signals_artifact_id ON cb_signals(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_cb_signals_watcher_run_id ON cb_signals(watcher_run_id);
 CREATE INDEX IF NOT EXISTS idx_cb_signals_severity ON cb_signals(severity);

@@ -33,6 +33,7 @@ import type {
   CreateSignalRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
+  CreateStrategyTradeoffRequest,
   CreateWatcherRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
@@ -59,6 +60,7 @@ import type {
   Signal,
   Source,
   StrategicPriority,
+  StrategyTradeoff,
   Watcher,
   WorkflowRun,
   WorkItem,
@@ -571,6 +573,18 @@ export function useCreateCompanyBrainAgentContext() {
   return useMutation<ApiResponse<AgentContext>, Error, CreateAgentContextRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/agent-contexts", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainStrategyTradeoff() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<StrategyTradeoff>, Error, CreateStrategyTradeoffRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/strategy-tradeoffs", {
         method: "POST",
         body: JSON.stringify(body),
       }),

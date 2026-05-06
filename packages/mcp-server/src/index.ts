@@ -275,7 +275,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, source health, artifacts, decisions, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, source health, artifacts, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -694,6 +694,63 @@ server.registerTool(
           ...input,
           ownerType: input.owner ? "human" : "unknown",
           decidedAt: Date.now(),
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_strategy_tradeoff",
+  {
+    title: "Register Company Brain strategy tradeoff",
+    description:
+      "Register a strategic tradeoff, constraint, non-goal, risk, dependency or principle linked to priority, decision and source artifacts with provenance.",
+    inputSchema: {
+      title: z.string().min(1),
+      summary: z.string().optional(),
+      rationale: z.string().optional(),
+      kind: z
+        .enum(["tradeoff", "constraint", "non_goal", "risk", "dependency", "principle"])
+        .default("tradeoff"),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("strategy"),
+      owner: z.string().optional(),
+      status: z
+        .enum(["proposed", "accepted", "superseded", "rejected", "archived"])
+        .default("proposed"),
+      priorityId: z.string().optional(),
+      decisionId: z.string().optional(),
+      sourceArtifactIds: z.array(z.string()).default([]),
+      acceptedOption: z.string().optional(),
+      rejectedOptions: z.array(z.string()).default([]),
+      constraints: z.array(z.string()).default([]),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).default("unknown"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/strategy-tradeoffs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          ownerType: input.owner ? "human" : "unknown",
           visibility: "internal",
         }),
       }

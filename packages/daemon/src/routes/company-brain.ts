@@ -19,6 +19,7 @@ import type {
   CreateSignalRequest,
   CreateSourceRequest,
   CreateStrategicPriorityRequest,
+  CreateStrategyTradeoffRequest,
   CreateWatcherRequest,
   CreateWorkflowBlueprintRequest,
   CreateWorkflowRunRequest,
@@ -51,6 +52,7 @@ import {
   cbSignals,
   cbSources,
   cbStrategicPriorities,
+  cbStrategyTradeoffs,
   cbWatcherRuns,
   cbWatchers,
   cbWorkflowBlueprints,
@@ -518,6 +520,12 @@ function listAll() {
     .orderBy(desc(cbDecisions.updatedAt))
     .limit(100)
     .all();
+  const strategyTradeoffs = db
+    .select()
+    .from(cbStrategyTradeoffs)
+    .orderBy(desc(cbStrategyTradeoffs.updatedAt))
+    .limit(100)
+    .all();
   const workItems = db
     .select()
     .from(cbWorkItems)
@@ -592,6 +600,7 @@ function listAll() {
     goals,
     milestones,
     decisions,
+    strategyTradeoffs,
     workItems,
     workflowBlueprints,
     workflowRuns,
@@ -1081,6 +1090,10 @@ app.get("/summary", (c) => {
         decisionCount: data.decisions.length,
         activeDecisionCount: data.decisions.filter((decision) =>
           ["proposed", "accepted"].includes(decision.status)
+        ).length,
+        strategyTradeoffCount: data.strategyTradeoffs.length,
+        activeStrategyTradeoffCount: data.strategyTradeoffs.filter((tradeoff) =>
+          ["proposed", "accepted"].includes(tradeoff.status)
         ).length,
         workItemCount: data.workItems.length,
         unlinkedWorkItemCount,
@@ -2548,6 +2561,96 @@ app.post("/decisions", async (c) => {
           relationship: "source_for_decision",
           confidence: 1,
           rationale: "Decision created with this artifact as source evidence.",
+          createdAt: timestamp,
+        })
+        .run();
+    }
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/strategy-tradeoffs", (c) => {
+  const data = getDb()
+    .select()
+    .from(cbStrategyTradeoffs)
+    .orderBy(desc(cbStrategyTradeoffs.updatedAt))
+    .limit(100)
+    .all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/strategy-tradeoffs", async (c) => {
+  try {
+    const body = await c.req.json<CreateStrategyTradeoffRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const priorityId = body.priorityId ?? null;
+    if (priorityId) {
+      const priority = db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, priorityId))
+        .get();
+      if (!priority) throw new Error("priorityId not found");
+    }
+    const decisionId = body.decisionId ?? null;
+    if (decisionId) {
+      const decision = db.select().from(cbDecisions).where(eq(cbDecisions.id, decisionId)).get();
+      if (!decision) throw new Error("decisionId not found");
+    }
+    const sourceArtifactIds = body.sourceArtifactIds ?? [];
+    for (const artifactId of sourceArtifactIds) {
+      const artifact = db
+        .select()
+        .from(cbArtifacts)
+        .where(eq(cbArtifacts.id, artifactId))
+        .get();
+      if (!artifact) throw new Error(`sourceArtifactIds contains unknown artifact ${artifactId}`);
+    }
+    const row = {
+      id: nanoid(12),
+      title: requireText(body.title, "title"),
+      summary: body.summary ?? null,
+      rationale: body.rationale ?? null,
+      kind: body.kind ?? "tradeoff",
+      area: body.area ?? "strategy",
+      owner: body.owner ?? null,
+      ownerType: body.ownerType ?? "unknown",
+      status: body.status ?? "proposed",
+      priorityId,
+      decisionId,
+      sourceArtifactIds,
+      acceptedOption: body.acceptedOption ?? null,
+      rejectedOptions: body.rejectedOptions ?? [],
+      constraints: body.constraints ?? [],
+      riskClass: body.riskClass ?? "unknown",
+      visibility: body.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        rawRef: sourceArtifactIds[0] ?? decisionId ?? priorityId ?? undefined,
+        artifactId: sourceArtifactIds[0],
+        createdFrom: "api:strategy_tradeoff",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "approved",
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbStrategyTradeoffs).values(row).run();
+    for (const artifactId of sourceArtifactIds) {
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId,
+          targetType: "strategy_tradeoff",
+          targetId: row.id,
+          relationship: "source_for_tradeoff",
+          confidence: 1,
+          rationale: "Strategy tradeoff created with this artifact as source evidence.",
           createdAt: timestamp,
         })
         .run();

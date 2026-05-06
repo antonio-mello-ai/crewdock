@@ -345,6 +345,19 @@ export type DecisionStatus =
   | "superseded"
   | "rejected"
   | "archived";
+export type StrategyTradeoffKind =
+  | "tradeoff"
+  | "constraint"
+  | "non_goal"
+  | "risk"
+  | "dependency"
+  | "principle";
+export type StrategyTradeoffStatus =
+  | "proposed"
+  | "accepted"
+  | "superseded"
+  | "rejected"
+  | "archived";
 export type AlignmentClassification =
   | "aligned"
   | "weak"
@@ -755,6 +768,49 @@ export interface Decision {
   provenance: Provenance | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface StrategyTradeoff {
+  id: string;
+  title: string;
+  summary: string | null;
+  rationale: string | null;
+  kind: StrategyTradeoffKind;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  status: StrategyTradeoffStatus;
+  priorityId: string | null;
+  decisionId: string | null;
+  sourceArtifactIds: string[];
+  acceptedOption: string | null;
+  rejectedOptions: string[];
+  constraints: string[];
+  riskClass: RiskClass;
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateStrategyTradeoffRequest {
+  title: string;
+  summary?: string | null;
+  rationale?: string | null;
+  kind?: StrategyTradeoffKind;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  status?: StrategyTradeoffStatus;
+  priorityId?: string | null;
+  decisionId?: string | null;
+  sourceArtifactIds?: string[];
+  acceptedOption?: string | null;
+  rejectedOptions?: string[];
+  constraints?: string[];
+  riskClass?: RiskClass;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
 }
 
 export interface CreateDecisionRequest {
@@ -1379,6 +1435,7 @@ export interface CompanyBrainSummary {
   goals: Goal[];
   milestones: Milestone[];
   decisions: Decision[];
+  strategyTradeoffs: StrategyTradeoff[];
   workItems: WorkItem[];
   workflowBlueprints: WorkflowBlueprint[];
   workflowRuns: WorkflowRun[];
@@ -1400,6 +1457,8 @@ export interface CompanyBrainSummary {
     goalCount: number;
     decisionCount: number;
     activeDecisionCount: number;
+    strategyTradeoffCount: number;
+    activeStrategyTradeoffCount: number;
     workItemCount: number;
     unlinkedWorkItemCount: number;
     activeWorkflowRunCount: number;

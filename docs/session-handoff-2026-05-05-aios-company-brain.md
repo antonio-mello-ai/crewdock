@@ -526,7 +526,7 @@ Dogfood local Demo Felhen v0.1 validado em DB temporario `/tmp/aios-runtime-felh
 
 Proximos cortes recomendados:
 
-- Strategy tradeoffs v0.
+- Decision/Signal extractor v0 sobre artifacts reais.
 - Hardening de Slack threads/mentions se o dogfood pedir leitura mais profunda.
 
 ## Slice Slack API Adapter v0
@@ -556,6 +556,33 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-slack-channel-sync-do
 - Source Health retornou freshness `fresh`; residuos esperados nesta fase: `no_work_items` e `no_signals`.
 
 Boundary: o Slack App tem escopos amplos para evitar bloqueio operacional, mas o runtime continua sem writeback automatico. Escrita externa deve entrar em corte separado com `action_policy`, HITL/gates e aceite explicito.
+
+## Slice Strategy Tradeoff v0
+
+Objetivo: tornar tradeoffs, constraints, non-goals, riscos, dependencias e principios objetos explicitos do Company Brain, ligados a priority/decision/evidence em vez de texto solto em roadmap.
+
+Implementado em 2026-05-06:
+
+1. Tipos `StrategyTradeoffKind`, `StrategyTradeoffStatus`, `StrategyTradeoff` e `CreateStrategyTradeoffRequest` em `packages/shared/src/types.ts`.
+2. Tabela `cb_strategy_tradeoffs` e indices por status, priority e decision.
+3. Rota `GET/POST /api/company-brain/strategy-tradeoffs`.
+4. Summary inclui `strategyTradeoffs`, `strategyTradeoffCount` e `activeStrategyTradeoffCount`.
+5. UI `/company-brain` tem formulario `Tradeoff`, cards no Strategy Map e secao `Strategy Tradeoffs`.
+6. MCP tool `create_company_brain_strategy_tradeoff`.
+7. Artifact links usam `targetType=strategy_tradeoff` e `relationship=source_for_tradeoff`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-strategy-tradeoff-dogfood.sqlite`, daemon em `127.0.0.1:43115`:
+
+- Source: `fK4svHXnlHJ1`.
+- Artifact fonte: `4eepO7K7JJLu`.
+- Priority: `bDHA3ECTuhbo`.
+- Decision: `aqDY6Z2yaYnl`.
+- StrategyTradeoff: `a6cwWG_2H4XN`, `kind=tradeoff`, `status=accepted`.
+- Tradeoff ficou ligado a priority, decision e artifact fonte.
+- ArtifactLink criado com `relationship=source_for_tradeoff`.
+- Summary retornou `strategyTradeoffCount=1` e `activeStrategyTradeoffCount=1`.
+
+Proximo corte recomendado: extractor v0 para transformar artifacts reais de Slack/docs em Decision/Signal candidatos com provenance e review pendente.
 
 ## Dogfood ERP
 
@@ -675,11 +702,12 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Slack API Adapter v0. O corte recomendado e `Strategy tradeoffs v0`: tradeoffs/constraints/rationale ligados a priority/decision, sem recriar foundation, watcher, closed loop ou adapters ja entregues.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Strategy Tradeoff v0. O corte recomendado e `Decision/Signal extractor v0`: transformar artifacts reais de Slack/docs em candidates de Decision e Signal com provenance, review pendente e link opcional a priority/goal/work item.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- adicionar tradeoffs/constraints/rationale ligados a priority/decision;
-- expor em API/UI/MCP e summary quando fizer sentido;
+- criar extractor interno/manual-assistido para artifacts existentes;
+- gerar candidates sem writeback externo e sem auto-approve;
+- expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

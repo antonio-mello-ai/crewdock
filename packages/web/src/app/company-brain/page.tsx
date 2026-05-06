@@ -23,6 +23,7 @@ import {
   useCreateCompanyBrainImprovementProposal,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
+  useCreateCompanyBrainStrategyTradeoff,
   useCreateCompanyBrainWatcher,
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
@@ -48,6 +49,8 @@ import type {
   SlaStatus,
   SourceType,
   SignalSeverity,
+  StrategyTradeoffKind,
+  StrategyTradeoffStatus,
   WorkItemStatus,
   ActionPolicy,
   AgentContextType,
@@ -85,6 +88,21 @@ const goalStatuses: GoalStatus[] = [
 ];
 
 const decisionStatuses: DecisionStatus[] = [
+  "proposed",
+  "accepted",
+  "superseded",
+  "rejected",
+  "archived",
+];
+const strategyTradeoffKinds: StrategyTradeoffKind[] = [
+  "tradeoff",
+  "constraint",
+  "non_goal",
+  "risk",
+  "dependency",
+  "principle",
+];
+const strategyTradeoffStatuses: StrategyTradeoffStatus[] = [
   "proposed",
   "accepted",
   "superseded",
@@ -134,6 +152,13 @@ function toDateInput(value: number | null | undefined) {
 function fromDateInput(value: string) {
   if (!value) return null;
   return new Date(`${value}T12:00:00`).getTime();
+}
+
+function splitMultiline(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function StatusBadge({ value }: { value: string }) {
@@ -193,6 +218,7 @@ export default function CompanyBrainPage() {
   const createPriority = useCreateCompanyBrainPriority();
   const createGoal = useCreateCompanyBrainGoal();
   const createDecision = useCreateCompanyBrainDecision();
+  const createStrategyTradeoff = useCreateCompanyBrainStrategyTradeoff();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -212,6 +238,7 @@ export default function CompanyBrainPage() {
   const priorities = summary?.priorities ?? [];
   const goals = summary?.goals ?? [];
   const decisions = summary?.decisions ?? [];
+  const strategyTradeoffs = summary?.strategyTradeoffs ?? [];
   const workItems = summary?.workItems ?? [];
   const blueprints = summary?.workflowBlueprints ?? [];
   const runs = summary?.workflowRuns ?? [];
@@ -295,6 +322,23 @@ export default function CompanyBrainPage() {
     sourceArtifactId: "",
     priorityId: "",
     goalId: "",
+  });
+
+  const [strategyTradeoffForm, setStrategyTradeoffForm] = useState({
+    title: "AIOS favors read-only learning before external writeback",
+    summary:
+      "Use broad connector capability for continuity, but keep runtime actions observe-only until policy and HITL are explicit.",
+    rationale:
+      "The product needs fast operational learning without allowing an early adapter to mutate external systems by accident.",
+    kind: "tradeoff" as StrategyTradeoffKind,
+    status: "accepted" as StrategyTradeoffStatus,
+    priorityId: "",
+    decisionId: "",
+    sourceArtifactId: "",
+    acceptedOption: "Read/import first, writeback only through explicit policy gates.",
+    rejectedOptions: "Automatic Slack replies from ingestion adapters",
+    constraints: "External writeback requires action_policy, risk_class, provenance and HITL",
+    riskClass: "B" as RiskClass,
   });
 
   const [agentContextForm, setAgentContextForm] = useState({
@@ -450,6 +494,30 @@ export default function CompanyBrainPage() {
         : [],
       priorityIds: decisionForm.priorityId ? [decisionForm.priorityId] : [],
       goalIds: decisionForm.goalId ? [decisionForm.goalId] : [],
+      visibility: "internal",
+    });
+  };
+
+  const handleCreateStrategyTradeoff = (event: FormEvent) => {
+    event.preventDefault();
+    createStrategyTradeoff.mutate({
+      title: strategyTradeoffForm.title,
+      summary: strategyTradeoffForm.summary || null,
+      rationale: strategyTradeoffForm.rationale || null,
+      kind: strategyTradeoffForm.kind,
+      status: strategyTradeoffForm.status,
+      area: "strategy",
+      owner: "Felhen",
+      ownerType: "team",
+      priorityId: strategyTradeoffForm.priorityId || null,
+      decisionId: strategyTradeoffForm.decisionId || null,
+      sourceArtifactIds: strategyTradeoffForm.sourceArtifactId
+        ? [strategyTradeoffForm.sourceArtifactId]
+        : [],
+      acceptedOption: strategyTradeoffForm.acceptedOption || null,
+      rejectedOptions: splitMultiline(strategyTradeoffForm.rejectedOptions),
+      constraints: splitMultiline(strategyTradeoffForm.constraints),
+      riskClass: strategyTradeoffForm.riskClass,
       visibility: "internal",
     });
   };
@@ -1750,6 +1818,154 @@ export default function CompanyBrainPage() {
             </KernelForm>
 
             <KernelForm
+              title="Tradeoff"
+              icon={AlertTriangle}
+              onSubmit={handleCreateStrategyTradeoff}
+            >
+              <FieldLabel>Title</FieldLabel>
+              <Input
+                value={strategyTradeoffForm.title}
+                onChange={(event) =>
+                  setStrategyTradeoffForm({
+                    ...strategyTradeoffForm,
+                    title: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Kind</FieldLabel>
+                  <Select
+                    value={strategyTradeoffForm.kind}
+                    onChange={(event) =>
+                      setStrategyTradeoffForm({
+                        ...strategyTradeoffForm,
+                        kind: event.target.value as StrategyTradeoffKind,
+                      })
+                    }
+                  >
+                    {strategyTradeoffKinds.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {kind}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Status</FieldLabel>
+                  <Select
+                    value={strategyTradeoffForm.status}
+                    onChange={(event) =>
+                      setStrategyTradeoffForm({
+                        ...strategyTradeoffForm,
+                        status: event.target.value as StrategyTradeoffStatus,
+                      })
+                    }
+                  >
+                    {strategyTradeoffStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Priority</FieldLabel>
+                  <Select
+                    value={strategyTradeoffForm.priorityId}
+                    onChange={(event) =>
+                      setStrategyTradeoffForm({
+                        ...strategyTradeoffForm,
+                        priorityId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no priority</option>
+                    {priorities.map((priority) => (
+                      <option key={priority.id} value={priority.id}>
+                        {priority.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Decision</FieldLabel>
+                  <Select
+                    value={strategyTradeoffForm.decisionId}
+                    onChange={(event) =>
+                      setStrategyTradeoffForm({
+                        ...strategyTradeoffForm,
+                        decisionId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no decision</option>
+                    {decisions.map((decision) => (
+                      <option key={decision.id} value={decision.id}>
+                        {decision.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <FieldLabel>Accepted option</FieldLabel>
+              <Input
+                value={strategyTradeoffForm.acceptedOption}
+                onChange={(event) =>
+                  setStrategyTradeoffForm({
+                    ...strategyTradeoffForm,
+                    acceptedOption: event.target.value,
+                  })
+                }
+              />
+              <FieldLabel>Source artifact</FieldLabel>
+              <Select
+                value={strategyTradeoffForm.sourceArtifactId}
+                onChange={(event) =>
+                  setStrategyTradeoffForm({
+                    ...strategyTradeoffForm,
+                    sourceArtifactId: event.target.value,
+                  })
+                }
+              >
+                <option value="">no artifact source</option>
+                {artifacts.map((artifact) => (
+                  <option key={artifact.id} value={artifact.id}>
+                    {artifact.title}
+                  </option>
+                ))}
+              </Select>
+              <FieldLabel>Rationale</FieldLabel>
+              <textarea
+                value={strategyTradeoffForm.rationale}
+                onChange={(event) =>
+                  setStrategyTradeoffForm({
+                    ...strategyTradeoffForm,
+                    rationale: event.target.value,
+                  })
+                }
+                className="min-h-16 rounded-md border border-neutral-800 bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <FieldLabel>Constraints</FieldLabel>
+              <textarea
+                value={strategyTradeoffForm.constraints}
+                onChange={(event) =>
+                  setStrategyTradeoffForm({
+                    ...strategyTradeoffForm,
+                    constraints: event.target.value,
+                  })
+                }
+                className="min-h-16 rounded-md border border-neutral-800 bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <SubmitButton
+                pending={createStrategyTradeoff.isPending}
+                disabled={!strategyTradeoffForm.title.trim()}
+              />
+            </KernelForm>
+
+            <KernelForm
               title="Agent context"
               icon={FileText}
               onSubmit={handleGenerateAgentContext}
@@ -2345,6 +2561,9 @@ export default function CompanyBrainPage() {
                     const priorityDecisions = decisions.filter((decision) =>
                       decision.priorityIds.includes(priority.id)
                     );
+                    const priorityTradeoffs = strategyTradeoffs.filter(
+                      (tradeoff) => tradeoff.priorityId === priority.id
+                    );
                     return (
                       <div key={priority.id} className="px-5 py-4">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -2372,7 +2591,9 @@ export default function CompanyBrainPage() {
                             {priorityWork.length} work item
                             {priorityWork.length === 1 ? "" : "s"} ·{" "}
                             {priorityDecisions.length} decision
-                            {priorityDecisions.length === 1 ? "" : "s"}
+                            {priorityDecisions.length === 1 ? "" : "s"} ·{" "}
+                            {priorityTradeoffs.length} tradeoff
+                            {priorityTradeoffs.length === 1 ? "" : "s"}
                           </p>
                         </div>
                         <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -2390,6 +2611,22 @@ export default function CompanyBrainPage() {
                               <p className="mt-1 text-xs text-neutral-600">
                                 due {goal.dueAt ? toDateInput(goal.dueAt) : "not set"} ·{" "}
                                 {goal.reviewCadence ?? "no cadence"}
+                              </p>
+                            </div>
+                          ))}
+                          {priorityTradeoffs.map((tradeoff) => (
+                            <div
+                              key={tradeoff.id}
+                              className="rounded-md border border-neutral-800/50 bg-neutral-950/30 p-3"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="truncate text-sm text-neutral-300">
+                                  {tradeoff.title}
+                                </p>
+                                <StatusBadge value={tradeoff.status} />
+                              </div>
+                              <p className="mt-1 line-clamp-2 text-xs text-neutral-600">
+                                {tradeoff.acceptedOption ?? tradeoff.summary ?? tradeoff.kind}
                               </p>
                             </div>
                           ))}
@@ -2432,6 +2669,53 @@ export default function CompanyBrainPage() {
                   ))
                 )}
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-neutral-500" />
+                <h2 className="text-sm font-semibold text-neutral-200">
+                  Strategy Tradeoffs
+                </h2>
+              </div>
+            </div>
+            <div className="divide-y divide-neutral-800/40">
+              {strategyTradeoffs.length === 0 ? (
+                <EmptyState label="No strategy tradeoffs registered" />
+              ) : (
+                strategyTradeoffs.slice(0, 8).map((tradeoff) => {
+                  const priority = priorities.find(
+                    (item) => item.id === tradeoff.priorityId
+                  );
+                  const decision = decisions.find(
+                    (item) => item.id === tradeoff.decisionId
+                  );
+                  return (
+                    <div key={tradeoff.id} className="px-5 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-neutral-200">
+                            {tradeoff.title}
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-600">
+                            {tradeoff.kind} · {tradeoff.riskClass} ·{" "}
+                            {priority?.title ?? "no priority"} ·{" "}
+                            {decision?.title ?? "no decision"}
+                          </p>
+                          {tradeoff.rationale && (
+                            <p className="mt-2 line-clamp-2 text-sm text-neutral-500">
+                              {tradeoff.rationale}
+                            </p>
+                          )}
+                        </div>
+                        <StatusBadge value={tradeoff.status} />
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </section>
 

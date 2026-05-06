@@ -27,6 +27,8 @@ import type {
   SlaStatus,
   SourceStatus,
   SourceType,
+  StrategyTradeoffKind,
+  StrategyTradeoffStatus,
   Visibility,
   WatcherRunStatus,
   WatcherStatus,
@@ -282,6 +284,35 @@ export const cbDecisions = sqliteTable("cb_decisions", {
     .default([]),
   priorityIds: text("priority_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
   goalIds: text("goal_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbStrategyTradeoffs = sqliteTable("cb_strategy_tradeoffs", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  rationale: text("rationale"),
+  kind: text("kind").$type<StrategyTradeoffKind>().notNull().default("tradeoff"),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("strategy"),
+  owner: text("owner"),
+  ownerType: text("owner_type").$type<OwnerType>().notNull().default("unknown"),
+  status: text("status").$type<StrategyTradeoffStatus>().notNull().default("proposed"),
+  priorityId: text("priority_id"),
+  decisionId: text("decision_id"),
+  sourceArtifactIds: text("source_artifact_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  acceptedOption: text("accepted_option"),
+  rejectedOptions: text("rejected_options", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  constraints: text("constraints", { mode: "json" }).$type<string[]>().notNull().default([]),
+  riskClass: text("risk_class").$type<RiskClass>().notNull().default("unknown"),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),

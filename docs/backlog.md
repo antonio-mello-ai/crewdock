@@ -15,6 +15,8 @@ Status Guidance Feedback v0 em 2026-05-06: `GuidanceItem` agora pode ser atualiz
 
 Status Decision v0 em 2026-05-06: `Decision` implementado como objeto horizontal do Company Brain com racional, owner, artifacts fonte, priorities/goals, status, visibility e provenance.
 
+Status Strategy Tradeoff v0 em 2026-05-06: `StrategyTradeoff` implementado como objeto de primeira classe para tradeoffs, constraints, non-goals, riscos, dependencias e principios, ligado a priority/decision/artifacts com accepted/rejected options, risk_class, visibility e provenance.
+
 Status AgentContext v0 em 2026-05-06: `AgentContext` implementado como contexto executavel gerado a partir de conhecimento aprovado, com target agent, source knowledge IDs, markdown content, status, validation status e provenance.
 
 Status ImprovementProposal v0 em 2026-05-06: `ImprovementProposal` implementado para o loop AutoImprove interno, com signals, hypothesis, change class, patch ref, validation plan, impact review e promotion status, sem auto-apply.
@@ -39,7 +41,7 @@ Status Demo Felhen v0.1 em 2026-05-06: runner interno/API/UI/MCP implementado pa
 - [x] **Watcher status em Source Health / Summary** — expor status basico de watchers, ultimas execucoes, erro, artifacts/signals/work items gerados e freshness em `/api/company-brain/summary` ou tela de Source Health
 - [x] **Watcher manual/simulado v0** — criar watcher manual para PR/CI ou GitHub Issues que consiga registrar uma execucao sem webhook real
 - [x] **Watcher output com provenance e policy** — garantir que uma execucao de watcher consiga gerar `Artifact`, `Signal` ou `WorkItem` com provenance, `action_policy`, `risk_class` e trilha auditavel antes de qualquer writeback. Implementado para `Artifact`, `Signal`, `WorkItem`, `AlignmentFinding` e `GuidanceItem`.
-- [ ] **Strategy layer** — cadastrar prioridades, tradeoffs, owners, criterios de sucesso e status. Parcial: priorities/owners/status/success criteria e decisions implementados; tradeoffs ficam pendentes.
+- [x] **Strategy layer** — cadastrar prioridades, tradeoffs, owners, criterios de sucesso e status. Implementado com priorities, goals/cadence, decisions e strategy tradeoffs.
 - [x] **Decision v0** — registrar escolhas com racional, owner, status, source artifacts, priorities/goals, visibility e provenance
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
