@@ -1253,7 +1253,37 @@ Dogfood read-only validado em DB temporario `/tmp/aios-runtime-writeback-negativ
 - Proposal `Z7kq04y9nFok`: `github_status`, preview `preview_only`, `executionBlocked=true`, `reviewStatus=blocked`, reasons `blocked/github_status_check_preview_only`.
 - Stats: `previewOnlyBlockedCount=1`, `githubLabelBlockedCount=3`, `githubStatusCheckBlockedCount=1`, `externalMutationAttemptedCount=0`.
 
-Proximo corte recomendado: evoluir Adoption/Writeback Dashboard read-only para revisao operacional consolidada por adapter (GitHub comment, GitHub label, Slack reply, preview-only status/check), antes de qualquer nova mutacao externa.
+## Slice Writeback Adapter Summary v0
+
+Objetivo: consolidar a revisao operacional por adapter sem criar nova rota de mutacao.
+
+Implementado em 2026-05-06:
+
+1. `CompanyBrainWritebackSafetyDashboard.adapterSummaries`.
+2. Adapters normalizados:
+   - `github_comment`;
+   - `github_label`;
+   - `github_status_check`;
+   - `slack_thread_reply`;
+   - `other`.
+3. Cada adapter summary expõe:
+   - `proposalCount`;
+   - `completedCount`;
+   - `completedNoopCount`;
+   - `mutationAttemptedCount`;
+   - `blockedCount`;
+   - `readyCount`;
+   - `failedCount`;
+   - `latestAt`.
+4. UI `/company-brain` mostra resumo por adapter no painel Writeback Governance.
+5. Nenhuma chamada externa e nenhuma rota de execute nova.
+
+Dogfood read-only validado reaproveitando `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon em `127.0.0.1:43137`:
+
+- `github_label`: `proposalCount=3`, `blockedCount=3`, `completedCount=0`, `completedNoopCount=0`, `mutationAttemptedCount=0`, `failedCount=0`, `latestAt` presente.
+- `github_status_check`: `proposalCount=1`, `blockedCount=1`, `completedCount=0`, `completedNoopCount=0`, `mutationAttemptedCount=0`, `failedCount=0`, `latestAt` presente.
+
+Proximo corte recomendado: revisar UX/API read-only para exportar audit trail filtravel por adapter/proposal, antes de qualquer novo executor real.
 
 ## Dogfood ERP
 
@@ -1373,7 +1403,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0 e Writeback Negative-Path Review v0. O proximo corte recomendado e Adoption/Writeback Dashboard read-only por adapter, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0 e Writeback Adapter Summary v0. O proximo corte recomendado e UX/API read-only para exportar audit trail filtravel por adapter/proposal, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

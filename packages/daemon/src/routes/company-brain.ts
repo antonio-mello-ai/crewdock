@@ -3412,6 +3412,71 @@ function writebackSafetyNextAction(
   return "Blocked by governance; do not execute without a new risk policy.";
 }
 
+function writebackAdapterKey(
+  proposal: ExternalActionProposal
+): CompanyBrainWritebackSafetyDashboard["adapterSummaries"][number]["adapter"] {
+  if (proposal.destinationType === "github" && isGitHubCommentAction(proposal.actionType)) {
+    return "github_comment";
+  }
+  if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
+    return "github_label";
+  }
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubStatusCheckAction(proposal.actionType)
+  ) {
+    return "github_status_check";
+  }
+  if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
+    return "slack_thread_reply";
+  }
+  return "other";
+}
+
+function buildWritebackAdapterSummaries(
+  proposals: ExternalActionProposal[],
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >
+): CompanyBrainWritebackSafetyDashboard["adapterSummaries"] {
+  const summaries = new Map<
+    CompanyBrainWritebackSafetyDashboard["adapterSummaries"][number]["adapter"],
+    CompanyBrainWritebackSafetyDashboard["adapterSummaries"][number]
+  >();
+  for (const proposal of proposals) {
+    const adapter = writebackAdapterKey(proposal);
+    const existing =
+      summaries.get(adapter) ?? {
+        adapter,
+        proposalCount: 0,
+        completedCount: 0,
+        completedNoopCount: 0,
+        mutationAttemptedCount: 0,
+        blockedCount: 0,
+        readyCount: 0,
+        failedCount: 0,
+        latestAt: null,
+      };
+    const review = reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
+    const latestAudit = latestExternalActionAudit(proposal);
+    existing.proposalCount += 1;
+    if (isCompletedExternalWriteback(proposal)) existing.completedCount += 1;
+    if (hasCompletedNoopAudit(proposal)) existing.completedNoopCount += 1;
+    if (hasExternalMutationAttemptAudit(proposal)) {
+      existing.mutationAttemptedCount += 1;
+    }
+    if (review.status === "blocked") existing.blockedCount += 1;
+    if (review.status === "ready_to_execute") existing.readyCount += 1;
+    if (proposal.executionStatus === "failed") existing.failedCount += 1;
+    const latestAt = latestAudit?.at ?? proposal.updatedAt;
+    existing.latestAt =
+      existing.latestAt === null ? latestAt : Math.max(existing.latestAt, latestAt);
+    summaries.set(adapter, existing);
+  }
+  return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
+}
+
 function buildWritebackSafetyDashboard(
   data: ReturnType<typeof listAll>
 ): CompanyBrainWritebackSafetyDashboard {
@@ -3486,6 +3551,7 @@ function buildWritebackSafetyDashboard(
       blockedStates: ["cancelled", "blocked"],
     },
     items,
+    adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
     stats: {
       proposalCount: proposals.length,
       pendingApprovalCount: proposals.filter(

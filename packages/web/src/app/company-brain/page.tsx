@@ -1673,6 +1673,30 @@ export default function CompanyBrainPage() {
                     value={writebackSafetyDashboard.stats.failedExecutionCount}
                   />
                 </div>
+                {writebackSafetyDashboard.adapterSummaries.length ? (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    {writebackSafetyDashboard.adapterSummaries.map((adapter) => (
+                      <div
+                        key={adapter.adapter}
+                        className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs"
+                      >
+                        <p className="font-medium text-neutral-300">
+                          {adapter.adapter}
+                        </p>
+                        <p className="mt-1 text-neutral-600">
+                          total {adapter.proposalCount} · done{" "}
+                          {adapter.completedCount} · blocked{" "}
+                          {adapter.blockedCount}
+                        </p>
+                        <p className="mt-1 text-neutral-600">
+                          noop {adapter.completedNoopCount} · mutation{" "}
+                          {adapter.mutationAttemptedCount} · failed{" "}
+                          {adapter.failedCount}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="mt-3 divide-y divide-neutral-800/40">
                   {writebackSafetyDashboard.items.length === 0 ? (
                     <p className="py-2 text-xs text-neutral-600">

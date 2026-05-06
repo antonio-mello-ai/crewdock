@@ -79,7 +79,9 @@ Status Post-Writeback Audit Review v0 em 2026-05-06: Safety Dashboard agora dist
 
 Status Writeback Negative-Path Review v0 em 2026-05-06: Safety Dashboard agora expõe `blockReasons` derivados e stats `previewOnlyBlockedCount`, `githubLabelBlockedCount` e `githubStatusCheckBlockedCount`, deixando legivel por que label remove/multi-label/fora da allowlist e status/check continuam bloqueados sem executor.
 
-Proximo corte planejado: evoluir Adoption/Writeback Dashboard read-only para revisao operacional consolidada por adapter (GitHub comment, GitHub label, Slack reply, preview-only status/check), antes de qualquer nova mutacao externa.
+Status Writeback Adapter Summary v0 em 2026-05-06: Safety Dashboard agora expõe `adapterSummaries` por adapter (`github_comment`, `github_label`, `github_status_check`, `slack_thread_reply`, `other`) com totais de proposals, completados, noops, mutacoes tentadas, bloqueados, prontos, falhas e latestAt. UI mostra o resumo por adapter sem nova mutacao externa.
+
+Proximo corte planejado: revisar UX/API read-only para exportar audit trail filtravel por adapter/proposal, antes de qualquer novo executor real.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -107,6 +109,7 @@ Proximo corte planejado: evoluir Adoption/Writeback Dashboard read-only para rev
 - [x] **GitHub label executor real v0** — executar somente label add allowlisted, aprovado e previewado; ler labels atuais antes de write; fechar como completed_noop/already_completed quando o label ja existe
 - [x] **Post-Writeback Audit Review v0** — distinguir label completado/noop, mutacao tentada e execution event na Safety Dashboard/API/UI/MCP sem novas mutacoes
 - [x] **Writeback Negative-Path Review v0** — expor motivos e contadores para proposals bloqueadas de label/status/check, incluindo remove, multi-label, alvo fora da allowlist e preview-only
+- [x] **Writeback Adapter Summary v0** — consolidar writeback safety por adapter com completed/noop/mutation/block/ready/failed em summary/API/UI/MCP
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

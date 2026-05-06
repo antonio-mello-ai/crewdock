@@ -1905,10 +1905,30 @@ export interface WritebackSafetyQueueItem {
   nextAction: string;
 }
 
+export type WritebackAdapterKey =
+  | "github_comment"
+  | "github_label"
+  | "github_status_check"
+  | "slack_thread_reply"
+  | "other";
+
+export interface WritebackAdapterSummary {
+  adapter: WritebackAdapterKey;
+  proposalCount: number;
+  completedCount: number;
+  completedNoopCount: number;
+  mutationAttemptedCount: number;
+  blockedCount: number;
+  readyCount: number;
+  failedCount: number;
+  latestAt: number | null;
+}
+
 export interface CompanyBrainWritebackSafetyDashboard {
   generatedAt: number;
   retryPolicy: WritebackRetryPolicy;
   items: WritebackSafetyQueueItem[];
+  adapterSummaries: WritebackAdapterSummary[];
   stats: {
     proposalCount: number;
     pendingApprovalCount: number;
