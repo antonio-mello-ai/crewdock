@@ -943,7 +943,29 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-writeback-safety-dash
 - `itemKinds` retornou `approved_ready`, `blocked_proposal`, `failed_execution`, `pending_approval`, `rejected_proposal`.
 - Summary refletiu `completedExternalActionCount=0`, `failedExternalActionCount=1`, `duplicateAvoidedExternalActionCount=0`.
 
-Proximo corte recomendado: HITL hardening / retry safety antes de qualquer label/status/assign: approval/rejection reason mais forte, dry-run como precondicao rastreavel, idempotency review, retry seguro e visao de payload/diff antes de executar.
+## Slice Writeback Preview Gate v0
+
+Objetivo: endurecer a fronteira de execucao externa sem criar novas acoes externas: todo execute real de GitHub comment ou Slack thread reply deve ter preview/dry-run registrado depois da aprovacao humana.
+
+Implementado em 2026-05-06:
+
+1. Daemon adiciona `WritebackPreviewRequiredError` e helper `requireWritebackPreviewAfterApproval`.
+2. `execute` de GitHub comment exige audit event `github_comment_previewed` com timestamp posterior ou igual a `approvedAt` antes de buscar comentarios ou chamar POST no GitHub.
+3. `execute` de Slack thread reply exige audit event `slack_thread_reply_previewed` com timestamp posterior ou igual a `approvedAt` antes de buscar thread replies ou chamar Slack write API.
+4. Tentativa de execute sem preview retorna 400, registra audit event recuperavel:
+   - `github_comment_preview_required`
+   - `slack_thread_reply_preview_required`
+5. Esse bloqueio preserva `executionStatus` anterior (`not_started` ou `dry_run`) em vez de marcar `failed`, para permitir rodar preview depois.
+6. UI `/company-brain` separa permissao de preview e execute: Preview fica habilitado para `not_started/dry_run`; Execute/Reply so fica habilitado em `dry_run`.
+7. MCP descriptions de execute deixam explicita a precondicao de preview posterior a aprovacao.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-hitl-hardening-dogfood.sqlite`, daemon em `127.0.0.1:43128`, sem writeback externo:
+
+- GitHub proposal `W-_neQCL3bIr`: execute antes de preview retornou 400 `GitHub comment writeback preview is required after approval before execution`, manteve `executionStatus=not_started`, audit `github_comment_preview_required`; preview posterior retornou `dry_run` com marker.
+- Slack proposal `K20ZAIgicmB-`: execute antes de preview retornou 400 `Slack thread reply writeback preview is required after approval before execution`, manteve `executionStatus=not_started`, audit `slack_thread_reply_preview_required`; preview posterior retornou `dry_run` com marker.
+- Dashboard refletiu `proposalCount=2`, `approvedReadyCount=2`, `failedExecutionCount=0`, `completedExternalWriteCount=0`.
+
+Proximo corte recomendado: HITL hardening / retry safety complementar antes de qualquer label/status/assign: approval/rejection reason obrigatoria, idempotency/payload review explicito, retry seguro e visao de diff/payload antes de executar.
 
 ## Dogfood ERP
 
@@ -1063,7 +1085,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0 e Writeback Safety Dashboard v0. O proximo corte recomendado e HITL hardening / retry safety antes de labels/status/assign ou qualquer acao externa mais forte.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0 e Writeback Preview Gate v0. O proximo corte recomendado e HITL hardening / retry safety complementar antes de labels/status/assign ou qualquer acao externa mais forte.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

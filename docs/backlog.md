@@ -59,7 +59,9 @@ Status Slack Thread Reply Writeback v0 em 2026-05-06: executor real restrito a `
 
 Status Writeback Safety Dashboard v0 em 2026-05-06: dashboard derivado/read-only implementado em summary/API/UI/MCP para auditar writeback externo: completed GitHub/Slack writes, approved-ready proposals, pending approvals, falhas, rejeicoes, bloqueios, risk C/unknown, refs externas faltantes e duplicacoes evitadas por idempotencia. Sem novas mutacoes externas.
 
-Proximo corte planejado: HITL hardening / retry safety antes de qualquer label/status/assign: approval/rejection reason mais forte, dry-run como precondicao rastreavel, idempotency review, retry seguro e visao de payload/diff antes de executar.
+Status Writeback Preview Gate v0 em 2026-05-06: GitHub comment e Slack thread reply agora exigem preview/dry-run registrado depois da aprovacao antes de executar. Tentativa de execute sem preview grava audit event `*_preview_required`, preserva `executionStatus` recuperavel e nao chama APIs externas de escrita. UI so habilita Execute/Reply em `dry_run`; MCP descreve a precondicao.
+
+Proximo corte planejado: HITL hardening / retry safety complementar antes de qualquer label/status/assign: approval/rejection reason obrigatoria, idempotency/payload review explicito, retry seguro e visao de diff/payload antes de executar.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -77,6 +79,7 @@ Proximo corte planejado: HITL hardening / retry safety antes de qualquer label/s
 - [x] **GitHub comment writeback v0** — postar somente comentario aprovado em issue/PR GitHub com preview, idempotency marker, HITL, audit trail e sem mutacoes de status/labels/assign/merge/deploy
 - [x] **Slack thread reply writeback v0** — postar somente reply aprovado em thread Slack existente com preview, idempotency marker, HITL, audit trail e sem mensagem nova fora de thread, DM, edit/delete/reaction/pin/invite/topic/rename
 - [x] **Writeback Safety Dashboard v0** — auditar em summary/API/UI/MCP writebacks completados, proposals prontas, falhas, rejeicoes, bloqueios e duplicacoes evitadas antes de acoes externas mais fortes
+- [x] **Writeback Preview Gate v0** — exigir preview apos aprovacao antes de qualquer execute real GitHub/Slack, com bloqueio recuperavel e audit event quando alguem tenta executar cedo demais
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

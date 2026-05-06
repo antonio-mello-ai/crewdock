@@ -1388,7 +1388,7 @@ server.registerTool(
   {
     title: "Execute GitHub comment writeback",
     description:
-      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed. This is the only GitHub writeback action exposed here; it does not label, assign, close, merge, deploy, or mark notifications read.",
+      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed and a prior preview after approval. This is the only GitHub writeback action exposed here; it does not label, assign, close, merge, deploy, or mark notifications read.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
@@ -1434,7 +1434,7 @@ server.registerTool(
   {
     title: "Execute Slack thread reply writeback",
     description:
-      "Post a Slack reply only inside an existing thread for an approved Risk B Company Brain proposal with action_policy=writeback_allowed. This does not post top-level messages, DMs, edits, deletes, reactions, pins, invites, topic changes, renames, or GitHub actions.",
+      "Post a Slack reply only inside an existing thread for an approved Risk B Company Brain proposal with action_policy=writeback_allowed and a prior preview after approval. This does not post top-level messages, DMs, edits, deletes, reactions, pins, invites, topic changes, renames, or GitHub actions.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),

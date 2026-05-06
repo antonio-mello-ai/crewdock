@@ -665,6 +665,30 @@ function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal
   return buildGitHubCommentWritebackPreview(proposal);
 }
 
+class WritebackPreviewRequiredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WritebackPreviewRequiredError";
+  }
+}
+
+function requireWritebackPreviewAfterApproval(args: {
+  proposal: ExternalActionProposal;
+  event: string;
+  label: string;
+}) {
+  const preview = args.proposal.auditTrail.find(
+    (event) =>
+      event.event === args.event &&
+      (!args.proposal.approvedAt || event.at >= args.proposal.approvedAt)
+  );
+  if (!preview) {
+    throw new WritebackPreviewRequiredError(
+      `${args.label} preview is required after approval before execution`
+    );
+  }
+}
+
 async function fetchGitHubIssueComments(args: GitHubCommentWritebackTarget) {
   const comments: GitHubIssueCommentPayload[] = [];
   for (let page = 1; page <= 10; page += 1) {
@@ -6315,6 +6339,11 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
 
     const { target, marker, body: commentBody } =
       validateGitHubCommentWritebackProposal(existing);
+    requireWritebackPreviewAfterApproval({
+      proposal: existing,
+      event: "github_comment_previewed",
+      label: "GitHub comment writeback",
+    });
     const comments = await fetchGitHubIssueComments(target);
     const priorComment = comments.find((comment) => comment.body?.includes(marker));
     const comment =
@@ -6381,9 +6410,12 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
     return c.json({ data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    const previewRequired = err instanceof WritebackPreviewRequiredError;
     const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
       actor,
-      event: "github_comment_failed",
+      event: previewRequired
+        ? "github_comment_preview_required"
+        : "github_comment_failed",
       note: message,
       metadata: {
         request: {
@@ -6402,7 +6434,7 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
       },
     });
     const update = {
-      executionStatus: "failed" as const,
+      executionStatus: previewRequired ? existing.executionStatus : ("failed" as const),
       errorSummary: message,
       auditTrail,
       updatedAt: now(),
@@ -6527,6 +6559,11 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
 
     const { target, marker, body: replyBody } =
       validateSlackThreadReplyWritebackProposal(existing);
+    requireWritebackPreviewAfterApproval({
+      proposal: existing,
+      event: "slack_thread_reply_previewed",
+      label: "Slack thread reply writeback",
+    });
     const token = slackBotTokenForWriteback();
     const replies = await fetchSlackThreadReplies(token, target);
     assertExistingSlackThread(replies, target);
@@ -6607,9 +6644,12 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
     return c.json({ data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    const previewRequired = err instanceof WritebackPreviewRequiredError;
     const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
       actor,
-      event: "slack_thread_reply_failed",
+      event: previewRequired
+        ? "slack_thread_reply_preview_required"
+        : "slack_thread_reply_failed",
       note: message,
       metadata: {
         request: {
@@ -6628,7 +6668,7 @@ app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) 
       },
     });
     const update = {
-      executionStatus: "failed" as const,
+      executionStatus: previewRequired ? existing.executionStatus : ("failed" as const),
       errorSummary: message,
       auditTrail,
       updatedAt: now(),

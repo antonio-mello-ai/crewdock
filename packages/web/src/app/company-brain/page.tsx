@@ -922,7 +922,7 @@ export default function CompanyBrainPage() {
     });
   };
 
-  const canRunGitHubCommentWriteback = (
+  const canPreviewGitHubCommentWriteback = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
     proposal.destinationType === "github" &&
@@ -932,7 +932,11 @@ export default function CompanyBrainPage() {
     proposal.actionPolicy === "writeback_allowed" &&
     ["not_started", "dry_run"].includes(proposal.executionStatus);
 
-  const canRunSlackThreadReplyWriteback = (
+  const canExecuteGitHubCommentWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) => canPreviewGitHubCommentWriteback(proposal) && proposal.executionStatus === "dry_run";
+
+  const canPreviewSlackThreadReplyWriteback = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
     proposal.destinationType === "slack" &&
@@ -942,6 +946,12 @@ export default function CompanyBrainPage() {
     proposal.riskClass === "B" &&
     proposal.actionPolicy === "writeback_allowed" &&
     ["not_started", "dry_run"].includes(proposal.executionStatus);
+
+  const canExecuteSlackThreadReplyWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    canPreviewSlackThreadReplyWriteback(proposal) &&
+    proposal.executionStatus === "dry_run";
 
   const previewGitHubCommentProposal = (id: string) => {
     previewGitHubCommentWriteback.mutate({
@@ -1786,7 +1796,7 @@ export default function CompanyBrainPage() {
                                   variant="outline"
                                   disabled={
                                     previewSlackThreadReplyWriteback.isPending ||
-                                    !canRunSlackThreadReplyWriteback(proposal)
+                                    !canPreviewSlackThreadReplyWriteback(proposal)
                                   }
                                   onClick={() =>
                                     previewSlackThreadReplyProposal(proposal.id)
@@ -1801,7 +1811,7 @@ export default function CompanyBrainPage() {
                                   variant="outline"
                                   disabled={
                                     executeSlackThreadReplyWriteback.isPending ||
-                                    !canRunSlackThreadReplyWriteback(proposal)
+                                    !canExecuteSlackThreadReplyWriteback(proposal)
                                   }
                                   onClick={() =>
                                     executeSlackThreadReplyProposal(proposal.id)
@@ -1819,7 +1829,7 @@ export default function CompanyBrainPage() {
                                   variant="outline"
                                   disabled={
                                     previewGitHubCommentWriteback.isPending ||
-                                    !canRunGitHubCommentWriteback(proposal)
+                                    !canPreviewGitHubCommentWriteback(proposal)
                                   }
                                   onClick={() =>
                                     previewGitHubCommentProposal(proposal.id)
@@ -1834,7 +1844,7 @@ export default function CompanyBrainPage() {
                                   variant="outline"
                                   disabled={
                                     executeGitHubCommentWriteback.isPending ||
-                                    !canRunGitHubCommentWriteback(proposal)
+                                    !canExecuteGitHubCommentWriteback(proposal)
                                   }
                                   onClick={() =>
                                     executeGitHubCommentProposal(proposal.id)
