@@ -74,6 +74,7 @@ import type {
   GitHubLabelProposalPreviewResponse,
   GitHubLabelWritebackResponse,
   GitHubStatusCheckProposalPreviewResponse,
+  GitHubStatusCheckWritebackResponse,
   Goal,
   GuidanceItem,
   ImprovementProposal,
@@ -986,6 +987,25 @@ export function usePreviewCompanyBrainGitHubStatusCheckProposal() {
     mutationFn: ({ id, body }) =>
       api(
         `/api/company-brain/external-action-proposals/${id}/github-status-check/preview`,
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        }
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useExecuteCompanyBrainGitHubStatusCheckWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubStatusCheckWritebackResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(
+        `/api/company-brain/external-action-proposals/${id}/github-status-check/execute`,
         {
           method: "POST",
           body: JSON.stringify(body ?? {}),

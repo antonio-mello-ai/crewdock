@@ -1698,7 +1698,7 @@ server.registerTool(
   {
     title: "Preview GitHub status/check proposal",
     description:
-      "Dry-run a preview-only GitHub status or check ExternalActionProposal. Returns exact repo/PR/SHA target, context/name, proposed state/conclusion, payload hash, idempotency key and risk rationale without calling GitHub write APIs. There is no status/check execute tool in this cut.",
+      "Dry-run a GitHub status or check ExternalActionProposal. Commit status proposals can become executable only for approved allowlisted private repo targets; check-run proposals remain preview-only.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
@@ -1710,6 +1710,30 @@ server.registerTool(
       {
         method: "POST",
         body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "execute_company_brain_github_status_writeback",
+  {
+    title: "Execute GitHub status writeback",
+    description:
+      "Execute an approved Company Brain GitHub commit status proposal after preview, Retry Safety, explicit SHA, private repo allowlist and idempotency gates. Does not create check-runs.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().min(1),
+      retryRationale: z.string().optional(),
+    },
+  },
+  async ({ id, actor, retryRationale }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-status-check/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor, retryRationale }),
       }
     );
     return formatJsonResult(result.data);

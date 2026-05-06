@@ -1651,7 +1651,36 @@ Dogfood read-only validado:
 - Run do `watcher-aios-briefing-v0` gerou artifact `7pCuBBPaG-oT`; secao `writeback_safety` mostrou `15 remediation suggestions; 13 need human review; 4 suggest new proposal` e next step `Use 15 read-only remediation suggestions to repair evidence packets.`
 - DB bom `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43155`: endpoint de suggestions retornou `total=0`, mantendo `fx3NheQm3Crv` sem gaps ou sugestoes.
 
-Proximo corte recomendado: GitHub status/check executor real v0 em repo interno allowlisted somente quando houver alvo controlado de PR/SHA; se esse alvo nao estiver claro, continuar com hardening read-only/audit de remediation/evidence.
+## Slice GitHub Status Executor v0
+
+Objetivo: permitir o primeiro writeback real de feedback operacional em commit GitHub, mantendo o corte estrito em repo privado interno allowlisted e sem check-run real.
+
+Implementado em 2026-05-06:
+
+1. `github_status` deixou de ser apenas preview-only quando o proposal esta aprovado, `riskClass=B`, `actionPolicy=writeback_allowed`, tem SHA explicito, contexto `aios/dogfood-status`, state `success` e passa na allowlist `AIOS_GITHUB_STATUS_WRITEBACK_ALLOWLIST`.
+2. `github_check` continua preview-only e sem endpoint de execute.
+3. Allowlist default do corte: `antonio-mello-ai/felhen@b9e1057f44988555227ae8031cd48325fb6efc71=aios/dogfood-status:success`.
+4. Preview `POST /api/company-brain/external-action-proposals/:id/github-status-check/preview` retorna `dry_run` e `executionBlocked=false` apenas para status allowlisted; demais status/check retornam preview-only/bloqueado.
+5. Novo execute `POST /api/company-brain/external-action-proposals/:id/github-status-check/execute` executa somente `github_status`.
+6. Executor exige HITL actor/rationale, preview apos aprovacao, Retry Safety `ready_to_execute`, idempotencyKey, repo privado, SHA explicito, context/state allowlisted.
+7. Antes de POST, le repo e commit statuses atuais. Se ja existir status compativel, grava `github_status_completed_noop`, `completed_noop` e nao chama write API.
+8. Em write real, cria commit status e grava `github_status_set`, `executionStatus=completed`, `externalId`, `externalUrl`, payloadHash, idempotencyKey, actor, target, response resumida e repoPrivate no audit trail.
+9. Reexecute de proposal concluida retorna `already_completed` sem nova chamada externa.
+10. Safety Dashboard/Evidence Packet/Audit Search reconhecem `github_status_set` e `github_status_completed_noop` como execution events; stats adicionam `githubStatusWriteCount` e `githubStatusNoopCount`; UI mostra preview/execute de status e contador de statuses.
+11. MCP adiciona `execute_company_brain_github_status_writeback`; preview MCP foi atualizado para explicar que commit status allowlisted pode ser executavel e check-run continua bloqueado.
+12. `docs/writeback-policy-matrix.md` e `docs/writeback-hitl-runbook.md` foram atualizados para separar `github_status` allowlisted de `github_check` preview-only.
+
+Dogfood real validado em DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43146`, usando token do `gh` somente no ambiente do daemon:
+
+- Alvo aprovado conferido como privado: `antonio-mello-ai/felhen`, branch `main`, SHA `b9e1057f44988555227ae8031cd48325fb6efc71`.
+- Proposal: `35xo7wHd9CBV`, idempotency `dogfood:github-status-executor:v0:felhen-main-b9e1057`.
+- Preview retornou `status=dry_run`, `executionBlocked=false`, payloadHash `6737a218dba45d17e183f92ede73276af44a215f00a7e1444ac32558bc3de48f`.
+- Execute criou status GitHub real `id=47036420104`, context `aios/dogfood-status`, state `success`, target URL `https://github.com/antonio-mello-ai/felhen/commit/b9e1057f44988555227ae8031cd48325fb6efc71`.
+- Reexecute retornou `already_completed`, `mutationAttempted=false`, preservando `externalId=47036420104` e sem nova mutacao.
+- Evidence packet de `35xo7wHd9CBV` retornou `executionReview=completed`, `executionEvent=github_status_set`, `integrityGapCount=0`, `remediationCount=0`.
+- Safety Dashboard mostrou `completedExternalWriteCount=1`, `externalMutationAttemptedCount=1`, `githubStatusWriteCount=1`, `githubStatusCheckBlockedCount=0`, `blockReasons=[]` para o proposal.
+
+Proximo corte recomendado: melhorias read-only/audit/export/observability para status writeback e evidence packets. Parar antes de qualquer nova mutacao externa, novo alvo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy ou repo/canal publico.
 
 ## Dogfood ERP
 
@@ -1771,7 +1800,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0 e Evidence Remediation Suggestions v0. O proximo corte recomendado e GitHub status/check executor real v0 em repo interno allowlisted somente quando houver alvo controlado de PR/SHA; se esse alvo nao estiver claro, continuar com hardening read-only/audit de remediation/evidence. Pare antes de novo executor real que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0 e GitHub Status Executor v0. O proximo corte recomendado e melhoria read-only/audit/export/observability para status writeback e evidence packets. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

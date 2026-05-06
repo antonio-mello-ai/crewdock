@@ -94,7 +94,8 @@ DM, Slack top-level message, edit/delete, permissions or billing changes.
 
 - GitHub close/reopen, assign, unassign, merge, deploy, release, branch
   protection or notification-read.
-- GitHub status/check real writeback.
+- GitHub check-run real writeback and GitHub status writeback outside the
+  explicit private repo/SHA/context/state allowlist.
 - Slack top-level message, DM, edit, delete, reaction, pin, invite, kick, topic,
   rename or channel creation.
 - Email, billing, permissions, customer systems, production infra or ads

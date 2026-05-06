@@ -48,6 +48,7 @@ import type {
   GitHubLabelProposalPreviewResponse,
   GitHubLabelWritebackResponse,
   GitHubStatusCheckProposalPreviewResponse,
+  GitHubStatusCheckWritebackResponse,
   GitHubStatusCheckTarget,
   ExecuteExternalActionProposalRequest,
   SlackThreadReplyWritebackResponse,
@@ -520,6 +521,24 @@ interface GitHubLabelPayload {
   color?: string;
 }
 
+interface GitHubRepoPayload {
+  private: boolean;
+  html_url?: string;
+  default_branch?: string;
+}
+
+interface GitHubCommitStatusEntryPayload {
+  id: number;
+  state: string;
+  description: string | null;
+  target_url: string | null;
+  context: string;
+  url: string;
+  created_at?: string;
+  updated_at?: string;
+  creator?: { login: string } | null;
+}
+
 function parseGitHubRepo(repo: string) {
   const normalized = repo
     .trim()
@@ -767,6 +786,71 @@ function assertGitHubLabelWritebackAllowlisted(
   }
 }
 
+function normalizedGitHubStatusContext(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) throw new Error("GitHub status context is required");
+  return normalized;
+}
+
+function normalizedGitHubSha(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(normalized)) {
+    throw new Error("payload.sha must be a full 40 character Git commit SHA");
+  }
+  return normalized;
+}
+
+function gitHubStatusWritebackAllowlist() {
+  const raw =
+    getSecretEnv("AIOS_GITHUB_STATUS_WRITEBACK_ALLOWLIST") ??
+    "antonio-mello-ai/felhen@b9e1057f44988555227ae8031cd48325fb6efc71=aios/dogfood-status:success";
+  return raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const [targetRef, ruleRef = ""] = entry.split("=");
+      const [repoRef, shaRef = ""] = targetRef.split("@");
+      const repo = parseGitHubRepoName(repoRef);
+      const [contextRef = "", stateRef = "success"] = ruleRef.split(":");
+      return {
+        repo,
+        sha: normalizedGitHubSha(shaRef),
+        context: normalizedGitHubStatusContext(contextRef),
+        state: normalizeGitHubStatusState(stateRef),
+      };
+    });
+}
+
+function assertGitHubStatusWritebackAllowlisted(args: {
+  target: GitHubStatusCheckTarget;
+  contextName: string;
+  state: string | null;
+}) {
+  if (!args.target.sha) {
+    throw new Error("GitHub status writeback requires an explicit SHA target");
+  }
+  if (!args.state) {
+    throw new Error("GitHub status writeback requires a status state");
+  }
+  const sha = normalizedGitHubSha(args.target.sha);
+  const context = normalizedGitHubStatusContext(args.contextName);
+  const state = normalizeGitHubStatusState(args.state);
+  const allowed = gitHubStatusWritebackAllowlist().some((entry) => {
+    return (
+      entry.repo.fullName.toLowerCase() === args.target.repo.toLowerCase() &&
+      entry.sha === sha &&
+      entry.context === context &&
+      entry.state === state
+    );
+  });
+  if (!allowed) {
+    throw new Error(
+      "GitHub status writeback target, SHA, context or state is not allowlisted"
+    );
+  }
+}
+
 function payloadString(
   payload: Record<string, unknown>,
   keys: string[],
@@ -827,6 +911,24 @@ function gitHubStatusCheckTarget(
       ? `https://github.com/${repo.fullName}/pull/${pullNumber}`
       : `https://github.com/${repo.fullName}/commit/${sha}`,
   };
+}
+
+function gitHubStatusExternalUrl(
+  preview: Omit<GitHubStatusCheckProposalPreviewResponse, "proposal" | "policySummary">
+) {
+  return preview.targetUrl ?? preview.target.url;
+}
+
+function isCompatibleGitHubCommitStatus(
+  status: GitHubCommitStatusEntryPayload,
+  preview: Omit<GitHubStatusCheckProposalPreviewResponse, "proposal" | "policySummary">
+) {
+  return (
+    status.context === preview.contextName &&
+    status.state === preview.state &&
+    (status.description ?? "") === preview.description &&
+    (status.target_url ?? null) === (gitHubStatusExternalUrl(preview) ?? null)
+  );
 }
 
 function normalizeGitHubStatusState(value: string) {
@@ -927,6 +1029,23 @@ function buildGitHubStatusCheckProposalPreview(
           payloadString(proposal.payload, ["conclusion"], "conclusion")
         )
       : payloadOptionalString(proposal.payload, ["conclusion"]);
+  const statusAllowlisted = (() => {
+    if (proposal.actionType !== "github_status") return false;
+    try {
+      assertGitHubStatusWritebackAllowlisted({ target, contextName, state });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  const locallyExecutable =
+    proposal.actionType === "github_status" &&
+    proposal.riskClass === "B" &&
+    proposal.actionPolicy === "writeback_allowed" &&
+    proposal.approvalStatus === "approved" &&
+    Boolean(target.sha) &&
+    state === "success" &&
+    statusAllowlisted;
   return {
     target,
     actionType: proposal.actionType as "github_status" | "github_check",
@@ -941,10 +1060,15 @@ function buildGitHubStatusCheckProposalPreview(
     payloadHash: stablePayloadHash(proposal.payload),
     idempotencyKey: proposal.idempotencyKey,
     riskRationale:
-      "Risk B preview-only operational feedback for PR/CI; no GitHub status or check-run is created in this cut.",
+      proposal.actionType === "github_status"
+        ? "Risk B allowlisted internal GitHub commit status; execution requires approval, preview, explicit SHA, retry safety and idempotency."
+        : "Risk B preview-only operational feedback for PR/CI; no GitHub check-run is created in this cut.",
     dryRun: true,
-    status: "preview_only",
-    executionBlocked: true,
+    status: locallyExecutable ? "dry_run" : "preview_only",
+    executionBlocked: !locallyExecutable,
+    mutationAttempted: false,
+    externalId: proposal.externalId,
+    externalUrl: proposal.externalUrl,
   };
 }
 
@@ -1052,6 +1176,46 @@ function validateGitHubStatusCheckProposalPreview(proposal: ExternalActionPropos
     throw new Error("cancelled status/check proposals require a new proposal");
   }
   return buildGitHubStatusCheckProposalPreview(proposal);
+}
+
+function validateGitHubStatusWritebackProposal(proposal: ExternalActionProposal) {
+  if (proposal.approvalStatus !== "approved") {
+    throw new Error("proposal must be approved before GitHub status writeback");
+  }
+  if (!["not_started", "dry_run", "failed"].includes(proposal.executionStatus)) {
+    throw new Error("proposal executionStatus must be not_started, dry_run or failed");
+  }
+  if (proposal.destinationType !== "github") {
+    throw new Error("proposal destinationType must be github");
+  }
+  if (proposal.actionType !== "github_status") {
+    throw new Error("GitHub status writeback v0 supports github_status only");
+  }
+  if (proposal.riskClass !== "B") {
+    throw new Error("proposal riskClass must be B");
+  }
+  if (proposal.actionPolicy !== "writeback_allowed") {
+    throw new Error("proposal actionPolicy must be writeback_allowed");
+  }
+  const preview = buildGitHubStatusCheckProposalPreview(proposal);
+  if (!preview.target.sha) {
+    throw new Error("GitHub status writeback v0 requires an explicit SHA");
+  }
+  if (preview.contextName !== "aios/dogfood-status") {
+    throw new Error("GitHub status writeback v0 only supports context aios/dogfood-status");
+  }
+  if (preview.state !== "success") {
+    throw new Error("GitHub status writeback v0 only supports state success");
+  }
+  assertGitHubStatusWritebackAllowlisted({
+    target: preview.target,
+    contextName: preview.contextName,
+    state: preview.state,
+  });
+  if (preview.executionBlocked) {
+    throw new Error("GitHub status writeback is blocked by local policy");
+  }
+  return preview;
 }
 
 class WritebackExecutionReviewError extends Error {
@@ -1169,7 +1333,13 @@ function buildWritebackExecutionReview(
     proposal.destinationType === "github" &&
     isGitHubStatusCheckAction(proposal.actionType)
   ) {
-    addFlag("blocked");
+    try {
+      if (buildGitHubStatusCheckProposalPreview(proposal).executionBlocked) {
+        addFlag("blocked");
+      }
+    } catch {
+      addFlag("blocked");
+    }
   }
   if (
     proposal.destinationType === "github" &&
@@ -1187,7 +1357,8 @@ function buildWritebackExecutionReview(
   if (
     ((proposal.destinationType === "github" &&
       (isGitHubCommentAction(proposal.actionType) ||
-        isGitHubLabelAction(proposal.actionType))) ||
+        isGitHubLabelAction(proposal.actionType) ||
+        proposal.actionType === "github_status")) ||
       (proposal.destinationType === "slack" &&
         isSlackThreadReplyAction(proposal.actionType))) &&
     proposal.actionPolicy !== "writeback_allowed"
@@ -1363,6 +1534,54 @@ async function addGitHubIssueLabels(
       method: "POST",
       requireToken: true,
       body: { labels },
+    }
+  );
+}
+
+async function assertGitHubStatusRepoPrivate(target: GitHubStatusCheckTarget) {
+  const repo = await githubApiRequest<GitHubRepoPayload>(
+    `/repos/${target.owner}/${target.name}`,
+    { requireToken: true }
+  );
+  if (!repo.private) {
+    throw new Error("GitHub status writeback requires a private repository");
+  }
+  return repo;
+}
+
+async function fetchGitHubCommitStatuses(target: GitHubStatusCheckTarget) {
+  if (!target.sha) {
+    throw new Error("GitHub status writeback requires an explicit SHA");
+  }
+  const sha = normalizedGitHubSha(target.sha);
+  return githubApiRequest<GitHubCommitStatusEntryPayload[]>(
+    `/repos/${target.owner}/${target.name}/commits/${sha}/statuses`,
+    {
+      requireToken: true,
+      params: { per_page: "100" },
+    }
+  );
+}
+
+async function createGitHubCommitStatus(
+  preview: Omit<GitHubStatusCheckProposalPreviewResponse, "proposal" | "policySummary">
+) {
+  if (!preview.target.sha) {
+    throw new Error("GitHub status writeback requires an explicit SHA");
+  }
+  return githubApiRequest<GitHubCommitStatusEntryPayload>(
+    `/repos/${preview.target.owner}/${preview.target.name}/statuses/${normalizedGitHubSha(
+      preview.target.sha
+    )}`,
+    {
+      method: "POST",
+      requireToken: true,
+      body: {
+        state: preview.state,
+        target_url: gitHubStatusExternalUrl(preview),
+        description: preview.description,
+        context: preview.contextName,
+      },
     }
   );
 }
@@ -3472,6 +3691,11 @@ function latestWritebackExecutionAudit(proposal: ExternalActionProposal) {
           "github_label_failed",
           "github_label_execution_blocked",
           "github_label_retry_required",
+          "github_status_set",
+          "github_status_completed_noop",
+          "github_status_failed",
+          "github_status_execution_blocked",
+          "github_status_retry_required",
           "slack_thread_reply_posted",
           "slack_thread_reply_reused",
           "slack_thread_reply_failed",
@@ -3494,9 +3718,12 @@ function hasExternalMutationAttemptAudit(proposal: ExternalActionProposal) {
     const response = metadataRecord(auditMetadata(event).response);
     return (
       response.mutationAttempted === true ||
-      ["github_comment_posted", "github_label_added", "slack_thread_reply_posted"].includes(
-        event.event
-      )
+      [
+        "github_comment_posted",
+        "github_label_added",
+        "github_status_set",
+        "slack_thread_reply_posted",
+      ].includes(event.event)
     );
   });
 }
@@ -3518,7 +3745,40 @@ function writebackBlockReasons(
     proposal.destinationType === "github" &&
     isGitHubStatusCheckAction(proposal.actionType)
   ) {
-    reasons.add("github_status_check_preview_only");
+    if (proposal.actionType === "github_check") {
+      reasons.add("github_check_preview_only");
+    }
+    if (proposal.actionType === "github_status") {
+      if (proposal.riskClass !== "B") reasons.add("github_status_requires_risk_b");
+      if (proposal.actionPolicy !== "writeback_allowed") {
+        reasons.add("github_status_requires_writeback_allowed");
+      }
+      if (proposal.approvalStatus !== "approved") {
+        reasons.add("github_status_requires_approval");
+      }
+      try {
+        const preview = buildGitHubStatusCheckProposalPreview(proposal);
+        if (!preview.target.sha) reasons.add("github_status_requires_sha");
+        if (preview.contextName !== "aios/dogfood-status") {
+          reasons.add("github_status_context_not_supported");
+        }
+        if (preview.state !== "success") reasons.add("github_status_state_not_supported");
+        if (preview.executionBlocked && proposal.approvalStatus === "approved") {
+          reasons.add("github_status_target_or_policy_blocked");
+        }
+        try {
+          assertGitHubStatusWritebackAllowlisted({
+            target: preview.target,
+            contextName: preview.contextName,
+            state: preview.state,
+          });
+        } catch {
+          reasons.add("github_status_target_not_allowlisted");
+        }
+      } catch {
+        reasons.add("github_status_invalid_payload_or_destination");
+      }
+    }
   }
 
   if (
@@ -5082,6 +5342,18 @@ function buildWritebackSafetyDashboard(
           isGitHubLabelAction(proposal.actionType) &&
           hasCompletedNoopAudit(proposal)
       ).length,
+      githubStatusWriteCount: completedExternal.filter(
+        (proposal) =>
+          proposal.destinationType === "github" &&
+          proposal.actionType === "github_status" &&
+          (proposal.externalId || proposal.externalUrl)
+      ).length,
+      githubStatusNoopCount: completedExternal.filter(
+        (proposal) =>
+          proposal.destinationType === "github" &&
+          proposal.actionType === "github_status" &&
+          hasCompletedNoopAudit(proposal)
+      ).length,
       slackThreadReplyWriteCount: completedExternal.filter(
         (proposal) =>
           proposal.destinationType === "slack" &&
@@ -5168,14 +5440,21 @@ function externalActionPolicy(args: {
       actionPolicy === "request_human" || actionPolicy === "writeback_allowed";
     const allowed = isExternal && isLowRiskExternal && allowedPolicy;
     if (isExternal && isPreviewOnlyExternal && allowedPolicy) {
-      const previewKind = isGitHubStatusCheckAction(actionType)
-        ? "status/check"
-        : "label";
+      if (actionType === "github_status") {
+        return {
+          approvalStatus: "pending",
+          approvalRequired: true,
+          executionStatus: "not_started",
+          policySummary:
+            "Risk B permits allowlisted internal GitHub commit status writeback only after human approval, preview, explicit SHA, Retry Safety, idempotency and audit gates. GitHub check-runs remain preview-only.",
+        };
+      }
       return {
         approvalStatus: "pending",
         approvalRequired: true,
         executionStatus: "not_started",
-        policySummary: `Risk B GitHub ${previewKind} proposals are preview-only in this cut. They may be reviewed and dry-run, but no ${previewKind} writeback executor exists.`,
+        policySummary:
+          "Risk B GitHub check proposals are preview-only in this cut. They may be reviewed and dry-run, but no check-run writeback executor exists.",
       };
     }
     return {
@@ -9326,7 +9605,9 @@ app.post("/external-action-proposals/:id/github-status-check/preview", async (c)
       actor,
       event: "github_status_check_previewed",
       note:
-        "Preview-only generated the GitHub status/check plan without calling GitHub write APIs.",
+        preview.executionBlocked
+          ? "Preview-only generated the GitHub status/check plan without calling GitHub write APIs."
+          : "Dry-run generated the GitHub commit status plan without calling GitHub write APIs.",
       metadata: {
         request: {
           proposalId: existing.id,
@@ -9349,8 +9630,8 @@ app.post("/external-action-proposals/:id/github-status-check/preview", async (c)
         },
         response: {
           dryRun: true,
-          previewOnly: true,
-          executionBlocked: true,
+          previewOnly: preview.status === "preview_only",
+          executionBlocked: preview.executionBlocked,
         },
       },
     });
@@ -9371,13 +9652,190 @@ app.post("/external-action-proposals/:id/github-status-check/preview", async (c)
     const result: GitHubStatusCheckProposalPreviewResponse = {
       proposal,
       ...preview,
-      policySummary:
-        "Preview-only GitHub status/check proposal. No status or check-run writeback executor is implemented in this cut.",
+      policySummary: preview.executionBlocked
+        ? "Preview-only GitHub status/check proposal. Check-run writeback and non-allowlisted status writeback remain blocked."
+        : "Dry-run GitHub commit status proposal. The v0 executor supports only allowlisted success status on explicit SHA with Retry Safety gates.",
     };
     return c.json({ data: result });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "preview_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/github-status-check/execute", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const body = (await c.req
+    .json<ExecuteExternalActionProposalRequest>()
+    .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+  const actor = body.actor?.trim() || null;
+  const existing = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, id))
+    .get();
+  if (!existing) {
+    return c.json(
+      { error: "execution_failed", message: "external action proposal not found" },
+      404
+    );
+  }
+
+  try {
+    if (["completed", "executed"].includes(existing.executionStatus)) {
+      const preview = buildGitHubStatusCheckProposalPreview(existing);
+      const result: GitHubStatusCheckWritebackResponse = {
+        proposal: existing,
+        ...preview,
+        dryRun: false,
+        status: "already_completed",
+        executionBlocked: false,
+        mutationAttempted: false,
+        externalId: existing.externalId,
+        externalUrl: existing.externalUrl,
+        policySummary:
+          "GitHub commit status proposal is already completed; no status writeback was attempted again.",
+      };
+      return c.json({ data: result });
+    }
+
+    const preview = validateGitHubStatusWritebackProposal(existing);
+    const executionReview = assertWritebackExecutionReview({
+      proposal: existing,
+      retryRationale: body.retryRationale,
+    });
+    if (!actor) {
+      throw new WritebackExecutionReviewError(
+        "actor is required to execute GitHub status writeback",
+        executionReview
+      );
+    }
+
+    const repo = await assertGitHubStatusRepoPrivate(preview.target);
+    const statuses = await fetchGitHubCommitStatuses(preview.target);
+    const priorStatus = statuses.find((status) =>
+      isCompatibleGitHubCommitStatus(status, preview)
+    );
+    const status = priorStatus ?? (await createGitHubCommitStatus(preview));
+    const completedNoop = Boolean(priorStatus);
+    const externalUrl = status.target_url ?? gitHubStatusExternalUrl(preview);
+    const timestamp = now();
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: completedNoop ? "github_status_completed_noop" : "github_status_set",
+      note: completedNoop
+        ? "GitHub commit already had a compatible status; no write API call was made."
+        : "Created the approved GitHub commit status.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target: preview.target,
+          contextName: preview.contextName,
+          state: preview.state,
+          description: preview.description,
+          targetUrl: preview.targetUrl,
+          idempotencyKey: existing.idempotencyKey,
+          executionReview,
+          retryRationale: body.retryRationale?.trim() || null,
+          payloadHash: stablePayloadHash(existing.payload),
+        },
+        response: {
+          reusedExisting: completedNoop,
+          completedNoop,
+          mutationAttempted: !completedNoop,
+          statusId: String(status.id),
+          statusUrl: status.url,
+          externalUrl,
+          creator: status.creator?.login ?? null,
+          createdAt: status.created_at ?? null,
+          updatedAt: status.updated_at ?? null,
+          repoPrivate: repo.private,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "completed" as const,
+      externalId: String(status.id),
+      externalUrl,
+      errorSummary: null,
+      auditTrail,
+      updatedAt: timestamp,
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    const proposal = { ...existing, ...update };
+    const result: GitHubStatusCheckWritebackResponse = {
+      proposal,
+      ...preview,
+      dryRun: false,
+      status: completedNoop ? "completed_noop" : "completed",
+      executionBlocked: false,
+      mutationAttempted: !completedNoop,
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+      policySummary: completedNoop
+        ? "GitHub commit status already existed on the approved SHA; the executor completed idempotently without a write call."
+        : "GitHub commit status completed after approval, preview, private repo allowlist, explicit SHA and Retry Safety gates.",
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    const retryRequired = err instanceof WritebackRetryApprovalRequiredError;
+    const reviewBlocked = err instanceof WritebackExecutionReviewError;
+    const executionReview = reviewBlocked
+      ? err.review
+      : buildWritebackExecutionReview(existing);
+    const previewRequired =
+      reviewBlocked && executionReview.status === "needs_preview";
+    const governanceBlocked =
+      retryRequired ||
+      previewRequired ||
+      reviewBlocked ||
+      executionReview.status === "blocked" ||
+      executionReview.status === "needs_reapproval";
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: retryRequired
+        ? "github_status_retry_required"
+        : previewRequired
+          ? "github_status_preview_required"
+          : governanceBlocked
+            ? "github_status_execution_blocked"
+            : "github_status_failed",
+      note: message,
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          actionType: existing.actionType,
+          riskClass: existing.riskClass,
+          actionPolicy: existing.actionPolicy,
+          approvalStatus: existing.approvalStatus,
+          executionStatus: existing.executionStatus,
+          idempotencyKey: existing.idempotencyKey,
+          executionReview,
+        },
+        response: {
+          error: message,
+        },
+      },
+    });
+    const update = {
+      executionStatus:
+        governanceBlocked ? existing.executionStatus : ("failed" as const),
+      errorSummary: message,
+      auditTrail,
+      updatedAt: now(),
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    return c.json({ error: "execution_failed", message }, 400);
   }
 });
 

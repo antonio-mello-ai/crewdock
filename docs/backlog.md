@@ -69,7 +69,7 @@ Status Writeback Policy Matrix v0 em 2026-05-06: `docs/writeback-policy-matrix.m
 
 Status GitHub Label Proposal v0 em 2026-05-06: `ExternalActionProposal` agora aceita `label/github_label` para GitHub em modo preview-only, com payload de labels/mode, API/UI/MCP de preview, audit `github_label_previewed`, Safety Dashboard bloqueando execucao e nenhuma rota de execute/writeback real.
 
-Status GitHub Status/Check Proposal v0 em 2026-05-06: `ExternalActionProposal` agora aceita `github_status/github_check` para feedback operacional de PR/CI em modo preview-only, com payload repo/pullNumber/sha/context/name/state/conclusion/title/summary/description/targetUrl/rationale, API/UI/MCP de preview, audit `github_status_check_previewed`, Safety Dashboard bloqueando execucao e nenhuma rota de execute/writeback real.
+Status GitHub Status/Check Proposal v0 em 2026-05-06: `ExternalActionProposal` agora aceita `github_status/github_check` para feedback operacional de PR/CI, com payload repo/pullNumber/sha/context/name/state/conclusion/title/summary/description/targetUrl/rationale, API/UI/MCP de preview e audit `github_status_check_previewed`. `github_check` e status fora da allowlist continuam preview-only/bloqueados.
 
 Status Writeback Audit Review v0 em 2026-05-06: Safety Dashboard agora expõe `auditReview` derivado por proposal com contagem de eventos, ultimo evento/ator, approval/preview/execution timestamps, duplicate prevention, refs externas, erro, payloadHash atual, idempotencyKey e destinationRef. UI mostra esses campos e review flags para revisao humana antes de qualquer executor real de label.
 
@@ -77,7 +77,7 @@ Status GitHub Label Executor v0 em 2026-05-06: `github_label` agora tem executor
 
 Status Post-Writeback Audit Review v0 em 2026-05-06: Safety Dashboard agora distingue outcomes pos-execucao sem novas mutacoes: `executionEvent`, `completedNoop`, `mutationAttempted`, stats para label completado/noop, noops totais e mutacoes externas tentadas. UI mostra outcome por item e metricas `labels`/`noop`.
 
-Status Writeback Negative-Path Review v0 em 2026-05-06: Safety Dashboard agora expõe `blockReasons` derivados e stats `previewOnlyBlockedCount`, `githubLabelBlockedCount` e `githubStatusCheckBlockedCount`, deixando legivel por que label remove/multi-label/fora da allowlist e status/check continuam bloqueados sem executor.
+Status Writeback Negative-Path Review v0 em 2026-05-06: Safety Dashboard agora expõe `blockReasons` derivados e stats `previewOnlyBlockedCount`, `githubLabelBlockedCount` e `githubStatusCheckBlockedCount`, deixando legivel por que label remove/multi-label/fora da allowlist, GitHub check-run e GitHub status fora da allowlist continuam bloqueados sem executor.
 
 Status Writeback Adapter Summary v0 em 2026-05-06: Safety Dashboard agora expõe `adapterSummaries` por adapter (`github_comment`, `github_label`, `github_status_check`, `slack_thread_reply`, `other`) com totais de proposals, completados, noops, mutacoes tentadas, bloqueados, prontos, falhas e latestAt. UI mostra o resumo por adapter sem nova mutacao externa.
 
@@ -107,7 +107,9 @@ Status Writeback Policy Matrix update em 2026-05-06: `docs/writeback-policy-matr
 
 Status Evidence Remediation Suggestions v0 em 2026-05-06: gaps de integridade agora geram sugestoes read-only de remediacao com action kind, target field, human review required, new proposal required, `actionPolicy=observe_only` e `executionBlocked=true`. Exposto em Safety Dashboard, Evidence Packet JSON, API/UI/MCP e briefing. Dogfood validado com DB bom sem sugestoes e DB ruim com 15 sugestoes, 13 exigindo revisao humana e 4 sugerindo nova proposal.
 
-Proximo corte planejado: GitHub status/check executor real v0 em repo interno allowlisted somente quando houver alvo controlado de PR/SHA; caso contrario, continuar com hardening read-only/audit de remediation/evidence.
+Status GitHub Status Executor v0 em 2026-05-06: `github_status` agora tem executor real restrito a repo privado interno allowlisted, Risk B, `writeback_allowed`, HITL approval/rationale, preview apos aprovacao, Retry Safety `ready_to_execute`, SHA explicito, contexto `aios/dogfood-status` e state `success`. O executor valida repo privado, consulta statuses atuais, evita duplicacao por status compativel, grava `github_status_set` ou `github_status_completed_noop`, externalId/externalUrl e audit trail. `github_check` segue sem executor real.
+
+Proximo corte planejado: melhorias read-only/audit/export/observability para status writeback e evidence packets; parar antes de qualquer nova mutacao externa, novo alvo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy ou repo/canal publico.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -148,6 +150,7 @@ Proximo corte planejado: GitHub status/check executor real v0 em repo interno al
 - [x] **Writeback Evidence Packet Index v0** — indexar packets exportaveis no Safety Dashboard com status, audit count, links e hash
 - [x] **Writeback Evidence Integrity Gaps v0** — detectar gaps de links, audit events, hashes, idempotency, refs externas, stale review, rationale e provenance em Safety Dashboard/Evidence Packet/API/UI/MCP/briefing
 - [x] **Evidence Remediation Suggestions v0** — sugerir correcoes read-only para gaps de evidence/provenance/audit com human review/new proposal flags e sem mutacao externa
+- [x] **GitHub status executor real v0** — criar somente commit status allowlisted em repo privado interno com SHA/context/state aprovados, preview, Retry Safety, idempotencia, audit e reexecute `already_completed`
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

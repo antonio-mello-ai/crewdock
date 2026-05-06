@@ -57,6 +57,7 @@ import {
   useCompanyBrainWritebackAuditTrail,
   useCompanyBrainWritebackEvidenceIntegrityGaps,
   useCompanyBrainWritebackEvidenceRemediationSuggestions,
+  useExecuteCompanyBrainGitHubStatusCheckWriteback,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -340,6 +341,8 @@ export default function CompanyBrainPage() {
   const executeGitHubLabelWriteback = useExecuteCompanyBrainGitHubLabelWriteback();
   const previewGitHubStatusCheckProposal =
     usePreviewCompanyBrainGitHubStatusCheckProposal();
+  const executeGitHubStatusCheckWriteback =
+    useExecuteCompanyBrainGitHubStatusCheckWriteback();
   const executeGitHubCommentWriteback =
     useExecuteCompanyBrainGitHubCommentWriteback();
   const previewSlackThreadReplyWriteback =
@@ -1215,6 +1218,17 @@ export default function CompanyBrainPage() {
     !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
     proposal.approvalStatus !== "rejected";
 
+  const canExecuteGitHubStatusWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    proposal.actionType === "github_status" &&
+    proposal.approvalStatus === "approved" &&
+    proposal.riskClass === "B" &&
+    proposal.actionPolicy === "writeback_allowed" &&
+    proposal.executionStatus === "dry_run" &&
+    writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
+
   const canPreviewSlackThreadReplyWriteback = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
@@ -1262,6 +1276,19 @@ export default function CompanyBrainPage() {
 
   const previewGitHubStatusCheckProposalDryRun = (id: string) => {
     previewGitHubStatusCheckProposal.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const executeGitHubStatusProposal = (id: string) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Create this approved GitHub commit status now?")
+    ) {
+      return;
+    }
+    executeGitHubStatusCheckWriteback.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -1836,7 +1863,7 @@ export default function CompanyBrainPage() {
             </div>
             {writebackSafetyDashboard ? (
               <div className="border-b border-neutral-800/50 px-5 py-4">
-                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-4 xl:grid-cols-10">
+                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-4 xl:grid-cols-12">
                   <MiniMetric
                     label="written"
                     value={
@@ -1846,6 +1873,10 @@ export default function CompanyBrainPage() {
                   <MiniMetric
                     label="labels"
                     value={writebackSafetyDashboard.stats.githubLabelWriteCount}
+                  />
+                  <MiniMetric
+                    label="statuses"
+                    value={writebackSafetyDashboard.stats.githubStatusWriteCount}
                   />
                   <MiniMetric
                     label="noop"
@@ -3029,6 +3060,31 @@ export default function CompanyBrainPage() {
                     <p className="mt-1 truncate text-xs text-neutral-600">
                       {previewGitHubStatusCheckProposal.data.data.payloadHash}
                     </p>
+                    <p className="mt-1 text-xs text-neutral-600">
+                      {previewGitHubStatusCheckProposal.data.data.status} ·{" "}
+                      {previewGitHubStatusCheckProposal.data.data.executionBlocked
+                        ? "blocked"
+                        : "ready"}
+                    </p>
+                  </div>
+                ) : null}
+                {executeGitHubStatusCheckWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {executeGitHubStatusCheckWriteback.data.data.target.repo} ·{" "}
+                      {executeGitHubStatusCheckWriteback.data.data.target.ref} ·{" "}
+                      {executeGitHubStatusCheckWriteback.data.data.status}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-neutral-300">
+                      {executeGitHubStatusCheckWriteback.data.data.contextName} ·{" "}
+                      {executeGitHubStatusCheckWriteback.data.data.state}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-600">
+                      mutation{" "}
+                      {executeGitHubStatusCheckWriteback.data.data.mutationAttempted
+                        ? "attempted"
+                        : "not needed"}
+                    </p>
                   </div>
                 ) : null}
                 {previewSlackThreadReplyWriteback.data?.data ? (
@@ -3234,21 +3290,42 @@ export default function CompanyBrainPage() {
                             ) : proposal.destinationType === "github" &&
                               (proposal.actionType === "github_status" ||
                                 proposal.actionType === "github_check") ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={
-                                  previewGitHubStatusCheckProposal.isPending ||
-                                  !canPreviewGitHubStatusCheckProposal(proposal)
-                                }
-                                onClick={() =>
-                                  previewGitHubStatusCheckProposalDryRun(proposal.id)
-                                }
-                              >
-                                <FileText className="h-4 w-4" />
-                                Preview status
-                              </Button>
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    previewGitHubStatusCheckProposal.isPending ||
+                                    !canPreviewGitHubStatusCheckProposal(proposal)
+                                  }
+                                  onClick={() =>
+                                    previewGitHubStatusCheckProposalDryRun(
+                                      proposal.id
+                                    )
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Preview status
+                                </Button>
+                                {proposal.actionType === "github_status" ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={
+                                      executeGitHubStatusCheckWriteback.isPending ||
+                                      !canExecuteGitHubStatusWriteback(proposal)
+                                    }
+                                    onClick={() =>
+                                      executeGitHubStatusProposal(proposal.id)
+                                    }
+                                  >
+                                    <GitPullRequest className="h-4 w-4" />
+                                    Set status
+                                  </Button>
+                                ) : null}
+                              </>
                             ) : (
                               <>
                                 <Button
