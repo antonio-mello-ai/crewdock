@@ -412,6 +412,8 @@ export type ExternalActionDestination =
 export type ExternalActionKind =
   | "comment"
   | "github_comment"
+  | "label"
+  | "github_label"
   | "thread_reply"
   | "slack_thread_reply"
   | "draft"
@@ -1192,6 +1194,20 @@ export interface GitHubCommentWritebackResponse {
   reusedExisting: boolean;
   externalId: string | null;
   externalUrl: string | null;
+}
+
+export type GitHubLabelActionMode = "add" | "remove" | "set";
+
+export interface GitHubLabelProposalPreviewResponse {
+  proposal: ExternalActionProposal;
+  target: GitHubCommentWritebackTarget;
+  labels: string[];
+  mode: GitHubLabelActionMode;
+  idempotencyKey: string;
+  dryRun: true;
+  status: "preview_only";
+  executionBlocked: true;
+  policySummary: string;
 }
 
 export interface SlackThreadReplyWritebackTarget {

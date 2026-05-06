@@ -43,6 +43,7 @@ import {
   useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
   usePreviewCompanyBrainGitHubCommentWriteback,
+  usePreviewCompanyBrainGitHubLabelProposal,
   usePreviewCompanyBrainSlackThreadReplyWriteback,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
@@ -172,6 +173,7 @@ const externalActionDestinations: ExternalActionDestination[] = [
 ];
 const externalActionKinds: ExternalActionKind[] = [
   "comment",
+  "label",
   "thread_reply",
   "draft",
   "unknown",
@@ -261,6 +263,7 @@ export default function CompanyBrainPage() {
     useUpdateCompanyBrainExternalActionProposal();
   const previewGitHubCommentWriteback =
     usePreviewCompanyBrainGitHubCommentWriteback();
+  const previewGitHubLabelProposal = usePreviewCompanyBrainGitHubLabelProposal();
   const executeGitHubCommentWriteback =
     useExecuteCompanyBrainGitHubCommentWriteback();
   const previewSlackThreadReplyWriteback =
@@ -454,6 +457,7 @@ export default function CompanyBrainPage() {
     riskClass: "B" as RiskClass,
     actionPolicy: "writeback_allowed" as ActionPolicy,
     requestedBy: "Antonio",
+    labelNames: "",
   });
 
   const [workItemForm, setWorkItemForm] = useState({
@@ -896,11 +900,25 @@ export default function CompanyBrainPage() {
   const handleCreateWritebackProposal = (event: FormEvent) => {
     event.preventDefault();
     if (!writebackForm.guidanceItemId) return;
+    const isLabelProposal =
+      writebackForm.actionType === "label" ||
+      writebackForm.actionType === "github_label";
+    const labelNames = writebackForm.labelNames
+      .split(",")
+      .map((label) => label.trim())
+      .filter(Boolean);
     createExternalActionProposal.mutate({
       guidanceItemId: writebackForm.guidanceItemId,
       destinationType: writebackForm.destinationType,
       actionType: writebackForm.actionType,
       destinationRef: writebackForm.destinationRef || null,
+      payload: isLabelProposal
+        ? {
+            labels: labelNames,
+            mode: "add",
+            body: `Preview-only GitHub label proposal: ${labelNames.join(", ")}`,
+          }
+        : undefined,
       riskClass: writebackForm.riskClass,
       actionPolicy: writebackForm.actionPolicy,
       requestedBy: writebackForm.requestedBy || null,
@@ -946,6 +964,17 @@ export default function CompanyBrainPage() {
     proposal.executionStatus === "dry_run" &&
     writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
 
+  const canPreviewGitHubLabelProposal = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    (proposal.actionType === "label" || proposal.actionType === "github_label") &&
+    proposal.riskClass !== "unknown" &&
+    (proposal.actionPolicy === "request_human" ||
+      proposal.actionPolicy === "writeback_allowed") &&
+    !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
+    proposal.approvalStatus !== "rejected";
+
   const canPreviewSlackThreadReplyWriteback = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
@@ -966,6 +995,13 @@ export default function CompanyBrainPage() {
 
   const previewGitHubCommentProposal = (id: string) => {
     previewGitHubCommentWriteback.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const previewGitHubLabelProposalDryRun = (id: string) => {
+    previewGitHubLabelProposal.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -1704,6 +1740,22 @@ export default function CompanyBrainPage() {
                     })
                   }
                 />
+                {writebackForm.actionType === "label" ||
+                writebackForm.actionType === "github_label" ? (
+                  <>
+                    <FieldLabel>Labels</FieldLabel>
+                    <Input
+                      value={writebackForm.labelNames}
+                      onChange={(event) =>
+                        setWritebackForm({
+                          ...writebackForm,
+                          labelNames: event.target.value,
+                        })
+                      }
+                      placeholder="triage, needs-review"
+                    />
+                  </>
+                ) : null}
                 <FieldLabel>Requested by</FieldLabel>
                 <Input
                   value={writebackForm.requestedBy}
@@ -1719,7 +1771,10 @@ export default function CompanyBrainPage() {
                   size="sm"
                   disabled={
                     createExternalActionProposal.isPending ||
-                    !writebackForm.guidanceItemId
+                    !writebackForm.guidanceItemId ||
+                    ((writebackForm.actionType === "label" ||
+                      writebackForm.actionType === "github_label") &&
+                      !writebackForm.labelNames.trim())
                   }
                 >
                   {createExternalActionProposal.isPending ? (
@@ -1738,6 +1793,21 @@ export default function CompanyBrainPage() {
                     <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-neutral-300">
                       {previewGitHubCommentWriteback.data.data.body}
                     </pre>
+                  </div>
+                ) : null}
+                {previewGitHubLabelProposal.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {previewGitHubLabelProposal.data.data.target.fullName}#
+                      {previewGitHubLabelProposal.data.data.target.number} ·{" "}
+                      {previewGitHubLabelProposal.data.data.mode}
+                    </p>
+                    <p className="mt-2 text-xs text-neutral-300">
+                      {previewGitHubLabelProposal.data.data.labels.join(", ")}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-600">
+                      preview-only · no GitHub label writeback executor
+                    </p>
                   </div>
                 ) : null}
                 {previewSlackThreadReplyWriteback.data?.data ? (
@@ -1833,6 +1903,24 @@ export default function CompanyBrainPage() {
                                   Reply
                                 </Button>
                               </>
+                            ) : proposal.destinationType === "github" &&
+                              (proposal.actionType === "label" ||
+                                proposal.actionType === "github_label") ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={
+                                  previewGitHubLabelProposal.isPending ||
+                                  !canPreviewGitHubLabelProposal(proposal)
+                                }
+                                onClick={() =>
+                                  previewGitHubLabelProposalDryRun(proposal.id)
+                                }
+                              >
+                                <FileText className="h-4 w-4" />
+                                Preview labels
+                              </Button>
                             ) : (
                               <>
                                 <Button

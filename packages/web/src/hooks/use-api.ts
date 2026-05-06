@@ -68,6 +68,7 @@ import type {
   Decision,
   ExternalActionProposal,
   GitHubCommentWritebackResponse,
+  GitHubLabelProposalPreviewResponse,
   Goal,
   GuidanceItem,
   ImprovementProposal,
@@ -808,6 +809,22 @@ export function usePreviewCompanyBrainGitHubCommentWriteback() {
   >({
     mutationFn: ({ id, body }) =>
       api(`/api/company-brain/external-action-proposals/${id}/github-comment/preview`, {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function usePreviewCompanyBrainGitHubLabelProposal() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubLabelProposalPreviewResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/external-action-proposals/${id}/github-label/preview`, {
         method: "POST",
         body: JSON.stringify(body ?? {}),
       }),

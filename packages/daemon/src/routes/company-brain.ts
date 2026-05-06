@@ -41,6 +41,8 @@ import type {
   ExternalActionProposal,
   GitHubCommentWritebackResponse,
   GitHubCommentWritebackTarget,
+  GitHubLabelActionMode,
+  GitHubLabelProposalPreviewResponse,
   ExecuteExternalActionProposalRequest,
   SlackThreadReplyWritebackResponse,
   SlackThreadReplyWritebackTarget,
@@ -627,6 +629,10 @@ function isGitHubCommentAction(actionType: ExternalActionKind) {
   return actionType === "comment" || actionType === "github_comment";
 }
 
+function isGitHubLabelAction(actionType: ExternalActionKind) {
+  return actionType === "label" || actionType === "github_label";
+}
+
 function isSlackThreadReplyAction(actionType: ExternalActionKind) {
   return actionType === "thread_reply" || actionType === "slack_thread_reply";
 }
@@ -662,6 +668,52 @@ function buildGitHubCommentWritebackPreview(proposal: ExternalActionProposal) {
   return { target, marker, body };
 }
 
+function gitHubLabelPayloadLabels(proposal: ExternalActionProposal) {
+  const labels = Array.isArray(proposal.payload.labels)
+    ? proposal.payload.labels
+    : typeof proposal.payload.label === "string"
+      ? [proposal.payload.label]
+      : [];
+  const normalized = uniqueStrings(
+    labels.flatMap((label) =>
+      typeof label === "string" ? label.split(",").map((item) => item.trim()) : []
+    )
+  );
+  if (!normalized.length) {
+    throw new Error("payload.labels must include at least one GitHub label");
+  }
+  return normalized;
+}
+
+function gitHubLabelPayloadMode(
+  proposal: ExternalActionProposal
+): GitHubLabelActionMode {
+  const mode = proposal.payload.mode;
+  if (mode === "remove" || mode === "set") return mode;
+  return "add";
+}
+
+function buildGitHubLabelProposalPreview(
+  proposal: ExternalActionProposal
+): Omit<GitHubLabelProposalPreviewResponse, "proposal" | "policySummary"> {
+  if (!proposal.destinationRef?.trim()) {
+    throw new Error("destinationRef is required for GitHub label proposal preview");
+  }
+  if (!proposal.idempotencyKey?.trim()) {
+    throw new Error("idempotencyKey is required for GitHub label proposal preview");
+  }
+  const target = parseGitHubIssueOrPullRef(proposal.destinationRef);
+  return {
+    target,
+    labels: gitHubLabelPayloadLabels(proposal),
+    mode: gitHubLabelPayloadMode(proposal),
+    idempotencyKey: proposal.idempotencyKey,
+    dryRun: true,
+    status: "preview_only",
+    executionBlocked: true,
+  };
+}
+
 function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal) {
   if (proposal.approvalStatus !== "approved") {
     throw new Error("proposal must be approved before GitHub writeback");
@@ -682,6 +734,33 @@ function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal
     throw new Error("proposal actionPolicy must be writeback_allowed");
   }
   return buildGitHubCommentWritebackPreview(proposal);
+}
+
+function validateGitHubLabelProposalPreview(proposal: ExternalActionProposal) {
+  if (proposal.destinationType !== "github") {
+    throw new Error("proposal destinationType must be github");
+  }
+  if (!isGitHubLabelAction(proposal.actionType)) {
+    throw new Error("proposal actionType must be label");
+  }
+  if (proposal.riskClass === "unknown") {
+    throw new Error("proposal riskClass must be classified before label preview");
+  }
+  if (
+    proposal.actionPolicy !== "request_human" &&
+    proposal.actionPolicy !== "writeback_allowed"
+  ) {
+    throw new Error(
+      "proposal actionPolicy must be request_human or writeback_allowed for label preview"
+    );
+  }
+  if (proposal.approvalStatus === "rejected") {
+    throw new Error("rejected label proposals require a new proposal");
+  }
+  if (proposal.executionStatus === "cancelled") {
+    throw new Error("cancelled label proposals require a new proposal");
+  }
+  return buildGitHubLabelProposalPreview(proposal);
 }
 
 class WritebackExecutionReviewError extends Error {
@@ -728,6 +807,9 @@ function latestAuditEvent(proposal: ExternalActionProposal, eventName: string) {
 function previewEventForProposal(proposal: ExternalActionProposal) {
   if (proposal.destinationType === "github" && isGitHubCommentAction(proposal.actionType)) {
     return "github_comment_previewed";
+  }
+  if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
+    return "github_label_previewed";
   }
   if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
     return "slack_thread_reply_previewed";
@@ -784,6 +866,9 @@ function buildWritebackExecutionReview(
     addFlag("blocked");
   }
   if (proposal.riskClass === "C" || proposal.riskClass === "unknown") {
+    addFlag("blocked");
+  }
+  if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
     addFlag("blocked");
   }
 
@@ -2774,6 +2859,7 @@ function writebackSafetyItemKind(
   const review = buildWritebackExecutionReview(proposal);
   if (review.status === "duplicate_prevented") return "duplicate_avoided";
   if (isCompletedExternalWriteback(proposal)) return "completed_external_writeback";
+  if (review.status === "blocked") return "blocked_proposal";
   if (proposal.executionStatus === "failed") return "failed_execution";
   if (
     proposal.approvalStatus === "approved" &&
@@ -2812,6 +2898,9 @@ function writebackSafetyNextAction(
   }
   if (review.status === "unsafe_failed") {
     return "Do not retry; create a new proposal or reapprove after review.";
+  }
+  if (review.status === "blocked") {
+    return "Execution is blocked by policy; keep as preview-only or create a new proposal.";
   }
   if (
     kind === "completed_external_writeback" &&
@@ -2995,6 +3084,8 @@ function externalActionPolicy(args: {
   const isLowRiskExternal =
     (destinationType === "github" && isGitHubCommentAction(actionType)) ||
     (destinationType === "slack" && isSlackThreadReplyAction(actionType));
+  const isPreviewOnlyExternal =
+    destinationType === "github" && isGitHubLabelAction(actionType);
 
   if (riskClass === "C") {
     return {
@@ -3022,6 +3113,15 @@ function externalActionPolicy(args: {
     const allowedPolicy =
       actionPolicy === "request_human" || actionPolicy === "writeback_allowed";
     const allowed = isExternal && isLowRiskExternal && allowedPolicy;
+    if (isExternal && isPreviewOnlyExternal && allowedPolicy) {
+      return {
+        approvalStatus: "pending",
+        approvalRequired: true,
+        executionStatus: "not_started",
+        policySummary:
+          "Risk B GitHub label proposals are preview-only in this cut. They may be reviewed and dry-run, but no label writeback executor exists.",
+      };
+    }
     return {
       approvalStatus: allowed ? "pending" : "blocked",
       approvalRequired: true,
@@ -3045,6 +3145,9 @@ function defaultExternalActionPayload(args: {
   actionType: ExternalActionKind;
   guidanceAction: string;
 }): Record<string, unknown> {
+  if (isGitHubLabelAction(args.actionType)) {
+    return { labels: [], mode: "add", body: args.guidanceAction };
+  }
   if (isGitHubCommentAction(args.actionType) || isSlackThreadReplyAction(args.actionType)) {
     return { body: args.guidanceAction };
   }
@@ -6594,6 +6697,74 @@ app.post("/external-action-proposals/:id/github-comment/preview", async (c) => {
       reusedExisting: false,
       externalId: proposal.externalId,
       externalUrl: proposal.externalUrl,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "preview_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/github-label/preview", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteExternalActionProposalRequest>()
+      .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, id))
+      .get();
+    if (!existing) throw new Error("external action proposal not found");
+
+    const preview = validateGitHubLabelProposalPreview(existing);
+    const actor = body.actor?.trim() || null;
+    const timestamp = now();
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: "github_label_previewed",
+      note:
+        "Preview-only generated the GitHub label plan without calling GitHub write APIs.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target: preview.target,
+          labels: preview.labels,
+          mode: preview.mode,
+          riskClass: existing.riskClass,
+          actionPolicy: existing.actionPolicy,
+          idempotencyKey: existing.idempotencyKey,
+          payloadHash: stablePayloadHash(existing.payload),
+        },
+        response: {
+          dryRun: true,
+          previewOnly: true,
+          executionBlocked: true,
+        },
+      },
+    });
+    const update = {
+      executionStatus:
+        existing.executionStatus === "blocked"
+          ? ("blocked" as const)
+          : ("dry_run" as const),
+      errorSummary: null,
+      auditTrail,
+      updatedAt: timestamp,
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    const proposal = { ...existing, ...update };
+    const result: GitHubLabelProposalPreviewResponse = {
+      proposal,
+      ...preview,
+      policySummary:
+        "Preview-only GitHub label proposal. No label writeback executor is implemented in this cut.",
     };
     return c.json({ data: result });
   } catch (err) {

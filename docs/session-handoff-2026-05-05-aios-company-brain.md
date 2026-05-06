@@ -1076,7 +1076,32 @@ Implementado em 2026-05-06:
 5. Requisitos para preview-only candidates: target, payload diff, rationale de risco, idempotency key, approvals futuros e audit event sem mutacao externa.
 6. Nenhuma mudanca de schema/API/UI/MCP e nenhuma chamada externa.
 
-Proximo corte recomendado: GitHub label proposal v0 em modo preview-only, sem execucao real.
+## Slice GitHub Label Proposal v0 Preview-Only
+
+Objetivo: permitir que o AIOS proponha labels GitHub de forma auditavel sem executar nenhuma mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. `ExternalActionKind` aceita `label` e `github_label`.
+2. Tipo `GitHubLabelProposalPreviewResponse` e `GitHubLabelActionMode` em `packages/shared/src/types.ts`.
+3. `externalActionPolicy` permite Risk B GitHub label como proposal preview-only: pode ser revisada e dry-run, mas nao existe executor.
+4. Daemon adiciona `POST /api/company-brain/external-action-proposals/:id/github-label/preview`.
+5. Preview valida `destinationType=github`, action label, `destinationRef`, `payload.labels`, `mode=add/remove/set`, risk class classificado e `idempotencyKey`.
+6. Preview registra audit event `github_label_previewed`, `payloadHash`, target normalizado, labels, mode e `executionBlocked=true`.
+7. Safety review marca label proposals como `blocked`, impedindo que elas aparecam como `ready_to_execute`.
+8. UI `/company-brain` permite criar label proposals com campo de labels e botao `Preview labels`, sem botao de execute.
+9. MCP tool `preview_company_brain_github_label_proposal`.
+10. Nenhuma chamada GitHub write API e nenhuma rota de execute foram adicionadas.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-github-label-preview-dogfood.sqlite`, daemon em `127.0.0.1:43131`, sem token GitHub e sem writeback externo:
+
+- Guidance aceita criada para dogfood.
+- Proposal criada: `jbkoFiC8fiZZ`, `destinationType=github`, `actionType=label`, `riskClass=B`, `actionPolicy=request_human`, destination `antonio-mello-ai/crewdock#3`, payload `{ labels: ["aios-dogfood-preview", "needs-review"], mode: "add" }`.
+- Preview retornou `status=preview_only`, `executionBlocked=true`, `labels=[aios-dogfood-preview, needs-review]`, `mode=add`, audit `github_label_previewed`, `externalId=null`, `externalUrl=null`.
+- Tentativa em `/github-label/execute` retornou 404, confirmando ausencia de executor.
+- Safety Dashboard retornou `reviewStatus=blocked` para a proposal, impedindo `ready_to_execute`.
+
+Proximo corte recomendado: avaliar GitHub status/check proposal v0 em modo preview-only ou endurecer visual/audit review antes de qualquer executor de label.
 
 ## Dogfood ERP
 
@@ -1196,7 +1221,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0 e Writeback Policy Matrix v0. O proximo corte recomendado e GitHub label proposal v0 em modo preview-only, sem execucao real.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0 e GitHub Label Proposal v0 preview-only. O proximo corte recomendado e GitHub status/check proposal v0 em modo preview-only ou reforco de visual/audit review antes de qualquer executor de label.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

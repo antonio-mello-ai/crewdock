@@ -1298,6 +1298,8 @@ server.registerTool(
         .enum([
           "comment",
           "github_comment",
+          "label",
+          "github_label",
           "thread_reply",
           "slack_thread_reply",
           "draft",
@@ -1401,6 +1403,29 @@ server.registerTool(
       {
         method: "POST",
         body: JSON.stringify({ actor, retryRationale }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "preview_company_brain_github_label_proposal",
+  {
+    title: "Preview GitHub label proposal",
+    description:
+      "Dry-run a preview-only GitHub label ExternalActionProposal. Returns target, label mode and labels without calling GitHub write APIs. There is no label execute tool in this cut.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-label/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
       }
     );
     return formatJsonResult(result.data);
