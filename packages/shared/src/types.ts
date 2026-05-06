@@ -913,6 +913,24 @@ export interface ExtractArtifactInsightsResponse {
   signalCreated: boolean;
 }
 
+export interface ExtractSignalGuidanceRequest {
+  signalId: string;
+  priorityId?: string | null;
+  goalId?: string | null;
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  classification?: AlignmentClassification;
+  audience?: GuidanceAudience;
+}
+
+export interface ExtractSignalGuidanceResponse {
+  signal: Signal;
+  alignmentFinding: AlignmentFinding;
+  guidanceItem: GuidanceItem;
+  findingCreated: boolean;
+  guidanceCreated: boolean;
+}
+
 export interface AlignmentFinding {
   id: string;
   priorityId: string | null;

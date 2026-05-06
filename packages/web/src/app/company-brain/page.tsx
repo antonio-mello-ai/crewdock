@@ -28,6 +28,7 @@ import {
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
   useExtractCompanyBrainArtifactInsights,
+  useExtractCompanyBrainSignalGuidance,
   useGenerateCompanyBrainAgentContext,
   useImportCompanyBrainSlackMessages,
   useRunCompanyBrainWatcher,
@@ -228,6 +229,7 @@ export default function CompanyBrainPage() {
   const createDecision = useCreateCompanyBrainDecision();
   const createStrategyTradeoff = useCreateCompanyBrainStrategyTradeoff();
   const extractArtifactInsights = useExtractCompanyBrainArtifactInsights();
+  const extractSignalGuidance = useExtractCompanyBrainSignalGuidance();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -774,6 +776,10 @@ export default function CompanyBrainPage() {
         reviewNote: `Reviewed from Company Brain UI as ${status}.`,
       },
     });
+  };
+
+  const handleExtractSignalGuidance = (signalId: string) => {
+    extractSignalGuidance.mutate({ signalId });
   };
 
   return (
@@ -2559,6 +2565,18 @@ export default function CompanyBrainPage() {
                             </p>
                           </div>
                           <StatusBadge value={signal.severity} />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={extractSignalGuidance.isPending}
+                            onClick={() => handleExtractSignalGuidance(signal.id)}
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                            Guidance
+                          </Button>
                         </div>
                       </div>
                     );

@@ -25,6 +25,7 @@ import type {
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
   ExtractArtifactInsightsRequest,
+  ExtractSignalGuidanceRequest,
   GuidanceAudience,
   GenerateAgentContextRequest,
   ImportLocalDocsRequest,
@@ -3054,6 +3055,177 @@ app.post("/signals", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.post("/extractors/signal-guidance", async (c) => {
+  try {
+    const body = await c.req.json<ExtractSignalGuidanceRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const signalId = requireText(body.signalId, "signalId");
+    const signal = db.select().from(cbSignals).where(eq(cbSignals.id, signalId)).get();
+    if (!signal) throw new Error("signalId not found");
+
+    const workItemId = body.workItemId ?? signal.workItemId ?? null;
+    const workItem = workItemId
+      ? db.select().from(cbWorkItems).where(eq(cbWorkItems.id, workItemId)).get()
+      : null;
+    if (workItemId && !workItem) throw new Error("workItemId not found");
+
+    const workflowRunId = body.workflowRunId ?? signal.workflowRunId ?? null;
+    const workflowRun = workflowRunId
+      ? db.select().from(cbWorkflowRuns).where(eq(cbWorkflowRuns.id, workflowRunId)).get()
+      : null;
+    if (workflowRunId && !workflowRun) throw new Error("workflowRunId not found");
+
+    const metadataGoalId =
+      typeof signal.metadata?.goalId === "string" ? signal.metadata.goalId : null;
+    const requestedGoalId = body.goalId ?? workItem?.goalId ?? metadataGoalId;
+    const goal = requestedGoalId
+      ? db.select().from(cbGoals).where(eq(cbGoals.id, requestedGoalId)).get()
+      : null;
+    if (requestedGoalId && !goal) throw new Error("goalId not found");
+
+    const metadataPriorityId =
+      typeof signal.metadata?.priorityId === "string" ? signal.metadata.priorityId : null;
+    const priorityId =
+      body.priorityId ?? workItem?.priorityId ?? goal?.priorityId ?? metadataPriorityId;
+    if (priorityId) {
+      const priority = db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, priorityId))
+        .get();
+      if (!priority) throw new Error("priorityId not found");
+    }
+
+    const derived = classifyAlignment({
+      priorityId,
+      goalId: requestedGoalId,
+      hasWorkItem: Boolean(workItemId),
+    });
+    const classification = body.classification ?? derived.classification;
+    const artifactIds = signal.artifactId ? [signal.artifactId] : [];
+    let alignmentFinding =
+      db
+        .select()
+        .from(cbAlignmentFindings)
+        .all()
+        .find(
+          (item) =>
+            item.signalIds.includes(signal.id) &&
+            item.provenance?.createdFrom === "extractor:signal_guidance"
+        ) ?? null;
+    let findingCreated = false;
+    if (!alignmentFinding) {
+      alignmentFinding = {
+        id: nanoid(12),
+        priorityId,
+        goalId: requestedGoalId,
+        artifactIds,
+        signalIds: [signal.id],
+        workItemId,
+        workflowRunId,
+        area: signal.area,
+        classification,
+        rationale: body.classification
+          ? `Signal manually classified as ${classification}. ${derived.rationale}`
+          : derived.rationale,
+        confidence: Math.min(signal.confidence, derived.confidence),
+        suggestedAction: derived.suggestedAction,
+        severity: signal.severity,
+        visibility: signal.visibility,
+        provenance: {
+          sourceId: signal.sourceId ?? undefined,
+          rawRef: signal.rawRef,
+          artifactId: signal.artifactId ?? undefined,
+          createdFrom: "extractor:signal_guidance",
+          confidence: Math.min(signal.confidence, derived.confidence),
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: signal.visibility,
+          notes: "candidate=true; extractor=signal_guidance_v0",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbAlignmentFindings).values(alignmentFinding).run();
+      findingCreated = true;
+    }
+
+    let guidanceItem =
+      db
+        .select()
+        .from(cbGuidanceItems)
+        .all()
+        .find(
+          (item) =>
+            item.signalId === signal.id &&
+            item.provenance?.createdFrom === "extractor:signal_guidance"
+        ) ?? null;
+    let guidanceCreated = false;
+    if (!guidanceItem) {
+      guidanceItem = {
+        id: nanoid(12),
+        audience: body.audience ?? "human",
+        priorityId,
+        goalId: requestedGoalId,
+        findingId: alignmentFinding.id,
+        signalId: signal.id,
+        workItemId,
+        workflowRunId,
+        area: signal.area,
+        title: `Guidance candidate: ${signal.summary.slice(0, 90)}`,
+        action:
+          derived.suggestedAction ??
+          "Review this signal, confirm the strategy link and decide the next action.",
+        dueAt: null,
+        severity: signal.severity,
+        status: "open" as const,
+        feedbackStatus: "pending" as const,
+        feedbackNote: null,
+        feedbackAt: null,
+        generatedFrom: {
+          extractor: "signal_guidance_v0",
+          signalId: signal.id,
+          findingId: alignmentFinding.id,
+          classification,
+        },
+        visibility: signal.visibility,
+        provenance: {
+          sourceId: signal.sourceId ?? undefined,
+          rawRef: signal.rawRef,
+          artifactId: signal.artifactId ?? undefined,
+          createdFrom: "extractor:signal_guidance",
+          confidence: alignmentFinding.confidence,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: signal.visibility,
+          notes: "candidate=true; extractor=signal_guidance_v0",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbGuidanceItems).values(guidanceItem).run();
+      guidanceCreated = true;
+    }
+
+    return c.json(
+      {
+        data: {
+          signal,
+          alignmentFinding,
+          guidanceItem,
+          findingCreated,
+          guidanceCreated,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "extract_failed", message }, 400);
   }
 });
 

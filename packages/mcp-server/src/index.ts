@@ -868,6 +868,36 @@ server.registerTool(
 );
 
 server.registerTool(
+  "extract_company_brain_signal_guidance",
+  {
+    title: "Extract Company Brain signal guidance",
+    description:
+      "Create an AlignmentFinding and GuidanceItem candidate from an existing Signal with provenance and pending review. Does not write externally.",
+    inputSchema: {
+      signalId: z.string().min(1),
+      priorityId: z.string().optional(),
+      goalId: z.string().optional(),
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      classification: z
+        .enum(["aligned", "weak", "drift", "contradiction", "unknown"])
+        .optional(),
+      audience: z.enum(["human", "team", "agent", "system"]).default("human"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/extractors/signal-guidance",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_alignment_finding",
   {
     title: "Register Company Brain alignment finding",

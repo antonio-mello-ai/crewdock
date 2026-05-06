@@ -634,6 +634,31 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-decision-review-dogfo
 
 Proximo corte recomendado: `Signal -> AlignmentFinding/Guidance extractor v0` para transformar signal candidato aprovado/revisado em finding e guidance sem auto-writeback.
 
+## Slice Signal Guidance Extractor v0
+
+Objetivo: transformar um `Signal` existente em `AlignmentFinding` e `GuidanceItem` candidatos, fechando o caminho artifact -> signal -> finding -> guidance sem exigir watcher nem writeback externo.
+
+Implementado em 2026-05-06:
+
+1. Tipos `ExtractSignalGuidanceRequest` e `ExtractSignalGuidanceResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/extractors/signal-guidance`.
+3. Extractor infere priority/goal a partir do request, work item, goal ou metadata do signal gerado pelo Artifact Insights Extractor.
+4. `AlignmentFinding` usa classification derivada pela regra atual de alinhamento, severity do signal e provenance `createdFrom=extractor:signal_guidance`.
+5. `GuidanceItem` nasce `status=open`, `feedbackStatus=pending`, `generatedFrom.extractor=signal_guidance_v0` e provenance pendente.
+6. Dedupe por signal para finding/guidance do extractor v0.
+7. UI `/company-brain` adiciona acao `Guidance` em cards de signals.
+8. MCP tool `extract_company_brain_signal_guidance`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-signal-guidance-dogfood.sqlite`, daemon em `127.0.0.1:43118`:
+
+- Signal: `9Q-46j8sivgb`.
+- AlignmentFinding: `Cu-59XsDFZIG`, `classification=aligned`, review pendente.
+- GuidanceItem: `xmoxBYFUvImM`, `status=open`, `feedbackStatus=pending`, review pendente.
+- Segundo extract reutilizou os mesmos objetos (`findingCreated=false`, `guidanceCreated=false`).
+- Summary retornou `signalCount=1`, `alignmentFindingCount=1`, `guidanceItemCount=1`, `openGuidanceCount=1`.
+
+Proximo corte recomendado: Guidance/Decision/Signal review cohesion v0 ou AIOS Briefing watcher v0 para resumir decisions, tradeoffs, findings e guidance aberta.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -752,10 +777,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Decision Review v0. O corte recomendado e `Signal -> AlignmentFinding/Guidance extractor v0`, mantendo candidates sem auto-approve e qualquer writeback externo bloqueado.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Signal Guidance Extractor v0. O corte recomendado e `AIOS Briefing watcher v0` ou uma coesao de review para Decision/Signal/Guidance, mantendo qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- gerar finding/guidance a partir de signal candidato revisado/aprovado;
+- gerar briefing interno ou consolidar review/status de candidates;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
