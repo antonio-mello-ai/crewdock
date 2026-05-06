@@ -1863,6 +1863,7 @@ export interface WritebackAuditReview {
   latestActor: string | null;
   latestAt: number | null;
   executionEvent: string | null;
+  blockReasons: string[];
   approvalEventAt: number | null;
   approvalActor: string | null;
   previewEventAt: number | null;
@@ -1916,6 +1917,9 @@ export interface CompanyBrainWritebackSafetyDashboard {
     failedExecutionCount: number;
     rejectedProposalCount: number;
     blockedProposalCount: number;
+    previewOnlyBlockedCount: number;
+    githubLabelBlockedCount: number;
+    githubStatusCheckBlockedCount: number;
     githubCommentWriteCount: number;
     githubLabelWriteCount: number;
     githubLabelNoopCount: number;

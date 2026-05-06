@@ -1225,7 +1225,35 @@ Dogfood read-only validado reaproveitando DB temporario `/tmp/aios-runtime-githu
 - Stats: `completedExternalWriteCount=1`, `githubLabelWriteCount=1`, `githubLabelNoopCount=1`, `completedNoopCount=1`, `externalMutationAttemptedCount=0`, `duplicateAvoidedCount=1`.
 - Item retornou `reviewStatus=duplicate_prevented`, `auditEvent=github_label_completed_noop`, `executionEvent=github_label_completed_noop`, `duplicatePrevented=true`, `completedNoop=true`, `mutationAttempted=false`, `hasExternalRef=true`.
 
-Proximo corte recomendado: criar negative-path review read-only para proposals bloqueadas de label/status/check, garantindo que mode remove/set, multi-label, target fora da allowlist e status/check execute inexistente fiquem legiveis como bloqueados antes de qualquer novo executor.
+## Slice Writeback Negative-Path Review v0
+
+Objetivo: deixar propostas bloqueadas de label/status/check legiveis no Safety Dashboard sem criar nenhum executor novo.
+
+Implementado em 2026-05-06:
+
+1. `WritebackAuditReview` agora inclui `blockReasons`.
+2. Safety Dashboard inclui stats:
+   - `previewOnlyBlockedCount`;
+   - `githubLabelBlockedCount`;
+   - `githubStatusCheckBlockedCount`.
+3. UI `/company-brain` mostra metricas `label blocks` e `preview-only`.
+4. Cada item mostra `blocked by ...` quando houver motivos derivados.
+5. Motivos cobrem, entre outros:
+   - `github_label_mode_not_supported`;
+   - `github_label_single_label_required`;
+   - `github_label_target_not_allowlisted`;
+   - `github_status_check_preview_only`.
+6. Nenhuma rota de execute nova e nenhuma chamada externa.
+
+Dogfood read-only validado em DB temporario `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon em `127.0.0.1:43136`:
+
+- Proposal `I5PGjeflFsRN`: `github_label`, `mode=remove`, preview `preview_only`, `executionBlocked=true`, `reviewStatus=blocked`, reasons `blocked/github_label_mode_not_supported/github_label_target_or_policy_blocked`.
+- Proposal `FwXUdmXYQ3up`: `github_label`, multi-label, preview `preview_only`, `executionBlocked=true`, `reviewStatus=blocked`, reasons `blocked/github_label_single_label_required/github_label_target_or_policy_blocked/github_label_target_not_allowlisted`.
+- Proposal `y7CNoMfDo3sb`: `github_label`, target fora da allowlist, preview `preview_only`, `executionBlocked=true`, `reviewStatus=blocked`, reasons `blocked/github_label_target_or_policy_blocked/github_label_target_not_allowlisted`.
+- Proposal `Z7kq04y9nFok`: `github_status`, preview `preview_only`, `executionBlocked=true`, `reviewStatus=blocked`, reasons `blocked/github_status_check_preview_only`.
+- Stats: `previewOnlyBlockedCount=1`, `githubLabelBlockedCount=3`, `githubStatusCheckBlockedCount=1`, `externalMutationAttemptedCount=0`.
+
+Proximo corte recomendado: evoluir Adoption/Writeback Dashboard read-only para revisao operacional consolidada por adapter (GitHub comment, GitHub label, Slack reply, preview-only status/check), antes de qualquer nova mutacao externa.
 
 ## Dogfood ERP
 
@@ -1345,7 +1373,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0 e Post-Writeback Audit Review v0. O proximo corte recomendado e negative-path review read-only para proposals bloqueadas de label/status/check, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0 e Writeback Negative-Path Review v0. O proximo corte recomendado e Adoption/Writeback Dashboard read-only por adapter, mantendo status/check execute, assign, close/reopen, merge, deploy e notification-read bloqueados.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

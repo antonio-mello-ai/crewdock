@@ -3240,6 +3240,59 @@ function hasExternalMutationAttemptAudit(proposal: ExternalActionProposal) {
   });
 }
 
+function writebackBlockReasons(
+  proposal: ExternalActionProposal,
+  executionReview: CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+) {
+  const reasons = new Set<string>();
+  if (
+    !["ready_to_execute", "completed", "duplicate_prevented"].includes(
+      executionReview.status
+    )
+  ) {
+    for (const flag of executionReview.flags) reasons.add(flag);
+  }
+
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubStatusCheckAction(proposal.actionType)
+  ) {
+    reasons.add("github_status_check_preview_only");
+  }
+
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubLabelAction(proposal.actionType)
+  ) {
+    if (proposal.riskClass !== "B") reasons.add("github_label_requires_risk_b");
+    if (proposal.actionPolicy !== "writeback_allowed") {
+      reasons.add("github_label_requires_writeback_allowed");
+    }
+    if (proposal.approvalStatus !== "approved") {
+      reasons.add("github_label_requires_approval");
+    }
+    try {
+      const preview = buildGitHubLabelProposalPreview(proposal);
+      if (preview.mode !== "add") reasons.add("github_label_mode_not_supported");
+      if (preview.labels.length !== 1) {
+        reasons.add("github_label_single_label_required");
+      }
+      if (preview.executionBlocked && proposal.approvalStatus === "approved") {
+        reasons.add("github_label_target_or_policy_blocked");
+      }
+      try {
+        assertGitHubLabelWritebackAllowlisted(preview.target, preview.labels);
+      } catch {
+        reasons.add("github_label_target_not_allowlisted");
+      }
+    } catch {
+      reasons.add("github_label_invalid_payload_or_destination");
+    }
+  }
+
+  return [...reasons];
+}
+
 function isExternalWritebackDestination(proposal: ExternalActionProposal) {
   return proposal.destinationType === "github" || proposal.destinationType === "slack";
 }
@@ -3267,6 +3320,7 @@ function buildWritebackAuditReview(
     latestActor: latestAudit?.actor ?? null,
     latestAt: latestAudit?.at ?? null,
     executionEvent: executionAudit?.event ?? null,
+    blockReasons: writebackBlockReasons(proposal, executionReview),
     approvalEventAt: approvalAudit?.at ?? null,
     approvalActor: approvalAudit?.actor ?? null,
     previewEventAt: previewAudit?.at ?? null,
@@ -3455,6 +3509,23 @@ function buildWritebackSafetyDashboard(
       ).length,
       blockedProposalCount: proposals.filter(
         (proposal) => proposal.approvalStatus === "blocked"
+      ).length,
+      previewOnlyBlockedCount: items.filter((item) =>
+        item.auditReview.blockReasons.some((reason) =>
+          reason.endsWith("_preview_only")
+        )
+      ).length,
+      githubLabelBlockedCount: items.filter(
+        (item) =>
+          item.destinationType === "github" &&
+          isGitHubLabelAction(item.actionType) &&
+          item.reviewStatus === "blocked"
+      ).length,
+      githubStatusCheckBlockedCount: items.filter(
+        (item) =>
+          item.destinationType === "github" &&
+          isGitHubStatusCheckAction(item.actionType) &&
+          item.reviewStatus === "blocked"
       ).length,
       githubCommentWriteCount: completedExternal.filter(
         (proposal) =>

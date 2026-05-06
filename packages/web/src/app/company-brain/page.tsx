@@ -1629,7 +1629,7 @@ export default function CompanyBrainPage() {
             </div>
             {writebackSafetyDashboard ? (
               <div className="border-b border-neutral-800/50 px-5 py-4">
-                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-4 xl:grid-cols-8">
+                <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-4 xl:grid-cols-10">
                   <MiniMetric
                     label="written"
                     value={
@@ -1643,6 +1643,14 @@ export default function CompanyBrainPage() {
                   <MiniMetric
                     label="noop"
                     value={writebackSafetyDashboard.stats.completedNoopCount}
+                  />
+                  <MiniMetric
+                    label="label blocks"
+                    value={writebackSafetyDashboard.stats.githubLabelBlockedCount}
+                  />
+                  <MiniMetric
+                    label="preview-only"
+                    value={writebackSafetyDashboard.stats.previewOnlyBlockedCount}
                   />
                   <MiniMetric
                     label="ready"
@@ -1706,6 +1714,12 @@ export default function CompanyBrainPage() {
                           {item.reviewFlags.length ? (
                             <p className="mt-1 line-clamp-1 text-neutral-600">
                               flags {item.reviewFlags.join(", ")}
+                            </p>
+                          ) : null}
+                          {item.auditReview.blockReasons.length ? (
+                            <p className="mt-1 line-clamp-1 text-neutral-600">
+                              blocked by{" "}
+                              {item.auditReview.blockReasons.join(", ")}
                             </p>
                           ) : null}
                           {item.errorSummary ? (
