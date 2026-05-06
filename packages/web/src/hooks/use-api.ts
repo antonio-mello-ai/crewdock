@@ -72,6 +72,7 @@ import type {
   GuidanceItem,
   ImprovementProposal,
   Signal,
+  SlackThreadReplyWritebackResponse,
   Source,
   StrategicPriority,
   StrategyTradeoff,
@@ -826,6 +827,44 @@ export function useExecuteCompanyBrainGitHubCommentWriteback() {
         method: "POST",
         body: JSON.stringify(body ?? {}),
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function usePreviewCompanyBrainSlackThreadReplyWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<SlackThreadReplyWritebackResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(
+        `/api/company-brain/external-action-proposals/${id}/slack-thread-reply/preview`,
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        }
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useExecuteCompanyBrainSlackThreadReplyWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<SlackThreadReplyWritebackResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(
+        `/api/company-brain/external-action-proposals/${id}/slack-thread-reply/execute`,
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        }
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });
 }

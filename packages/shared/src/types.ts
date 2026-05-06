@@ -412,6 +412,7 @@ export type ExternalActionDestination =
 export type ExternalActionKind =
   | "comment"
   | "github_comment"
+  | "thread_reply"
   | "slack_thread_reply"
   | "draft"
   | "unknown";
@@ -1182,6 +1183,25 @@ export interface GitHubCommentWritebackTarget {
 export interface GitHubCommentWritebackResponse {
   proposal: ExternalActionProposal;
   target: GitHubCommentWritebackTarget;
+  body: string;
+  marker: string;
+  idempotencyKey: string;
+  dryRun: boolean;
+  status: "dry_run" | "completed" | "already_completed" | "failed";
+  reusedExisting: boolean;
+  externalId: string | null;
+  externalUrl: string | null;
+}
+
+export interface SlackThreadReplyWritebackTarget {
+  channelId: string;
+  threadTs: string;
+  url: string;
+}
+
+export interface SlackThreadReplyWritebackResponse {
+  proposal: ExternalActionProposal;
+  target: SlackThreadReplyWritebackTarget;
   body: string;
   marker: string;
   idempotencyKey: string;

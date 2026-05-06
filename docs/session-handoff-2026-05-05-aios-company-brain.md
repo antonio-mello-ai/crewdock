@@ -865,7 +865,49 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-github-comment-writeb
 - Verificacao GitHub API confirmou comment `4390632745` com marker `aios-writeback`.
 - Caminho proibido validado: proposal sem aprovacao retornou 400 `proposal must be approved before GitHub writeback`, ficou `executionStatus=failed` e sem `externalId/externalUrl`.
 
-Proximo corte recomendado: Slack thread reply writeback v0, somente para proposal aprovada, thread existente, preview antes, idempotencia, audit trail e `actionPolicy=writeback_allowed`; nao postar mensagem fora de thread e nao executar risk C/unknown.
+## Slice Slack Thread Reply Writeback v0
+
+Objetivo: executar Slack writeback real de forma estreita e governada: somente reply em thread existente, a partir de `ExternalActionProposal` aprovada, com preview, idempotencia e audit trail. Nenhuma mensagem top-level, DM, edicao, delete, reaction, pin, invite, topic, rename ou GitHub action nova entra neste corte.
+
+Implementado em 2026-05-06:
+
+1. `ExternalActionKind` passa a aceitar `thread_reply` como action canonica para Slack thread reply, mantendo `slack_thread_reply` como legado compativel.
+2. Tipos `SlackThreadReplyWritebackTarget` e `SlackThreadReplyWritebackResponse` em `packages/shared/src/types.ts`.
+3. Daemon adiciona:
+   - `POST /api/company-brain/external-action-proposals/:id/slack-thread-reply/preview`
+   - `POST /api/company-brain/external-action-proposals/:id/slack-thread-reply/execute`
+4. Preview valida proposal e retorna o corpo exato da reply com marker discreto, sem chamar Slack write API; registra `executionStatus=dry_run` e audit event `slack_thread_reply_previewed`.
+5. Execute real exige todos os gates:
+   - `approvalStatus=approved`
+   - `executionStatus=not_started` ou `dry_run`
+   - `destinationType=slack`
+   - `actionType=thread_reply` ou legado `slack_thread_reply`
+   - `riskClass=B`
+   - `actionPolicy=writeback_allowed`
+   - `idempotencyKey` presente
+   - `destinationRef` como `slack://channel/threadTs`, `channelId:threadTs`, `channelId/threadTs` ou permalink Slack de thread
+   - `payload.body` nao vazio
+6. Execute usa `SLACK_BOT_TOKEN`, rejeita DM (`D...`), busca replies da thread por `conversations.replies`, exige que a thread ja tenha pelo menos uma reply e procura marker antes de postar.
+7. Se encontrar reply anterior com o marker, registra `slack_thread_reply_reused` e nao duplica.
+8. Sucesso registra `executionStatus=completed`, `externalId=channel:ts`, `externalUrl` com permalink ou fallback `slack://channel/ts` e audit event `slack_thread_reply_posted` ou `slack_thread_reply_reused`.
+9. Erro registra `executionStatus=failed`, `errorSummary` e audit event `slack_thread_reply_failed`.
+10. UI `/company-brain` adiciona Preview/Reply para proposals Slack e mantem confirmacao no browser antes da execucao real.
+11. MCP tools adicionadas:
+    - `preview_company_brain_slack_thread_reply_writeback`
+    - `execute_company_brain_slack_thread_reply_writeback`
+12. `ExternalActionProposal` gerada para Slack agora usa payload canonico `{ body }`; payload legado `{ text }` nao e aceito pelo executor porque o gate exige `payload.body`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-slack-thread-reply-writeback-dogfood.sqlite`, daemon em `127.0.0.1:43126`:
+
+- Slack token validado sem expor segredo: workspace `Felhen`, channel `#aios-runtime` encontrado como `C0B1ZM0JULA` e bot membro do canal.
+- Nenhuma thread com replies foi encontrada em `#aios-runtime`; por isso o dogfood externo ficou em preview, sem post real.
+- Guidance aceita criada para dogfood.
+- Proposal aprovada: `h7GkOthHzW0z`.
+- Destination preview usado: `slack://C0B1ZM0JULA/1778072936.876349`.
+- Preview retornou `dry_run`, target normalizado, body com marker `aios-writeback`, `externalId=null`.
+- Caminho proibido validado: proposal sem aprovacao `zQp7_ttOCwUk` retornou 400 `proposal must be approved before Slack writeback`, sem chamada Slack de escrita.
+
+Proximo corte recomendado: Writeback Safety Dashboard / audit review, mostrando GitHub comments, Slack replies, proposals aprovadas/rejeitadas, falhas e duplicacoes evitadas antes de labels/status/assign ou qualquer acao de maior impacto.
 
 ## Dogfood ERP
 
@@ -985,13 +1027,13 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: desenhar ou implementar apenas com politica explicita o proximo corte apos GitHub Notifications Watcher v0. O proximo tema e writeback controlado com `action_policy`, `risk_class`, HITL e audit trail; nao iniciar mutacao externa sem escopo/risco aceitos.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0 e Slack Thread Reply Writeback v0. O proximo corte recomendado e Writeback Safety Dashboard / audit review para expor tudo que o AIOS ja escreveu fora, proposals aprovadas/rejeitadas, falhas e duplicacoes evitadas antes de labels/status/assign ou qualquer acao de maior impacto.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- especificar politica de writeback controlado antes de qualquer mutacao externa;
-- preservar provenance, status e human review;
+- preservar provenance, status, human review e idempotency;
 - expor em API/UI/MCP ou summary quando fizer sentido;
-- manter writeback externo bloqueado sem HITL/action_policy explicita.
+- manter labels/status/assign/merge/deploy/Slack top-level/DM bloqueados sem novo escopo explicito;
+- qualquer writeback novo deve passar por action_policy, risk_class, HITL, dry-run e audit trail.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.
 

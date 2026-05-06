@@ -41,6 +41,8 @@ import type {
   GitHubCommentWritebackResponse,
   GitHubCommentWritebackTarget,
   ExecuteExternalActionProposalRequest,
+  SlackThreadReplyWritebackResponse,
+  SlackThreadReplyWritebackTarget,
   ExtractArtifactInsightsRequest,
   ExtractSignalGuidanceRequest,
   GuidanceAudience,
@@ -256,6 +258,12 @@ interface SlackPermalinkResponse extends SlackApiEnvelope {
   permalink?: string;
 }
 
+interface SlackChatPostMessageResponse extends SlackApiEnvelope {
+  channel?: string;
+  ts?: string;
+  message?: SlackMessagePayload;
+}
+
 async function slackApi<T extends SlackApiEnvelope>(
   token: string,
   method: string,
@@ -272,6 +280,33 @@ async function slackApi<T extends SlackApiEnvelope>(
       Authorization: `Bearer ${token}`,
       "User-Agent": "aios-runtime-company-brain",
     },
+  });
+  const payload = (await res.json().catch(() => ({
+    ok: false,
+    error: `invalid_json_status_${res.status}`,
+  }))) as T;
+  if (!res.ok || !payload.ok) {
+    const details = payload.needed
+      ? ` needed=${payload.needed} provided=${payload.provided ?? "unknown"}`
+      : "";
+    throw new Error(`Slack ${method} failed: ${payload.error ?? res.status}${details}`);
+  }
+  return payload;
+}
+
+async function slackApiPost<T extends SlackApiEnvelope>(
+  token: string,
+  method: string,
+  body: Record<string, unknown>
+) {
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=utf-8",
+      "User-Agent": "aios-runtime-company-brain",
+    },
+    body: JSON.stringify(body),
   });
   const payload = (await res.json().catch(() => ({
     ok: false,
@@ -572,6 +607,10 @@ function isGitHubCommentAction(actionType: ExternalActionKind) {
   return actionType === "comment" || actionType === "github_comment";
 }
 
+function isSlackThreadReplyAction(actionType: ExternalActionKind) {
+  return actionType === "thread_reply" || actionType === "slack_thread_reply";
+}
+
 function encodeMarkerValue(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -585,7 +624,7 @@ function githubCommentWritebackMarker(proposal: ExternalActionProposal) {
 function externalActionPayloadBody(proposal: ExternalActionProposal) {
   const body = proposal.payload.body;
   if (typeof body !== "string" || !body.trim()) {
-    throw new Error("payload.body is required for GitHub comment writeback");
+    throw new Error("payload.body is required for external writeback");
   }
   return body.trim();
 }
@@ -642,6 +681,173 @@ async function fetchGitHubIssueComments(args: GitHubCommentWritebackTarget) {
     if (current.length < 100) break;
   }
   return comments;
+}
+
+function normalizeSlackChannelId(channelId: string) {
+  const normalized = channelId.trim().toUpperCase();
+  if (/^D[A-Z0-9]+$/.test(normalized)) {
+    throw new Error("Slack writeback to DMs is not allowed");
+  }
+  if (!/^[CG][A-Z0-9]+$/.test(normalized)) {
+    throw new Error("Slack destinationRef must include a public/private channel id");
+  }
+  return normalized;
+}
+
+function normalizeSlackThreadTs(threadTs: string) {
+  const normalized = threadTs.trim();
+  if (/^\d{10,}\.\d+$/.test(normalized)) return normalized;
+  const permalinkTs = normalized.match(/^p?(\d{10})(\d{1,9})$/);
+  if (permalinkTs) {
+    const [, seconds, fraction] = permalinkTs;
+    return `${seconds}.${fraction.padEnd(6, "0").slice(0, 6)}`;
+  }
+  throw new Error("Slack destinationRef must include a valid threadTs timestamp");
+}
+
+function slackThreadTarget(channelId: string, threadTs: string) {
+  const targetChannelId = normalizeSlackChannelId(channelId);
+  const targetThreadTs = normalizeSlackThreadTs(threadTs);
+  return {
+    channelId: targetChannelId,
+    threadTs: targetThreadTs,
+    url: `slack://${targetChannelId}/${targetThreadTs}`,
+  };
+}
+
+function parseSlackThreadRef(ref: string): SlackThreadReplyWritebackTarget {
+  const value = ref.trim();
+  if (!value) {
+    throw new Error("destinationRef is required for Slack thread reply writeback");
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.hostname.includes("slack.com")) {
+      const match = url.pathname.match(/\/archives\/([CGD][A-Z0-9]+)\/p(\d{10,})/i);
+      if (match) {
+        const [, channelId, permalinkTs] = match;
+        const threadTs = url.searchParams.get("thread_ts") ?? permalinkTs;
+        return slackThreadTarget(channelId, threadTs);
+      }
+    }
+  } catch {
+    // Continue with compact ref formats.
+  }
+
+  if (value.toLowerCase().startsWith("slack://")) {
+    const parts = value
+      .replace(/^slack:\/\//i, "")
+      .split("/")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const channelIndex = parts.findIndex((part) => /^[CGD][A-Z0-9]+$/i.test(part));
+    if (channelIndex >= 0 && parts[channelIndex + 1]) {
+      return slackThreadTarget(parts[channelIndex], parts[channelIndex + 1]);
+    }
+  }
+
+  const keyValueChannel = value.match(/\bchannel(?:Id|_id)?[=:\s]+([CGD][A-Z0-9]+)/i);
+  const keyValueThread = value.match(/\bthread(?:Ts|_ts)?[=:\s]+(\d{10,}(?:\.\d+)?)/i);
+  if (keyValueChannel && keyValueThread) {
+    return slackThreadTarget(keyValueChannel[1], keyValueThread[1]);
+  }
+
+  const compact = value.match(/^([CGD][A-Z0-9]+)[/:](\d{10,}(?:\.\d+)?)$/i);
+  if (compact) {
+    return slackThreadTarget(compact[1], compact[2]);
+  }
+
+  throw new Error(
+    "destinationRef must be slack://channel/threadTs, channelId:threadTs, channelId/threadTs, or a Slack thread permalink"
+  );
+}
+
+function slackThreadReplyWritebackMarker(proposal: ExternalActionProposal) {
+  return `_aios-writeback proposal=${encodeMarkerValue(
+    proposal.id
+  )} key=${encodeMarkerValue(proposal.idempotencyKey)}_`;
+}
+
+function buildSlackThreadReplyWritebackPreview(proposal: ExternalActionProposal) {
+  if (!proposal.destinationRef?.trim()) {
+    throw new Error("destinationRef is required for Slack thread reply writeback");
+  }
+  if (!proposal.idempotencyKey.trim()) {
+    throw new Error("idempotencyKey is required for Slack thread reply writeback");
+  }
+  const target = parseSlackThreadRef(proposal.destinationRef);
+  const marker = slackThreadReplyWritebackMarker(proposal);
+  const body = `${externalActionPayloadBody(proposal)}\n\n${marker}`;
+  return { target, marker, body };
+}
+
+function validateSlackThreadReplyWritebackProposal(proposal: ExternalActionProposal) {
+  if (proposal.approvalStatus !== "approved") {
+    throw new Error("proposal must be approved before Slack writeback");
+  }
+  if (!["not_started", "dry_run"].includes(proposal.executionStatus)) {
+    throw new Error("proposal executionStatus must be not_started or dry_run");
+  }
+  if (proposal.destinationType !== "slack") {
+    throw new Error("proposal destinationType must be slack");
+  }
+  if (!isSlackThreadReplyAction(proposal.actionType)) {
+    throw new Error("proposal actionType must be thread_reply");
+  }
+  if (proposal.riskClass !== "B") {
+    throw new Error("proposal riskClass must be B");
+  }
+  if (proposal.actionPolicy !== "writeback_allowed") {
+    throw new Error("proposal actionPolicy must be writeback_allowed");
+  }
+  return buildSlackThreadReplyWritebackPreview(proposal);
+}
+
+function slackBotTokenForWriteback() {
+  const token = getSecretEnv("SLACK_BOT_TOKEN");
+  if (!token) {
+    throw new Error("SLACK_BOT_TOKEN is required for Slack thread reply writeback");
+  }
+  if (!token.startsWith("xoxb-")) {
+    throw new Error("SLACK_BOT_TOKEN must be a bot token");
+  }
+  return token;
+}
+
+async function fetchSlackThreadReplies(
+  token: string,
+  target: SlackThreadReplyWritebackTarget
+) {
+  const result = await slackApi<SlackConversationRepliesResponse>(
+    token,
+    "conversations.replies",
+    {
+      channel: target.channelId,
+      ts: target.threadTs,
+      limit: 200,
+    }
+  );
+  return result.messages ?? [];
+}
+
+function assertExistingSlackThread(
+  replies: SlackMessagePayload[],
+  target: SlackThreadReplyWritebackTarget
+) {
+  const root = replies.find((message) => message.ts === target.threadTs);
+  if (!root) {
+    throw new Error("Slack thread root not found or not visible to bot");
+  }
+  const hasExistingReply = replies.some(
+    (message) => message.ts && message.ts !== target.threadTs
+  );
+  const replyCount = typeof root.reply_count === "number" ? root.reply_count : 0;
+  if (!hasExistingReply && replyCount < 1) {
+    throw new Error(
+      "Slack destinationRef must point to an existing thread with at least one reply"
+    );
+  }
 }
 
 async function fetchGitHubIssues(repo: string, state: string, limit: number) {
@@ -2307,7 +2513,8 @@ function externalActionPolicy(args: {
   const { destinationType, actionType, riskClass, actionPolicy } = args;
   const isExternal = destinationType === "github" || destinationType === "slack";
   const isLowRiskExternal =
-    isGitHubCommentAction(actionType) || actionType === "slack_thread_reply";
+    (destinationType === "github" && isGitHubCommentAction(actionType)) ||
+    (destinationType === "slack" && isSlackThreadReplyAction(actionType));
 
   if (riskClass === "C") {
     return {
@@ -2358,10 +2565,7 @@ function defaultExternalActionPayload(args: {
   actionType: ExternalActionKind;
   guidanceAction: string;
 }): Record<string, unknown> {
-  if (args.actionType === "slack_thread_reply") {
-    return { text: args.guidanceAction };
-  }
-  if (isGitHubCommentAction(args.actionType)) {
+  if (isGitHubCommentAction(args.actionType) || isSlackThreadReplyAction(args.actionType)) {
     return { body: args.guidanceAction };
   }
   return { body: args.guidanceAction };
@@ -5594,7 +5798,7 @@ app.post("/external-action-proposals/from-guidance", async (c) => {
     const requestedAction = body.actionType;
     const destinationType: ExternalActionDestination =
       requestedDestination ??
-      (requestedAction === "slack_thread_reply"
+      (requestedAction && isSlackThreadReplyAction(requestedAction)
         ? "slack"
         : requestedAction === "draft"
           ? "internal"
@@ -5602,7 +5806,7 @@ app.post("/external-action-proposals/from-guidance", async (c) => {
     const actionType: ExternalActionKind =
       requestedAction ??
       (destinationType === "slack"
-        ? "slack_thread_reply"
+        ? "thread_reply"
         : destinationType === "internal"
           ? "draft"
           : "comment");
@@ -6002,6 +6206,232 @@ app.post("/external-action-proposals/:id/github-comment/execute", async (c) => {
     const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
       actor,
       event: "github_comment_failed",
+      note: message,
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          actionType: existing.actionType,
+          riskClass: existing.riskClass,
+          actionPolicy: existing.actionPolicy,
+          approvalStatus: existing.approvalStatus,
+          executionStatus: existing.executionStatus,
+          idempotencyKey: existing.idempotencyKey,
+        },
+        response: {
+          error: message,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "failed" as const,
+      errorSummary: message,
+      auditTrail,
+      updatedAt: now(),
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    return c.json({ error: "execution_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/slack-thread-reply/preview", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteExternalActionProposalRequest>()
+      .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, id))
+      .get();
+    if (!existing) throw new Error("external action proposal not found");
+
+    const { target, marker, body: replyBody } =
+      validateSlackThreadReplyWritebackProposal(existing);
+    const actor = body.actor?.trim() || null;
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: "slack_thread_reply_previewed",
+      note:
+        "Dry-run generated the Slack thread reply body without calling Slack write APIs.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target,
+          idempotencyKey: existing.idempotencyKey,
+          bodyLength: replyBody.length,
+          bodyHash: stableHash(replyBody),
+        },
+        response: {
+          dryRun: true,
+          externalCall: false,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "dry_run" as const,
+      errorSummary: null,
+      auditTrail,
+      updatedAt: now(),
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+
+    const proposal = { ...existing, ...update };
+    const result: SlackThreadReplyWritebackResponse = {
+      proposal,
+      target,
+      body: replyBody,
+      marker,
+      idempotencyKey: proposal.idempotencyKey,
+      dryRun: true,
+      status: "dry_run",
+      reusedExisting: false,
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "preview_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/slack-thread-reply/execute", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const body = (await c.req
+    .json<ExecuteExternalActionProposalRequest>()
+    .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+  const actor = body.actor?.trim() || null;
+  const existing = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, id))
+    .get();
+  if (!existing) {
+    return c.json(
+      { error: "execution_failed", message: "external action proposal not found" },
+      404
+    );
+  }
+
+  try {
+    if (
+      ["completed", "executed"].includes(existing.executionStatus) &&
+      existing.externalId &&
+      existing.externalUrl
+    ) {
+      const { target, marker, body: replyBody } =
+        buildSlackThreadReplyWritebackPreview(existing);
+      const result: SlackThreadReplyWritebackResponse = {
+        proposal: existing,
+        target,
+        body: replyBody,
+        marker,
+        idempotencyKey: existing.idempotencyKey,
+        dryRun: false,
+        status: "already_completed",
+        reusedExisting: true,
+        externalId: existing.externalId,
+        externalUrl: existing.externalUrl,
+      };
+      return c.json({ data: result });
+    }
+
+    const { target, marker, body: replyBody } =
+      validateSlackThreadReplyWritebackProposal(existing);
+    const token = slackBotTokenForWriteback();
+    const replies = await fetchSlackThreadReplies(token, target);
+    assertExistingSlackThread(replies, target);
+    const priorReply = replies.find(
+      (message) =>
+        message.ts &&
+        message.ts !== target.threadTs &&
+        typeof message.text === "string" &&
+        message.text.includes(marker)
+    );
+    const posted = priorReply
+      ? null
+      : await slackApiPost<SlackChatPostMessageResponse>(token, "chat.postMessage", {
+          channel: target.channelId,
+          thread_ts: target.threadTs,
+          text: replyBody,
+          unfurl_links: false,
+          unfurl_media: false,
+        });
+    const channelId = priorReply?.thread_ts
+      ? target.channelId
+      : posted?.channel ?? target.channelId;
+    const replyTs = priorReply?.ts ?? posted?.ts;
+    if (!replyTs) {
+      throw new Error("Slack thread reply did not return a message timestamp");
+    }
+    const permalink = await fetchSlackPermalink(token, channelId, replyTs);
+    const externalUrl = permalink ?? `slack://${channelId}/${replyTs}`;
+    const timestamp = now();
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: priorReply ? "slack_thread_reply_reused" : "slack_thread_reply_posted",
+      note: priorReply
+        ? "Found an existing Slack thread reply with the proposal idempotency marker; no duplicate was posted."
+        : "Posted approved Slack reply in an existing thread.",
+      metadata: {
+        request: {
+          proposalId: existing.id,
+          destinationRef: existing.destinationRef,
+          target,
+          idempotencyKey: existing.idempotencyKey,
+          bodyLength: replyBody.length,
+          bodyHash: stableHash(replyBody),
+        },
+        response: {
+          reusedExisting: Boolean(priorReply),
+          channelId,
+          ts: replyTs,
+          externalUrl,
+        },
+      },
+    });
+    const update = {
+      executionStatus: "completed" as const,
+      externalId: `${channelId}:${replyTs}`,
+      externalUrl,
+      errorSummary: null,
+      auditTrail,
+      updatedAt: timestamp,
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    const proposal = { ...existing, ...update };
+    const result: SlackThreadReplyWritebackResponse = {
+      proposal,
+      target,
+      body: replyBody,
+      marker,
+      idempotencyKey: proposal.idempotencyKey,
+      dryRun: false,
+      status: "completed",
+      reusedExisting: Boolean(priorReply),
+      externalId: proposal.externalId,
+      externalUrl: proposal.externalUrl,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
+      actor,
+      event: "slack_thread_reply_failed",
       note: message,
       metadata: {
         request: {

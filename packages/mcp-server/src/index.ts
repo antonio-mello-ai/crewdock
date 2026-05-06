@@ -1279,7 +1279,14 @@ server.registerTool(
         .default("github"),
       destinationRef: z.string().optional(),
       actionType: z
-        .enum(["comment", "github_comment", "slack_thread_reply", "draft", "unknown"])
+        .enum([
+          "comment",
+          "github_comment",
+          "thread_reply",
+          "slack_thread_reply",
+          "draft",
+          "unknown",
+        ])
         .default("comment"),
       payload: z.record(z.string(), z.unknown()).optional(),
       riskClass: z.enum(["A", "B", "C", "unknown"]).default("B"),
@@ -1374,6 +1381,52 @@ server.registerTool(
   async ({ id, actor }) => {
     const result = await daemonFetch<{ data: unknown }>(
       `/api/company-brain/external-action-proposals/${id}/github-comment/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "preview_company_brain_slack_thread_reply_writeback",
+  {
+    title: "Preview Slack thread reply writeback",
+    description:
+      "Dry-run an approved Company Brain Slack thread reply proposal. Returns the exact reply body and channel/thread target without calling Slack write APIs.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/slack-thread-reply/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "execute_company_brain_slack_thread_reply_writeback",
+  {
+    title: "Execute Slack thread reply writeback",
+    description:
+      "Post a Slack reply only inside an existing thread for an approved Risk B Company Brain proposal with action_policy=writeback_allowed. This does not post top-level messages, DMs, edits, deletes, reactions, pins, invites, topic changes, renames, or GitHub actions.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/slack-thread-reply/execute`,
       {
         method: "POST",
         body: JSON.stringify({ actor }),

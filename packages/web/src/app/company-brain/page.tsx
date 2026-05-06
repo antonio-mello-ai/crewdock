@@ -8,6 +8,7 @@ import {
   FileText,
   GitPullRequest,
   Loader2,
+  MessageSquare,
   Milestone,
   Plus,
   RefreshCw,
@@ -24,6 +25,7 @@ import {
   useCreateCompanyBrainGuidanceItem,
   useCreateCompanyBrainImprovementProposal,
   useExecuteCompanyBrainGitHubCommentWriteback,
+  useExecuteCompanyBrainSlackThreadReplyWriteback,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
   useCreateCompanyBrainStrategyTradeoff,
@@ -41,6 +43,7 @@ import {
   useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
   usePreviewCompanyBrainGitHubCommentWriteback,
+  usePreviewCompanyBrainSlackThreadReplyWriteback,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -169,7 +172,7 @@ const externalActionDestinations: ExternalActionDestination[] = [
 ];
 const externalActionKinds: ExternalActionKind[] = [
   "comment",
-  "slack_thread_reply",
+  "thread_reply",
   "draft",
   "unknown",
 ];
@@ -260,6 +263,10 @@ export default function CompanyBrainPage() {
     usePreviewCompanyBrainGitHubCommentWriteback();
   const executeGitHubCommentWriteback =
     useExecuteCompanyBrainGitHubCommentWriteback();
+  const previewSlackThreadReplyWriteback =
+    usePreviewCompanyBrainSlackThreadReplyWriteback();
+  const executeSlackThreadReplyWriteback =
+    useExecuteCompanyBrainSlackThreadReplyWriteback();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -908,7 +915,7 @@ export default function CompanyBrainPage() {
             : undefined,
         note:
           approvalStatus === "approved"
-            ? "Approved in Company Brain UI. Execution remains disabled in Writeback Governance v0."
+            ? "Approved in Company Brain UI. Adapter-specific execution gates still apply."
             : undefined,
       },
     });
@@ -924,8 +931,26 @@ export default function CompanyBrainPage() {
     proposal.actionPolicy === "writeback_allowed" &&
     ["not_started", "dry_run"].includes(proposal.executionStatus);
 
+  const canRunSlackThreadReplyWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "slack" &&
+    (proposal.actionType === "thread_reply" ||
+      proposal.actionType === "slack_thread_reply") &&
+    proposal.approvalStatus === "approved" &&
+    proposal.riskClass === "B" &&
+    proposal.actionPolicy === "writeback_allowed" &&
+    ["not_started", "dry_run"].includes(proposal.executionStatus);
+
   const previewGitHubCommentProposal = (id: string) => {
     previewGitHubCommentWriteback.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const previewSlackThreadReplyProposal = (id: string) => {
+    previewSlackThreadReplyWriteback.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -939,6 +964,19 @@ export default function CompanyBrainPage() {
       return;
     }
     executeGitHubCommentWriteback.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const executeSlackThreadReplyProposal = (id: string) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Post this approved Slack reply in the existing thread now?")
+    ) {
+      return;
+    }
+    executeSlackThreadReplyWriteback.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -1475,7 +1513,7 @@ export default function CompanyBrainPage() {
                           destinationType,
                           actionType:
                             destinationType === "slack"
-                              ? "slack_thread_reply"
+                              ? "thread_reply"
                               : destinationType === "internal"
                                 ? "draft"
                                 : "comment",
@@ -1499,6 +1537,7 @@ export default function CompanyBrainPage() {
                           ...writebackForm,
                           actionType,
                           destinationType:
+                            actionType === "thread_reply" ||
                             actionType === "slack_thread_reply"
                               ? "slack"
                               : actionType === "draft"
@@ -1599,6 +1638,17 @@ export default function CompanyBrainPage() {
                     </pre>
                   </div>
                 ) : null}
+                {previewSlackThreadReplyWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {previewSlackThreadReplyWriteback.data.data.target.channelId} ·{" "}
+                      {previewSlackThreadReplyWriteback.data.data.target.threadTs}
+                    </p>
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-neutral-300">
+                      {previewSlackThreadReplyWriteback.data.data.body}
+                    </pre>
+                  </div>
+                ) : null}
               </form>
               <div className="divide-y divide-neutral-800/40">
                 {externalActionProposals.length === 0 ? (
@@ -1648,32 +1698,73 @@ export default function CompanyBrainPage() {
                             ) : null}
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={
-                                previewGitHubCommentWriteback.isPending ||
-                                !canRunGitHubCommentWriteback(proposal)
-                              }
-                              onClick={() => previewGitHubCommentProposal(proposal.id)}
-                            >
-                              <FileText className="h-4 w-4" />
-                              Preview
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={
-                                executeGitHubCommentWriteback.isPending ||
-                                !canRunGitHubCommentWriteback(proposal)
-                              }
-                              onClick={() => executeGitHubCommentProposal(proposal.id)}
-                            >
-                              <GitPullRequest className="h-4 w-4" />
-                              Execute
-                            </Button>
+                            {proposal.destinationType === "slack" ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    previewSlackThreadReplyWriteback.isPending ||
+                                    !canRunSlackThreadReplyWriteback(proposal)
+                                  }
+                                  onClick={() =>
+                                    previewSlackThreadReplyProposal(proposal.id)
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Preview
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    executeSlackThreadReplyWriteback.isPending ||
+                                    !canRunSlackThreadReplyWriteback(proposal)
+                                  }
+                                  onClick={() =>
+                                    executeSlackThreadReplyProposal(proposal.id)
+                                  }
+                                >
+                                  <MessageSquare className="h-4 w-4" />
+                                  Reply
+                                </Button>
+                              </>
+                            ) : (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    previewGitHubCommentWriteback.isPending ||
+                                    !canRunGitHubCommentWriteback(proposal)
+                                  }
+                                  onClick={() =>
+                                    previewGitHubCommentProposal(proposal.id)
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Preview
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    executeGitHubCommentWriteback.isPending ||
+                                    !canRunGitHubCommentWriteback(proposal)
+                                  }
+                                  onClick={() =>
+                                    executeGitHubCommentProposal(proposal.id)
+                                  }
+                                >
+                                  <GitPullRequest className="h-4 w-4" />
+                                  Execute
+                                </Button>
+                              </>
+                            )}
                             <Button
                               type="button"
                               size="sm"
