@@ -105,7 +105,9 @@ Status Writeback Evidence Integrity Gaps v0 em 2026-05-06: Evidence Packets e Sa
 
 Status Writeback Policy Matrix update em 2026-05-06: `docs/writeback-policy-matrix.md` agora reflete a politica de GitHub interno privado allowlisted: `github_status/github_check`, `assign/unassign` e `mark_notification_read` podem ser tratados como Classe B planejada sob allowlist, approval, preview, HITL rationale, retry safety, idempotency e audit trail. Executores reais ainda precisam de corte proprio; close/reopen/merge/deploy/delete/permissions/secrets/customer repos seguem bloqueados.
 
-Proximo corte planejado: Evidence remediation suggestions read-only para sugerir como corrigir gaps de evidence/provenance/audit sem executar mutacao externa.
+Status Evidence Remediation Suggestions v0 em 2026-05-06: gaps de integridade agora geram sugestoes read-only de remediacao com action kind, target field, human review required, new proposal required, `actionPolicy=observe_only` e `executionBlocked=true`. Exposto em Safety Dashboard, Evidence Packet JSON, API/UI/MCP e briefing. Dogfood validado com DB bom sem sugestoes e DB ruim com 15 sugestoes, 13 exigindo revisao humana e 4 sugerindo nova proposal.
+
+Proximo corte planejado: GitHub status/check executor real v0 em repo interno allowlisted somente quando houver alvo controlado de PR/SHA; caso contrario, continuar com hardening read-only/audit de remediation/evidence.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -145,6 +147,7 @@ Proximo corte planejado: Evidence remediation suggestions read-only para sugerir
 - [x] **Writeback Evidence Packet JSON Export v0** — exportar pacote auditavel por proposal como JSON pela API/UI
 - [x] **Writeback Evidence Packet Index v0** — indexar packets exportaveis no Safety Dashboard com status, audit count, links e hash
 - [x] **Writeback Evidence Integrity Gaps v0** — detectar gaps de links, audit events, hashes, idempotency, refs externas, stale review, rationale e provenance em Safety Dashboard/Evidence Packet/API/UI/MCP/briefing
+- [x] **Evidence Remediation Suggestions v0** — sugerir correcoes read-only para gaps de evidence/provenance/audit com human review/new proposal flags e sem mutacao externa
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

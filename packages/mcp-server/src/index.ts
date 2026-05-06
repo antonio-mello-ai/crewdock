@@ -1553,6 +1553,76 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_writeback_evidence_remediation_suggestions",
+  {
+    title: "List Company Brain writeback evidence remediation suggestions",
+    description:
+      "Read-only suggestions for repairing ExternalActionProposal evidence integrity gaps. Shows what should be relinked, reapproved, repreviewed, or recreated without executing or mutating external systems.",
+    inputSchema: {
+      severity: z.enum(["info", "warn", "critical"]).optional(),
+      gapKind: z
+        .enum([
+          "missing_guidance_link",
+          "missing_signal_or_finding_link",
+          "missing_work_item_or_workflow_link",
+          "missing_approval_event",
+          "missing_preview_event",
+          "missing_execution_event",
+          "missing_payload_hash",
+          "missing_idempotency_key",
+          "missing_external_ref_after_completed",
+          "stale_preview",
+          "stale_approval",
+          "insufficient_rationale",
+          "incomplete_provenance",
+        ])
+        .optional(),
+      actionKind: z
+        .enum([
+          "relink_guidance",
+          "link_signal_or_finding",
+          "link_work_or_workflow",
+          "rerun_hitl_approval",
+          "rerun_preview",
+          "review_execution_audit",
+          "capture_payload_hash",
+          "create_new_proposal_with_idempotency",
+          "attach_external_ref",
+          "refresh_stale_review",
+          "capture_human_rationale",
+          "repair_provenance",
+        ])
+        .optional(),
+      adapter: z
+        .enum([
+          "github_comment",
+          "github_label",
+          "github_status_check",
+          "slack_thread_reply",
+          "other",
+        ])
+        .optional(),
+      proposalId: z.string().optional(),
+      limit: z.number().int().min(1).max(250).optional(),
+    },
+  },
+  async ({ severity, gapKind, actionKind, adapter, proposalId, limit }) => {
+    const params = new URLSearchParams();
+    if (severity) params.set("severity", severity);
+    if (gapKind) params.set("gapKind", gapKind);
+    if (actionKind) params.set("actionKind", actionKind);
+    if (adapter) params.set("adapter", adapter);
+    if (proposalId) params.set("proposalId", proposalId);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/evidence-remediation-suggestions${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_github_comment_writeback",
   {
     title: "Execute GitHub comment writeback",

@@ -2105,6 +2105,67 @@ export interface CompanyBrainWritebackEvidenceIntegrityGapsResponse {
   summary: WritebackEvidenceIntegritySummary;
 }
 
+export type WritebackEvidenceRemediationActionKind =
+  | "relink_guidance"
+  | "link_signal_or_finding"
+  | "link_work_or_workflow"
+  | "rerun_hitl_approval"
+  | "rerun_preview"
+  | "review_execution_audit"
+  | "capture_payload_hash"
+  | "create_new_proposal_with_idempotency"
+  | "attach_external_ref"
+  | "refresh_stale_review"
+  | "capture_human_rationale"
+  | "repair_provenance";
+
+export interface WritebackEvidenceRemediationSuggestion {
+  id: string;
+  proposalId: string;
+  gapId: string;
+  gapKind: WritebackEvidenceIntegrityGapKind;
+  adapter: WritebackAdapterKey;
+  actionKind: WritebackEvidenceRemediationActionKind;
+  severity: SignalSeverity;
+  title: string;
+  suggestedAction: string;
+  rationale: string;
+  targetField: string | null;
+  requiresHumanReview: boolean;
+  requiresNewProposal: boolean;
+  actionPolicy: "observe_only";
+  executionBlocked: true;
+  detectedAt: number;
+  latestAuditAt: number | null;
+}
+
+export interface WritebackEvidenceRemediationSummary {
+  total: number;
+  criticalCount: number;
+  warnCount: number;
+  infoCount: number;
+  humanReviewCount: number;
+  newProposalCount: number;
+  byActionKind: Record<WritebackEvidenceRemediationActionKind, number>;
+  byGapKind: Record<WritebackEvidenceIntegrityGapKind, number>;
+  byAdapter: Record<WritebackAdapterKey, number>;
+}
+
+export interface CompanyBrainWritebackEvidenceRemediationSuggestionsResponse {
+  generatedAt: number;
+  filters: {
+    severity: SignalSeverity | null;
+    gapKind: WritebackEvidenceIntegrityGapKind | null;
+    actionKind: WritebackEvidenceRemediationActionKind | null;
+    adapter: WritebackAdapterKey | null;
+    proposalId: string | null;
+    limit: number;
+  };
+  items: WritebackEvidenceRemediationSuggestion[];
+  total: number;
+  summary: WritebackEvidenceRemediationSummary;
+}
+
 export interface WritebackEvidencePacket {
   generatedAt: number;
   proposal: ExternalActionProposal;
@@ -2116,6 +2177,7 @@ export interface WritebackEvidencePacket {
   executionReview: WritebackExecutionReview;
   auditReview: WritebackAuditReview;
   integrityGaps: WritebackEvidenceIntegrityGap[];
+  remediationSuggestions: WritebackEvidenceRemediationSuggestion[];
   auditTrail: WritebackAuditTrailEntry[];
   approvalEvent: ExternalActionAuditEvent | null;
   previewEvent: ExternalActionAuditEvent | null;
@@ -2184,6 +2246,8 @@ export interface CompanyBrainWritebackSafetyDashboard {
   evidencePacketIndex: WritebackEvidencePacketIndexItem[];
   evidenceIntegrityGaps: WritebackEvidenceIntegrityGap[];
   evidenceIntegritySummary: WritebackEvidenceIntegritySummary;
+  evidenceRemediationSuggestions: WritebackEvidenceRemediationSuggestion[];
+  evidenceRemediationSummary: WritebackEvidenceRemediationSummary;
   latestAuditTrail: WritebackAuditTrailEntry[];
   stats: {
     proposalCount: number;

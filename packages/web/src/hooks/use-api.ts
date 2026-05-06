@@ -24,6 +24,7 @@ import type {
   ApiListResponse,
   CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainWritebackEvidenceIntegrityGapsResponse,
+  CompanyBrainWritebackEvidenceRemediationSuggestionsResponse,
   CompanyBrainSummary,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -113,10 +114,20 @@ export interface CompanyBrainWritebackEvidenceIntegrityGapFilters {
   limit?: number | string | null;
 }
 
+export interface CompanyBrainWritebackEvidenceRemediationFilters {
+  severity?: string | null;
+  gapKind?: string | null;
+  actionKind?: string | null;
+  adapter?: string | null;
+  proposalId?: string | null;
+  limit?: number | string | null;
+}
+
 function writebackAuditTrailQueryString(
   filters:
     | CompanyBrainWritebackAuditTrailFilters
-    | CompanyBrainWritebackEvidenceIntegrityGapFilters,
+    | CompanyBrainWritebackEvidenceIntegrityGapFilters
+    | CompanyBrainWritebackEvidenceRemediationFilters,
   format?: "csv"
 ) {
   const params = new URLSearchParams();
@@ -529,6 +540,27 @@ export function useCompanyBrainWritebackEvidenceIntegrityGaps(
     queryFn: () =>
       api(
         `/api/company-brain/external-action-proposals/evidence-integrity-gaps${writebackAuditTrailQueryString(
+          filters
+        )}`
+      ),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useCompanyBrainWritebackEvidenceRemediationSuggestions(
+  filters: CompanyBrainWritebackEvidenceRemediationFilters
+) {
+  return useQuery<
+    ApiResponse<CompanyBrainWritebackEvidenceRemediationSuggestionsResponse>
+  >({
+    queryKey: [
+      "company-brain",
+      "writeback-evidence-remediation-suggestions",
+      filters,
+    ],
+    queryFn: () =>
+      api(
+        `/api/company-brain/external-action-proposals/evidence-remediation-suggestions${writebackAuditTrailQueryString(
           filters
         )}`
       ),

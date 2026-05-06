@@ -22,6 +22,7 @@ import {
   companyBrainWritebackEvidencePacketJsonUrl,
   type CompanyBrainWritebackAuditTrailFilters,
   type CompanyBrainWritebackEvidenceIntegrityGapFilters,
+  type CompanyBrainWritebackEvidenceRemediationFilters,
   useCompanyBrainSummary,
   useCreateCompanyBrainArtifact,
   useCreateCompanyBrainDecision,
@@ -55,6 +56,7 @@ import {
   usePreviewCompanyBrainSlackThreadReplyWriteback,
   useCompanyBrainWritebackAuditTrail,
   useCompanyBrainWritebackEvidenceIntegrityGaps,
+  useCompanyBrainWritebackEvidenceRemediationSuggestions,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -234,6 +236,20 @@ const writebackEvidenceIntegrityGapKinds = [
   "insufficient_rationale",
   "incomplete_provenance",
 ];
+const writebackEvidenceRemediationActionKinds = [
+  "relink_guidance",
+  "link_signal_or_finding",
+  "link_work_or_workflow",
+  "rerun_hitl_approval",
+  "rerun_preview",
+  "review_execution_audit",
+  "capture_payload_hash",
+  "create_new_proposal_with_idempotency",
+  "attach_external_ref",
+  "refresh_stale_review",
+  "capture_human_rationale",
+  "repair_provenance",
+];
 
 function toDateInput(value: number | null | undefined) {
   if (!value) return "";
@@ -393,6 +409,14 @@ export default function CompanyBrainPage() {
     proposalId: "",
     limit: "25",
   });
+  const [writebackRemediationFilters, setWritebackRemediationFilters] = useState({
+    severity: "",
+    gapKind: "",
+    actionKind: "",
+    adapter: "",
+    proposalId: "",
+    limit: "25",
+  });
   const writebackAuditQueryFilters =
     useMemo<CompanyBrainWritebackAuditTrailFilters>(() => {
       const fromAt = writebackAuditFilters.fromDate
@@ -430,6 +454,15 @@ export default function CompanyBrainPage() {
     useCompanyBrainWritebackEvidenceIntegrityGaps(
       writebackIntegrityQueryFilters
     );
+  const writebackRemediationQueryFilters =
+    useMemo<CompanyBrainWritebackEvidenceRemediationFilters>(
+      () => writebackRemediationFilters,
+      [writebackRemediationFilters]
+    );
+  const writebackRemediationSuggestions =
+    useCompanyBrainWritebackEvidenceRemediationSuggestions(
+      writebackRemediationQueryFilters
+    );
   const writebackAuditCsvUrl = companyBrainWritebackAuditTrailCsvUrl(
     writebackAuditQueryFilters
   );
@@ -442,6 +475,14 @@ export default function CompanyBrainPage() {
     value: string
   ) =>
     setWritebackIntegrityFilters((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  const updateWritebackRemediationFilter = (
+    field: keyof typeof writebackRemediationFilters,
+    value: string
+  ) =>
+    setWritebackRemediationFilters((current) => ({
       ...current,
       [field]: value,
     }));
@@ -2053,6 +2094,173 @@ export default function CompanyBrainPage() {
                     </p>
                   ) : null}
                 </div>
+                <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                  <p className="text-xs font-medium text-neutral-300">
+                    Evidence remediation suggestions
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-left md:grid-cols-4">
+                    <MiniMetric
+                      label="total"
+                      value={
+                        writebackSafetyDashboard.evidenceRemediationSummary.total
+                      }
+                    />
+                    <MiniMetric
+                      label="human review"
+                      value={
+                        writebackSafetyDashboard.evidenceRemediationSummary
+                          .humanReviewCount
+                      }
+                    />
+                    <MiniMetric
+                      label="new proposal"
+                      value={
+                        writebackSafetyDashboard.evidenceRemediationSummary
+                          .newProposalCount
+                      }
+                    />
+                    <MiniMetric
+                      label="critical"
+                      value={
+                        writebackSafetyDashboard.evidenceRemediationSummary
+                          .criticalCount
+                      }
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+                    <Select
+                      value={writebackRemediationFilters.severity}
+                      onChange={(event) =>
+                        updateWritebackRemediationFilter(
+                          "severity",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">severity</option>
+                      {signalSeverities.map((severity) => (
+                        <option key={severity} value={severity}>
+                          {severity}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackRemediationFilters.gapKind}
+                      onChange={(event) =>
+                        updateWritebackRemediationFilter(
+                          "gapKind",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">gap type</option>
+                      {writebackEvidenceIntegrityGapKinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackRemediationFilters.actionKind}
+                      onChange={(event) =>
+                        updateWritebackRemediationFilter(
+                          "actionKind",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">action</option>
+                      {writebackEvidenceRemediationActionKinds.map((kind) => (
+                        <option key={kind} value={kind}>
+                          {kind}
+                        </option>
+                      ))}
+                    </Select>
+                    <Select
+                      value={writebackRemediationFilters.adapter}
+                      onChange={(event) =>
+                        updateWritebackRemediationFilter(
+                          "adapter",
+                          event.target.value
+                        )
+                      }
+                    >
+                      <option value="">adapter</option>
+                      {writebackAdapters.map((adapter) => (
+                        <option key={adapter} value={adapter}>
+                          {adapter}
+                        </option>
+                      ))}
+                    </Select>
+                    <Input
+                      placeholder="proposal id"
+                      value={writebackRemediationFilters.proposalId}
+                      onChange={(event) =>
+                        updateWritebackRemediationFilter(
+                          "proposalId",
+                          event.target.value
+                        )
+                      }
+                    />
+                    <Input
+                      placeholder="limit"
+                      value={writebackRemediationFilters.limit}
+                      onChange={(event) =>
+                        updateWritebackRemediationFilter(
+                          "limit",
+                          event.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="mt-3 divide-y divide-neutral-800/40">
+                    {writebackRemediationSuggestions.isLoading ? (
+                      <p className="py-2 text-xs text-neutral-600">
+                        Loading remediation suggestions
+                      </p>
+                    ) : writebackRemediationSuggestions.data?.data.items.length ? (
+                      writebackRemediationSuggestions.data.data.items
+                        .slice(0, 8)
+                        .map((suggestion) => (
+                          <div
+                            key={suggestion.id}
+                            className="grid gap-2 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="truncate font-medium text-neutral-300">
+                                  {suggestion.title}
+                                </p>
+                                <StatusBadge value={suggestion.severity} />
+                                <StatusBadge value={suggestion.actionKind} />
+                                {suggestion.requiresNewProposal ? (
+                                  <StatusBadge value="new_proposal" />
+                                ) : null}
+                              </div>
+                              <p className="mt-1 line-clamp-1 text-neutral-600">
+                                {suggestion.suggestedAction}
+                              </p>
+                            </div>
+                            <p className="text-neutral-700">
+                              {suggestion.gapKind}
+                            </p>
+                          </div>
+                        ))
+                    ) : (
+                      <p className="py-2 text-xs text-neutral-600">
+                        No remediation suggestions match the current filters
+                      </p>
+                    )}
+                  </div>
+                  {writebackRemediationSuggestions.data?.data ? (
+                    <p className="mt-2 text-xs text-neutral-700">
+                      showing{" "}
+                      {writebackRemediationSuggestions.data.data.items.length} of{" "}
+                      {writebackRemediationSuggestions.data.data.total} matching
+                      suggestions
+                    </p>
+                  ) : null}
+                </div>
                 {writebackSafetyDashboard.adapterSummaries.length ? (
                   <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                     {writebackSafetyDashboard.adapterSummaries.map((adapter) => (
@@ -2856,6 +3064,18 @@ export default function CompanyBrainPage() {
                       {getWritebackEvidencePacket.data.data.integrityGaps
                         .slice(0, 3)
                         .map((gap) => gap.kind)
+                        .join(", ") || "none"}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-600">
+                      remediation{" "}
+                      {
+                        getWritebackEvidencePacket.data.data
+                          .remediationSuggestions.length
+                      }{" "}
+                      ·{" "}
+                      {getWritebackEvidencePacket.data.data.remediationSuggestions
+                        .slice(0, 3)
+                        .map((suggestion) => suggestion.actionKind)
                         .join(", ") || "none"}
                     </p>
                     <p className="mt-1 truncate text-xs text-neutral-600">

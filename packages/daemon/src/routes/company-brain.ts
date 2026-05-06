@@ -17,6 +17,7 @@ import type {
   CompanyBrainSourceHealthReport,
   CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainWritebackEvidenceIntegrityGapsResponse,
+  CompanyBrainWritebackEvidenceRemediationSuggestionsResponse,
   CompanyBrainWritebackSafetyDashboard,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -2632,6 +2633,8 @@ function buildBriefingSections(args: {
   );
   const writebackLoopMetrics = writebackSafetyDashboard.operatingLoopMetrics;
   const integritySummary = writebackSafetyDashboard.evidenceIntegritySummary;
+  const remediationSummary =
+    writebackSafetyDashboard.evidenceRemediationSummary;
 
   const sections: CompanyBrainBriefingSection[] = [
     {
@@ -2775,6 +2778,7 @@ function buildBriefingSections(args: {
         `${pendingWritebackProposals.length} pending approvals; ${failedWritebackProposals.length} failed; ${writebackSafetyDashboard.stats.completedExternalWriteCount} completed external writes; ${writebackSafetyDashboard.stats.duplicateAvoidedCount} duplicates prevented.`,
         `${blockedWritebackItems.length} blocked by safety; ${writebackLoopMetrics.counts.staleApproval} stale approvals; ${writebackLoopMetrics.counts.stalePreview} stale previews; ${writebackLoopMetrics.counts.mutationAttempted} mutation attempts.`,
         `${integritySummary.total} evidence integrity gaps; ${integritySummary.criticalCount} critical; ${integritySummary.warnCount} warn.`,
+        `${remediationSummary.total} remediation suggestions; ${remediationSummary.humanReviewCount} need human review; ${remediationSummary.newProposalCount} suggest new proposal.`,
         ...pendingWritebackProposals.slice(0, 4).map((proposal) =>
           formatEntityLine({
             prefix: "pending",
@@ -2868,6 +2872,9 @@ function buildBriefingSections(args: {
       : "",
     integritySummary.criticalCount || integritySummary.warnCount
       ? `Review ${integritySummary.total} writeback evidence integrity gaps before expanding executors.`
+      : "",
+    remediationSummary.total
+      ? `Use ${remediationSummary.total} read-only remediation suggestions to repair evidence packets.`
       : "",
     relevantGaps.length
       ? "Run review cohesion before expanding adapters."
@@ -3172,6 +3179,10 @@ function runAiosBriefingWatcher(args: {
       sourceHealthStats: sourceHealthReport.stats,
       writebackSafetyStats: writebackSafetyDashboard.stats,
       writebackOperatingLoopMetrics: writebackSafetyDashboard.operatingLoopMetrics,
+      writebackEvidenceIntegritySummary:
+        writebackSafetyDashboard.evidenceIntegritySummary,
+      writebackEvidenceRemediationSummary:
+        writebackSafetyDashboard.evidenceRemediationSummary,
       generatedAt: startedAt,
     },
   };
@@ -4450,6 +4461,292 @@ function buildWritebackEvidenceIntegrityGapsResponse(args: {
   };
 }
 
+const writebackEvidenceRemediationActionKinds: Array<
+  NonNullable<
+    CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["actionKind"]
+  >
+> = [
+  "relink_guidance",
+  "link_signal_or_finding",
+  "link_work_or_workflow",
+  "rerun_hitl_approval",
+  "rerun_preview",
+  "review_execution_audit",
+  "capture_payload_hash",
+  "create_new_proposal_with_idempotency",
+  "attach_external_ref",
+  "refresh_stale_review",
+  "capture_human_rationale",
+  "repair_provenance",
+];
+
+function remediationForIntegrityGap(
+  gap: CompanyBrainWritebackEvidenceIntegrityGapsResponse["items"][number]
+): Pick<
+  CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["items"][number],
+  | "actionKind"
+  | "suggestedAction"
+  | "rationale"
+  | "targetField"
+  | "requiresHumanReview"
+  | "requiresNewProposal"
+> {
+  switch (gap.kind) {
+    case "missing_guidance_link":
+      return {
+        actionKind: "relink_guidance",
+        suggestedAction:
+          "Link the proposal to the accepted GuidanceItem that generated it, or recreate the proposal from accepted guidance.",
+        rationale:
+          "Writeback evidence must prove which guidance authorized the proposal.",
+        targetField: "guidanceItemId",
+        requiresHumanReview: true,
+        requiresNewProposal: true,
+      };
+    case "missing_signal_or_finding_link":
+      return {
+        actionKind: "link_signal_or_finding",
+        suggestedAction:
+          "Attach the source Signal or AlignmentFinding, or generate a finding from the source signal before proposing writeback again.",
+        rationale:
+          "Writeback should stay connected to evidence and alignment classification.",
+        targetField: "signalId|findingId",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+    case "missing_work_item_or_workflow_link":
+      return {
+        actionKind: "link_work_or_workflow",
+        suggestedAction:
+          "Attach a WorkItem or WorkflowRun, or record an explicit no-workflow exception in provenance before new execution.",
+        rationale:
+          "Operational writeback should be traceable to work management or workflow state.",
+        targetField: "workItemId|workflowRunId",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+    case "missing_approval_event":
+      return {
+        actionKind: "rerun_hitl_approval",
+        suggestedAction:
+          "Do not execute this record; collect a fresh HITL approval with actor and rationale, preferably through a new proposal if execution already advanced.",
+        rationale:
+          "Approval state without an approval audit event is not sufficient evidence.",
+        targetField: "auditTrail.approved",
+        requiresHumanReview: true,
+        requiresNewProposal: gap.executionStatus !== "not_started",
+      };
+    case "missing_preview_event":
+      return {
+        actionKind: "rerun_preview",
+        suggestedAction:
+          "Run a fresh adapter preview after approval before any retry or further execution.",
+        rationale:
+          "Preview proves the exact payload, destination and idempotency snapshot.",
+        targetField: "auditTrail.preview",
+        requiresHumanReview: false,
+        requiresNewProposal: false,
+      };
+    case "missing_execution_event":
+      return {
+        actionKind: "review_execution_audit",
+        suggestedAction:
+          "Review external/provider evidence and backfill only through a future audited remediation flow, or create a new proposal for any retry.",
+        rationale:
+          "Completed or failed execution without execution audit cannot be trusted for replay decisions.",
+        targetField: "auditTrail.execution",
+        requiresHumanReview: true,
+        requiresNewProposal: true,
+      };
+    case "missing_payload_hash":
+      return {
+        actionKind: "capture_payload_hash",
+        suggestedAction:
+          "Regenerate approval and preview snapshots so current, approved and preview payload hashes are all present and matching.",
+        rationale:
+          "Payload hashes are the guardrail against payload drift after approval.",
+        targetField: "payloadHash",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+    case "missing_idempotency_key":
+      return {
+        actionKind: "create_new_proposal_with_idempotency",
+        suggestedAction:
+          "Create a new proposal with an explicit idempotency key; do not execute the current record.",
+        rationale:
+          "Writeback without an idempotency key cannot safely prevent duplicates.",
+        targetField: "idempotencyKey",
+        requiresHumanReview: true,
+        requiresNewProposal: true,
+      };
+    case "missing_external_ref_after_completed":
+      return {
+        actionKind: "attach_external_ref",
+        suggestedAction:
+          "Verify the provider-side object and attach externalId/externalUrl only through an audited remediation path; otherwise mark unsafe for replay.",
+        rationale:
+          "Completed external writeback must preserve the external proof of execution.",
+        targetField: "externalId|externalUrl",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+    case "stale_preview":
+      return {
+        actionKind: "rerun_preview",
+        suggestedAction:
+          "Run a fresh preview after approval before any execution or retry.",
+        rationale:
+          "The existing preview is older than the freshness window.",
+        targetField: "auditTrail.preview",
+        requiresHumanReview: false,
+        requiresNewProposal: false,
+      };
+    case "stale_approval":
+      return {
+        actionKind: "refresh_stale_review",
+        suggestedAction:
+          "Refresh HITL approval with current payload, destination and rationale before preview or execution.",
+        rationale:
+          "Approval is stale and no fresh preview exists after it.",
+        targetField: "approvedAt",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+    case "insufficient_rationale":
+      return {
+        actionKind: "capture_human_rationale",
+        suggestedAction:
+          "Collect a human-readable rationale that explains why this external action is appropriate and low risk.",
+        rationale:
+          "Audit review needs enough rationale to evaluate intent and risk.",
+        targetField: "rationale|auditTrail.note",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+    case "incomplete_provenance":
+      return {
+        actionKind: "repair_provenance",
+        suggestedAction:
+          "Attach provenance with source/raw/artifact reference, creator, extraction timestamp, review status and visibility.",
+        rationale:
+          "The proposal must be traceable to evidence before it can support closed-loop operation.",
+        targetField: "provenance",
+        requiresHumanReview: true,
+        requiresNewProposal: false,
+      };
+  }
+}
+
+function buildWritebackEvidenceRemediationSuggestions(
+  gaps: CompanyBrainWritebackEvidenceIntegrityGapsResponse["items"],
+  generatedAt = now()
+): CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["items"] {
+  return gaps.map((gap) => {
+    const remediation = remediationForIntegrityGap(gap);
+    return {
+      id: `writeback_remediation:${remediation.actionKind}:${gap.id}`,
+      proposalId: gap.proposalId,
+      gapId: gap.id,
+      gapKind: gap.kind,
+      adapter: gap.adapter,
+      severity: gap.severity,
+      title: gap.title,
+      actionPolicy: "observe_only",
+      executionBlocked: true,
+      detectedAt: generatedAt,
+      latestAuditAt: gap.latestAuditAt,
+      ...remediation,
+    };
+  });
+}
+
+function buildWritebackEvidenceRemediationSummary(
+  suggestions: CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["items"]
+): CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["summary"] {
+  const byActionKind = Object.fromEntries(
+    writebackEvidenceRemediationActionKinds.map((kind) => [kind, 0])
+  ) as CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["summary"]["byActionKind"];
+  const byGapKind = Object.fromEntries(
+    writebackEvidenceIntegrityGapKinds.map((kind) => [kind, 0])
+  ) as CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["summary"]["byGapKind"];
+  const byAdapter = Object.fromEntries(
+    (
+      [
+        "github_comment",
+        "github_label",
+        "github_status_check",
+        "slack_thread_reply",
+        "other",
+      ] satisfies WritebackAdapterKey[]
+    ).map((adapter) => [adapter, 0])
+  ) as CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["summary"]["byAdapter"];
+  for (const suggestion of suggestions) {
+    byActionKind[suggestion.actionKind] += 1;
+    byGapKind[suggestion.gapKind] += 1;
+    byAdapter[suggestion.adapter] += 1;
+  }
+  return {
+    total: suggestions.length,
+    criticalCount: suggestions.filter((item) => item.severity === "critical").length,
+    warnCount: suggestions.filter((item) => item.severity === "warn").length,
+    infoCount: suggestions.filter((item) => item.severity === "info").length,
+    humanReviewCount: suggestions.filter((item) => item.requiresHumanReview).length,
+    newProposalCount: suggestions.filter((item) => item.requiresNewProposal).length,
+    byActionKind,
+    byGapKind,
+    byAdapter,
+  };
+}
+
+function buildWritebackEvidenceRemediationSuggestionsResponse(args: {
+  data: ReturnType<typeof listAll>;
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >;
+  severity?: SignalSeverity | null;
+  gapKind?: CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["gapKind"];
+  actionKind?: CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["actionKind"];
+  adapter?: CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["adapter"];
+  proposalId?: string | null;
+  limit?: number;
+}): CompanyBrainWritebackEvidenceRemediationSuggestionsResponse {
+  const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
+  const generatedAt = now();
+  const gaps = buildWritebackEvidenceIntegrityGaps(
+    args.data,
+    args.reviews,
+    generatedAt
+  );
+  const allSuggestions = buildWritebackEvidenceRemediationSuggestions(
+    gaps,
+    generatedAt
+  );
+  const items = allSuggestions.filter((suggestion) => {
+    if (args.severity && suggestion.severity !== args.severity) return false;
+    if (args.gapKind && suggestion.gapKind !== args.gapKind) return false;
+    if (args.actionKind && suggestion.actionKind !== args.actionKind) return false;
+    if (args.adapter && suggestion.adapter !== args.adapter) return false;
+    if (args.proposalId && suggestion.proposalId !== args.proposalId) return false;
+    return true;
+  });
+  return {
+    generatedAt,
+    filters: {
+      severity: args.severity ?? null,
+      gapKind: args.gapKind ?? null,
+      actionKind: args.actionKind ?? null,
+      adapter: args.adapter ?? null,
+      proposalId: args.proposalId ?? null,
+      limit,
+    },
+    items: items.slice(0, limit),
+    total: items.length,
+    summary: buildWritebackEvidenceRemediationSummary(allSuggestions),
+  };
+}
+
 function buildWritebackEvidencePacket(
   proposal: ExternalActionProposal
 ): WritebackEvidencePacket {
@@ -4472,6 +4769,11 @@ function buildWritebackEvidencePacket(
     ...listAll(),
     externalActionProposals: [proposal],
   };
+  const integrityGaps = buildWritebackEvidenceIntegrityGaps(
+    integrityData,
+    new Map([[proposal.id, executionReview]]),
+    generatedAt
+  );
   return {
     generatedAt,
     proposal,
@@ -4504,9 +4806,9 @@ function buildWritebackEvidencePacket(
       : null,
     executionReview,
     auditReview,
-    integrityGaps: buildWritebackEvidenceIntegrityGaps(
-      integrityData,
-      new Map([[proposal.id, executionReview]]),
+    integrityGaps,
+    remediationSuggestions: buildWritebackEvidenceRemediationSuggestions(
+      integrityGaps,
       generatedAt
     ),
     auditTrail,
@@ -4634,6 +4936,11 @@ function buildWritebackSafetyDashboard(
     reviews,
     generatedAt
   );
+  const evidenceRemediationSuggestions =
+    buildWritebackEvidenceRemediationSuggestions(
+      evidenceIntegrityGaps,
+      generatedAt
+    );
   const items: CompanyBrainWritebackSafetyDashboard["items"] = [];
   for (const proposal of proposals) {
     const kind = writebackSafetyItemKind(proposal);
@@ -4707,6 +5014,10 @@ function buildWritebackSafetyDashboard(
     evidenceIntegrityGaps,
     evidenceIntegritySummary:
       buildWritebackEvidenceIntegritySummary(evidenceIntegrityGaps),
+    evidenceRemediationSuggestions,
+    evidenceRemediationSummary: buildWritebackEvidenceRemediationSummary(
+      evidenceRemediationSuggestions
+    ),
     latestAuditTrail: buildWritebackAuditTrail({
       proposals,
       reviews,
@@ -8307,6 +8618,77 @@ app.get("/external-action-proposals/evidence-integrity-gaps", (c) => {
       reviews,
       severity,
       kind,
+      adapter,
+      proposalId,
+      limit: Number.isFinite(limitParam) ? limitParam : 50,
+    }),
+  });
+});
+
+app.get("/external-action-proposals/evidence-remediation-suggestions", (c) => {
+  const severityParam = c.req.query("severity")?.trim() || null;
+  const gapKindParam =
+    c.req.query("gapKind")?.trim() ||
+    c.req.query("kind")?.trim() ||
+    c.req.query("gapType")?.trim() ||
+    null;
+  const actionKindParam = c.req.query("actionKind")?.trim() || null;
+  const adapterParam = c.req.query("adapter")?.trim() || null;
+  const proposalId = c.req.query("proposalId")?.trim() || null;
+  const limitParam = Number(c.req.query("limit") ?? "50");
+  const allowedSeverities: SignalSeverity[] = ["info", "warn", "critical"];
+  const severity = allowedSeverities.includes(severityParam as SignalSeverity)
+    ? (severityParam as SignalSeverity)
+    : null;
+  const gapKind = writebackEvidenceIntegrityGapKinds.includes(
+    gapKindParam as NonNullable<
+      CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["gapKind"]
+    >
+  )
+    ? (gapKindParam as NonNullable<
+        CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["gapKind"]
+      >)
+    : null;
+  const actionKind = writebackEvidenceRemediationActionKinds.includes(
+    actionKindParam as NonNullable<
+      CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["actionKind"]
+    >
+  )
+    ? (actionKindParam as NonNullable<
+        CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["actionKind"]
+      >)
+    : null;
+  const allowedAdapters: CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["adapter"][] =
+    [
+      "github_comment",
+      "github_label",
+      "github_status_check",
+      "slack_thread_reply",
+      "other",
+    ];
+  const adapter = allowedAdapters.includes(
+    adapterParam as NonNullable<
+      CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["adapter"]
+    >
+  )
+    ? (adapterParam as NonNullable<
+        CompanyBrainWritebackEvidenceRemediationSuggestionsResponse["filters"]["adapter"]
+      >)
+    : null;
+  const data = listAll();
+  const reviews = new Map(
+    data.externalActionProposals.map((proposal) => [
+      proposal.id,
+      buildWritebackExecutionReview(proposal),
+    ])
+  );
+  return c.json({
+    data: buildWritebackEvidenceRemediationSuggestionsResponse({
+      data,
+      reviews,
+      severity,
+      gapKind,
+      actionKind,
       adapter,
       proposalId,
       limit: Number.isFinite(limitParam) ? limitParam : 50,

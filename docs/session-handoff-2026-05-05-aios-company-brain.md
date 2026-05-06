@@ -1604,7 +1604,54 @@ Dogfood read-only validado:
 - Evidence packet JSON de `J-IH-nLDh83B` incluiu `integrityGaps` com os tipos esperados.
 - Run do `watcher-aios-briefing-v0` gerou artifact `Oz4A41Psq9qj`; secao `writeback_safety` mostrou `15 evidence integrity gaps; 6 critical; 9 warn` e next step `Review 15 writeback evidence integrity gaps before expanding executors.`
 
-Proximo corte recomendado: Evidence remediation suggestions read-only para sugerir correcoes de links/provenance/audit sem executar mutacao externa.
+## Slice Evidence Remediation Suggestions v0
+
+Objetivo: transformar gaps de integridade em sugestoes read-only de remediacao, sem alterar proposals, sem backfill automatico e sem executar mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. Tipos novos para `WritebackEvidenceRemediationSuggestion`, `WritebackEvidenceRemediationSummary` e response de suggestions.
+2. Cada gap gera uma sugestao com:
+   - `actionKind`;
+   - `targetField`;
+   - `suggestedAction`;
+   - `requiresHumanReview`;
+   - `requiresNewProposal`;
+   - `actionPolicy=observe_only`;
+   - `executionBlocked=true`.
+3. Action kinds:
+   - `relink_guidance`;
+   - `link_signal_or_finding`;
+   - `link_work_or_workflow`;
+   - `rerun_hitl_approval`;
+   - `rerun_preview`;
+   - `review_execution_audit`;
+   - `capture_payload_hash`;
+   - `create_new_proposal_with_idempotency`;
+   - `attach_external_ref`;
+   - `refresh_stale_review`;
+   - `capture_human_rationale`;
+   - `repair_provenance`.
+4. `WritebackEvidencePacket` inclui `remediationSuggestions`.
+5. Safety Dashboard inclui `evidenceRemediationSuggestions` e `evidenceRemediationSummary`.
+6. API `GET /api/company-brain/external-action-proposals/evidence-remediation-suggestions`.
+7. Filtros por `severity`, `gapKind`, `actionKind`, `adapter`, `proposalId` e `limit`.
+8. MCP tool `list_company_brain_writeback_evidence_remediation_suggestions`.
+9. UI `/company-brain` mostra painel `Evidence remediation suggestions` com filtros e metricas `human review`/`new proposal`.
+10. AIOS Briefing `writeback_safety` inclui contadores de sugestoes e metadata `writebackEvidenceRemediationSummary`.
+11. Nenhuma mutacao externa ou interna automatica foi adicionada.
+
+Dogfood read-only validado:
+
+- DB `/tmp/aios-runtime-evidence-integrity-gaps-dogfood.sqlite`, daemon `127.0.0.1:43154`: endpoint de suggestions retornou `total=15`, `criticalCount=6`, `warnCount=9`, `humanReviewCount=13`, `newProposalCount=4`.
+- Filtro `actionKind=rerun_preview` retornou 2 sugestoes: uma para `missing_preview_event` de `J-IH-nLDh83B` e outra para `stale_preview` de `kcQMiZsMf0RQ`.
+- Filtro `proposalId=J-IH-nLDh83B` retornou 12 sugestoes.
+- Safety Dashboard passou a expor `evidenceRemediationSummary` e `evidenceRemediationSuggestions`.
+- Evidence packet JSON de `J-IH-nLDh83B` incluiu `remediationSuggestions` com `requiresNewProposal=true` para guidance/approval/execution/idempotency.
+- Run do `watcher-aios-briefing-v0` gerou artifact `7pCuBBPaG-oT`; secao `writeback_safety` mostrou `15 remediation suggestions; 13 need human review; 4 suggest new proposal` e next step `Use 15 read-only remediation suggestions to repair evidence packets.`
+- DB bom `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43155`: endpoint de suggestions retornou `total=0`, mantendo `fx3NheQm3Crv` sem gaps ou sugestoes.
+
+Proximo corte recomendado: GitHub status/check executor real v0 em repo interno allowlisted somente quando houver alvo controlado de PR/SHA; se esse alvo nao estiver claro, continuar com hardening read-only/audit de remediation/evidence.
 
 ## Dogfood ERP
 
@@ -1724,7 +1771,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0 e Writeback Evidence Integrity Gaps v0. O proximo corte recomendado e Evidence remediation suggestions read-only. Pare antes de novo executor real que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0 e Evidence Remediation Suggestions v0. O proximo corte recomendado e GitHub status/check executor real v0 em repo interno allowlisted somente quando houver alvo controlado de PR/SHA; se esse alvo nao estiver claro, continuar com hardening read-only/audit de remediation/evidence. Pare antes de novo executor real que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
