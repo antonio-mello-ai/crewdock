@@ -37,6 +37,12 @@ npx turbo build
 3. **Uma fonte de verdade** — evitar lógica duplicada em N lugares
 4. **Resiliência por design** — cada componente falha graciosamente
 
+## Direcional atual
+
+O `aios-runtime` esta evoluindo de control plane de agentes para AIOS / Company Brain. Antes de contribuir com features de produto, leia `docs/company-brain-direction.md` e use `../../../corp/docs/action/aios-product-roadmap.md` como fonte unica de features.
+
+Juntos em Sala e o self-improving de escolas continuam como vertical separado. Mudancas neste repo devem preservar o core horizontal e modelar aprendizados de verticais como artifacts, signals, work items, workflow runs, guidance ou improvement proposals.
+
 ## Antes de abrir um PR
 
 1. **Buildar sem erros**: `npx turbo build`

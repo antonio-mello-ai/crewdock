@@ -1,5 +1,31 @@
 # CrewDock — Backlog
 
+## Direcional P0 - Company Brain / YC Thesis
+
+Fonte de produto: `../../../../corp/docs/action/aios-product-roadmap.md`.
+Boundary local: `docs/company-brain-direction.md`.
+
+- [ ] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
+- [ ] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
+- [ ] **Strategy layer** — cadastrar prioridades, tradeoffs, owners, criterios de sucesso e status
+- [ ] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias
+- [ ] **Strategy Map v0** — tela/API para visualizar prioridades, evidencias, decisoes, work items e gaps
+- [ ] **Work Management Layer v0** — criar `WorkItem` canonico com `external_provider`, `external_id`, `external_url`, status canonico, owner, labels e links
+- [ ] **GitHub Issues ou WorkItem nativo espelhavel** — primeira superficie humana para o Development Blueprint interno; Jira/Linear entram depois como adapters
+- [ ] **Workflow Blueprint Engine** — modelar etapas, gates, owners, artifacts esperados, rollback e escalation por area
+- [ ] **Development Blueprint v0** — `ticket -> triagem -> plano -> execucao -> revisao -> plano de testes -> testes -> QA visual -> security QA -> deploy gate -> deploy + monitoramento -> fechamento -> documentacao oficial`
+- [ ] **Workflow Run Tracker** — executar um run real, registrar current step, gate status, evidencia, owner e failures
+- [ ] **Drift/Alignment v0** — classificar artifacts e work items como aligned, weak, drift, contradiction ou unknown contra prioridades
+- [ ] **Guidance Engine v0** — gerar proxima acao para humano/agente/sistema com status e feedback
+- [ ] **Agent Context Generator v0** — transformar conhecimento aprovado em specs, prompts, playbooks, constraints ou briefing executavel para agentes
+- [ ] **AutoImprove UI/API v0** — normalizar signal -> hypothesis -> patch/proposal -> validation -> impact review -> promotion
+- [ ] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
+- [ ] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente
+- [ ] **MCP tools Company Brain** — expor create/read de artifacts, work items, workflow runs, guidance e signals para agentes
+- [ ] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
+- [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates
+- [ ] **Demo Felhen v0.1** — demonstrar estrategia -> evidencia -> drift/guidance -> workflow run -> learning usando dogfood interno
+
 ## Critico (seguranca)
 
 - [x] **Remover `--dangerously-skip-permissions` das sessoes web** — implementado: sessoes usam `--permission-mode` configuravel (plan/acceptEdits/bypassPermissions). Default: `plan` (read-only)

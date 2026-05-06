@@ -15,6 +15,18 @@ CrewDock é um runtime para rodar Claude Code (ou outros agentes AI) de forma ge
 - **Jobs** — histórico de agentes executados por cron com log viewer
 - **MCP Server** — expõe a API do daemon via MCP stdio para Claude Code conectar programaticamente
 
+## Princípio Operacional
+
+O runtime existe para aumentar autonomia com guardrails. Em especial: classificacao de risco, rollback, observabilidade e preservacao de invariantes importam mais do que velocidade bruta de execucao.
+
+## Direcional Company Brain
+
+Este repo e o projeto dono da evolucao AIOS / Company Brain. O CrewDock atual continua sendo o control plane de agentes; a proxima camada e transformar esse runtime em sistema de execucao estrategica com ingestao de evidencias, Strategy Map, Evidence Inbox, Drift Inbox, Guidance, Workflow Blueprints, Work Items e AutoImprove UI/API.
+
+A fonte unica de features fica em [`corp/docs/action/aios-product-roadmap.md`](../../../corp/docs/action/aios-product-roadmap.md). O boundary local e o primeiro slice de implementacao estao em [`docs/company-brain-direction.md`](docs/company-brain-direction.md).
+
+Juntos em Sala e o self-improving de escolas continuam separados como vertical/adapters. Aprendizados daquele produto entram aqui como signals, artifacts, work items ou improvement proposals, nao como codigo escolar dentro do core horizontal.
+
 ## Stack
 
 | Camada | Tecnologia |

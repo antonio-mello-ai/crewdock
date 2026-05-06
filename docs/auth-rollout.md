@@ -1,5 +1,18 @@
 # Auth Rollout — CF Access no daemon
 
+## Relacao com Company Brain
+
+O direcional AIOS / Company Brain aumenta a superficie de dados do daemon: Slack, docs, meetings, tickets, GitHub, work items, workflow runs, guidance e signals passam a ser dados sensiveis de estrategia e execucao. Qualquer conector novo deve respeitar a arquitetura abaixo antes de entrar em piloto externo.
+
+Regras para proximas implementacoes:
+
+- preservar CF Access para app e API;
+- registrar actor humano vs agente em writes relevantes;
+- preservar provenance de source/artifact sem expor segredo no frontend;
+- separar fonte, workspace e futuro tenant antes de uso com design partner externo;
+- manter `AIOS_AUTH_DISABLED` restrito a dev;
+- usar service tokens apenas para integracoes server-to-server ou MCP confiavel.
+
 ## Arquitetura
 
 - `ai.felhen.ai` (frontend) e `api.felhen.ai` (daemon) sob a **mesma** CF Access self-hosted application (`CrewDock`, `self_hosted_domains: ["ai.felhen.ai","api.felhen.ai"]`)

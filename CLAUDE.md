@@ -6,6 +6,30 @@
 
 Control plane web para gerenciar agentes AI. Substitui 6 terminais + Telegram por uma interface unificada com chat interativo, observabilidade e HITL.
 
+## AIOS Operacional
+
+- O runtime deve reforcar julgamento com guardrails, nao acelerar mudanca cega
+- Toda evolucao que aumenta autonomia precisa preservar classificacao de risco, gates, rollback e observabilidade
+- Feedback real e valioso em previews e experimentos reversiveis; producao e comportamento cross-workspace exigem contexto suficiente antes de mutar
+- Docs direcionais do projeto nao carregam "Ultima atualizacao"; historico relevante fica no changelog e docs de acao
+
+## Direcional Atual - Company Brain
+
+Este repo e o projeto dono da evolucao AIOS / Company Brain. Antes de implementar features novas, ler:
+
+- `docs/company-brain-direction.md`
+- `../../../corp/docs/action/aios-product-roadmap.md`
+- `../../../corp/docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`
+- `../../../corp/docs/estrategia/felhen-autoimprove-core.md`
+
+Boundary obrigatorio:
+
+- `aios-runtime` contem objetos horizontais de estrategia, evidencia, workflow, work item, guidance, agent context e AutoImprove.
+- Juntos em Sala continua separado como vertical de escolas. Nao trazer `School`, `Student`, `Teacher`, `ActivityAdaptation`, tenant profile escolar ou schema de escola para o core deste repo.
+- Aprendizado de verticais entra como `Artifact`, `Signal`, `WorkItem`, `WorkflowRun`, `GuidanceItem` ou `ImprovementProposal`, com promotion gates.
+- O core nao deve acoplar a Jira, Linear ou GitHub diretamente. Primeiro modelar `WorkItem` canonico; plataformas externas entram por adapters.
+- Toda nova ingestao precisa preservar provenance e fechar o loop: evidence -> interpretation -> linking -> drift/guidance -> action -> feedback -> learning.
+
 ## Stack
 
 | Camada | Tecnologia |
