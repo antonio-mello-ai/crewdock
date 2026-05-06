@@ -17,6 +17,7 @@ Control plane web para gerenciar agentes AI. Substitui 6 terminais + Telegram po
 
 Este repo e o projeto dono da evolucao AIOS / Company Brain. Antes de implementar features novas, ler:
 
+- `docs/session-handoff-2026-05-05-aios-company-brain.md`
 - `docs/company-brain-direction.md`
 - `../../../corp/docs/action/aios-product-roadmap.md`
 - `../../../corp/docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`
