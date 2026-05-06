@@ -1323,7 +1323,37 @@ Implementado em 2026-05-06:
    - lista de acoes bloqueadas ate nova politica.
 3. Nenhum codigo runtime alterado e nenhuma chamada externa.
 
-Proximo corte recomendado: parar antes de novo executor real ate existir alvo controlado e aprovacao explicita; enquanto isso, seguir apenas em melhorias read-only de audit/search/export.
+## Slice Writeback Audit Search/Export v0
+
+Objetivo: ampliar busca/export read-only do audit trail sem tocar em executores externos.
+
+Implementado em 2026-05-06:
+
+1. `GET /api/company-brain/external-action-proposals/audit-trail` agora aceita:
+   - `destinationType`;
+   - `actionType`;
+   - `riskClass`;
+   - `executionStatus`;
+   - `actor`;
+   - `fromAt`/`toAt`;
+   - `proposalId`;
+   - `guidanceId` ou `guidanceItemId`;
+   - `idempotencyKey`;
+   - `externalUrl`;
+   - `q` ou `search`;
+   - `format=csv`.
+2. Busca textual inclui proposal ids, guidance id, idempotency key, external refs, actor, event, note e `blockReasons`.
+3. `CompanyBrainWritebackSafetyDashboard.destinationSummaries` agrupa por repo GitHub ou canal Slack.
+4. UI `/company-brain` mostra os principais destination summaries no painel Writeback Governance.
+5. MCP `list_company_brain_writeback_audit_trail` aceita os novos filtros.
+6. Nenhuma rota de execute nova e nenhuma chamada externa.
+
+Dogfood read-only validado:
+
+- DB `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43139`: filtro combinado `destinationType=github`, `actionType=github_label`, `riskClass=B`, `executionStatus=completed`, `actor=github-label-executor-dogfood`, `idempotencyKey=github-label-executor`, `externalUrl=crewdock/issues/3`, `search=completed_noop` retornou `total=1`, event `github_label_completed_noop`; CSV por proposal `fx3NheQm3Crv` retornou header e 5 linhas; destination summary `github:antonio-mello-ai/crewdock` retornou `completedCount=1`, `completedNoopCount=1`, `mutationAttemptedCount=0`.
+- DB `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon `127.0.0.1:43140`: filtro `adapter=github_status_check`, `executionStatus=dry_run`, `search=preview-only` retornou 3 eventos do adapter; busca por `target_not_allowlisted` retornou proposals de label bloqueadas; destination summary `github:antonio-mello-ai/crewdock` retornou `total=4`, `blocked=4`, `mutation=0`.
+
+Proximo corte recomendado: gerar Writeback Evidence Packet read-only por proposal com guidance, approval, preview, execution, retry safety, refs externas e payload hashes.
 
 ## Dogfood ERP
 
@@ -1443,7 +1473,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0 e Writeback HITL Runbook v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita; enquanto isso, seguir apenas em melhorias read-only de audit/search/export.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0 e Writeback Audit Search/Export v0. O proximo corte recomendado e Writeback Evidence Packet read-only por proposal. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

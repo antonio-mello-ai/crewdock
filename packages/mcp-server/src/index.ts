@@ -1392,7 +1392,7 @@ server.registerTool(
   {
     title: "List Company Brain writeback audit trail",
     description:
-      "Read-only export of ExternalActionProposal audit events, optionally filtered by adapter or proposal id. Does not execute or mutate external systems.",
+      "Read-only export of ExternalActionProposal audit events, optionally filtered by adapter, proposal, guidance, destination, action, risk, execution status, actor, date range or search text. Does not execute or mutate external systems.",
     inputSchema: {
       adapter: z
         .enum([
@@ -1404,13 +1404,74 @@ server.registerTool(
         ])
         .optional(),
       proposalId: z.string().optional(),
+      guidanceItemId: z.string().optional(),
+      destinationType: z.enum(["github", "slack", "internal", "unknown"]).optional(),
+      actionType: z
+        .enum([
+          "comment",
+          "github_comment",
+          "label",
+          "github_label",
+          "github_status",
+          "github_check",
+          "thread_reply",
+          "slack_thread_reply",
+          "draft",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+      executionStatus: z
+        .enum([
+          "not_started",
+          "blocked",
+          "dry_run",
+          "queued",
+          "completed",
+          "executed",
+          "failed",
+          "cancelled",
+        ])
+        .optional(),
+      actor: z.string().optional(),
+      fromAt: z.number().optional(),
+      toAt: z.number().optional(),
+      idempotencyKey: z.string().optional(),
+      externalUrl: z.string().optional(),
+      search: z.string().optional(),
       limit: z.number().int().min(1).max(250).optional(),
     },
   },
-  async ({ adapter, proposalId, limit }) => {
+  async ({
+    adapter,
+    proposalId,
+    guidanceItemId,
+    destinationType,
+    actionType,
+    riskClass,
+    executionStatus,
+    actor,
+    fromAt,
+    toAt,
+    idempotencyKey,
+    externalUrl,
+    search,
+    limit,
+  }) => {
     const params = new URLSearchParams();
     if (adapter) params.set("adapter", adapter);
     if (proposalId) params.set("proposalId", proposalId);
+    if (guidanceItemId) params.set("guidanceItemId", guidanceItemId);
+    if (destinationType) params.set("destinationType", destinationType);
+    if (actionType) params.set("actionType", actionType);
+    if (riskClass) params.set("riskClass", riskClass);
+    if (executionStatus) params.set("executionStatus", executionStatus);
+    if (actor) params.set("actor", actor);
+    if (fromAt) params.set("fromAt", String(fromAt));
+    if (toAt) params.set("toAt", String(toAt));
+    if (idempotencyKey) params.set("idempotencyKey", idempotencyKey);
+    if (externalUrl) params.set("externalUrl", externalUrl);
+    if (search) params.set("search", search);
     if (limit) params.set("limit", String(limit));
     const suffix = params.toString() ? `?${params.toString()}` : "";
     const result = await daemonFetch<{ data: unknown }>(

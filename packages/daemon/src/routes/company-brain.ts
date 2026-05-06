@@ -3478,6 +3478,116 @@ function buildWritebackAdapterSummaries(
   return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
 }
 
+function writebackDestinationSummaryBase(proposal: ExternalActionProposal) {
+  if (proposal.destinationType === "github") {
+    try {
+      const target = parseGitHubIssueOrPullRef(proposal.destinationRef ?? "");
+      return {
+        destinationKey: `github:${target.fullName}`,
+        destinationLabel: target.fullName,
+      };
+    } catch {
+      const repo = metadataString(proposal.payload.repo);
+      if (repo) {
+        return {
+          destinationKey: `github:${repo}`,
+          destinationLabel: repo,
+        };
+      }
+    }
+  }
+  if (proposal.destinationType === "slack") {
+    try {
+      const target = parseSlackThreadRef(proposal.destinationRef ?? "");
+      return {
+        destinationKey: `slack:${target.channelId}`,
+        destinationLabel: target.channelId,
+      };
+    } catch {
+      // Fall through to raw destination.
+    }
+  }
+  const raw = proposal.destinationRef?.trim() || "unknown";
+  return {
+    destinationKey: `${proposal.destinationType}:${raw}`,
+    destinationLabel: raw,
+  };
+}
+
+function buildWritebackDestinationSummaries(
+  proposals: ExternalActionProposal[],
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >
+): CompanyBrainWritebackSafetyDashboard["destinationSummaries"] {
+  const summaries = new Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["destinationSummaries"][number]
+  >();
+  for (const proposal of proposals) {
+    const base = writebackDestinationSummaryBase(proposal);
+    const existing =
+      summaries.get(base.destinationKey) ?? {
+        destinationKey: base.destinationKey,
+        destinationType: proposal.destinationType,
+        destinationLabel: base.destinationLabel,
+        proposalCount: 0,
+        completedCount: 0,
+        completedNoopCount: 0,
+        mutationAttemptedCount: 0,
+        blockedCount: 0,
+        failedCount: 0,
+        latestAt: null,
+      };
+    const review = reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
+    const latestAudit = latestExternalActionAudit(proposal);
+    existing.proposalCount += 1;
+    if (isCompletedExternalWriteback(proposal)) existing.completedCount += 1;
+    if (hasCompletedNoopAudit(proposal)) existing.completedNoopCount += 1;
+    if (hasExternalMutationAttemptAudit(proposal)) {
+      existing.mutationAttemptedCount += 1;
+    }
+    if (review.status === "blocked") existing.blockedCount += 1;
+    if (proposal.executionStatus === "failed") existing.failedCount += 1;
+    const latestAt = latestAudit?.at ?? proposal.updatedAt;
+    existing.latestAt =
+      existing.latestAt === null ? latestAt : Math.max(existing.latestAt, latestAt);
+    summaries.set(base.destinationKey, existing);
+  }
+  return [...summaries.values()].sort((a, b) => (b.latestAt ?? 0) - (a.latestAt ?? 0));
+}
+
+function auditTrailTextMatches(
+  value: string,
+  proposal: ExternalActionProposal,
+  event?: ExternalActionAuditEvent,
+  blockReasons: string[] = []
+) {
+  const haystack = [
+    proposal.id,
+    proposal.guidanceItemId,
+    proposal.signalId,
+    proposal.findingId,
+    proposal.workItemId,
+    proposal.workflowRunId,
+    proposal.title,
+    proposal.rationale,
+    proposal.destinationRef,
+    proposal.idempotencyKey,
+    proposal.externalId,
+    proposal.externalUrl,
+    event?.event,
+    event?.actor,
+    event?.note,
+    ...blockReasons,
+  ]
+    .filter((item): item is string => typeof item === "string")
+    .join("\n")
+    .toLowerCase();
+  return haystack.includes(value.toLowerCase());
+}
+
 function buildWritebackAuditTrail(args: {
   proposals: ExternalActionProposal[];
   reviews: Map<
@@ -3486,6 +3596,17 @@ function buildWritebackAuditTrail(args: {
   >;
   adapter?: CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"];
   proposalId?: string | null;
+  guidanceItemId?: string | null;
+  destinationType?: CompanyBrainWritebackAuditTrailResponse["filters"]["destinationType"];
+  actionType?: CompanyBrainWritebackAuditTrailResponse["filters"]["actionType"];
+  riskClass?: CompanyBrainWritebackAuditTrailResponse["filters"]["riskClass"];
+  executionStatus?: CompanyBrainWritebackAuditTrailResponse["filters"]["executionStatus"];
+  actor?: string | null;
+  fromAt?: number | null;
+  toAt?: number | null;
+  idempotencyKey?: string | null;
+  externalUrl?: string | null;
+  search?: string | null;
   limit?: number;
 }): CompanyBrainWritebackAuditTrailResponse {
   const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
@@ -3494,10 +3615,55 @@ function buildWritebackAuditTrail(args: {
     const adapter = writebackAdapterKey(proposal);
     if (args.adapter && adapter !== args.adapter) continue;
     if (args.proposalId && proposal.id !== args.proposalId) continue;
+    if (args.guidanceItemId && proposal.guidanceItemId !== args.guidanceItemId) {
+      continue;
+    }
+    if (args.destinationType && proposal.destinationType !== args.destinationType) {
+      continue;
+    }
+    if (args.actionType && proposal.actionType !== args.actionType) continue;
+    if (args.riskClass && proposal.riskClass !== args.riskClass) continue;
+    if (args.executionStatus && proposal.executionStatus !== args.executionStatus) {
+      continue;
+    }
+    if (
+      args.idempotencyKey &&
+      !proposal.idempotencyKey
+        .toLowerCase()
+        .includes(args.idempotencyKey.toLowerCase())
+    ) {
+      continue;
+    }
+    if (
+      args.externalUrl &&
+      !(proposal.externalUrl ?? "")
+        .toLowerCase()
+        .includes(args.externalUrl.toLowerCase())
+    ) {
+      continue;
+    }
     const review =
       args.reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
     const blockReasons = writebackBlockReasons(proposal, review);
     for (const event of proposal.auditTrail) {
+      if (
+        args.actor &&
+        !(event.actor ?? "").toLowerCase().includes(args.actor.toLowerCase())
+      ) {
+        continue;
+      }
+      if (args.fromAt !== undefined && args.fromAt !== null && event.at < args.fromAt) {
+        continue;
+      }
+      if (args.toAt !== undefined && args.toAt !== null && event.at > args.toAt) {
+        continue;
+      }
+      if (
+        args.search &&
+        !auditTrailTextMatches(args.search, proposal, event, blockReasons)
+      ) {
+        continue;
+      }
       entries.push({
         proposalId: proposal.id,
         adapter,
@@ -3528,11 +3694,68 @@ function buildWritebackAuditTrail(args: {
     filters: {
       adapter: args.adapter ?? null,
       proposalId: args.proposalId ?? null,
+      guidanceItemId: args.guidanceItemId ?? null,
+      destinationType: args.destinationType ?? null,
+      actionType: args.actionType ?? null,
+      riskClass: args.riskClass ?? null,
+      executionStatus: args.executionStatus ?? null,
+      actor: args.actor ?? null,
+      fromAt: args.fromAt ?? null,
+      toAt: args.toAt ?? null,
+      idempotencyKey: args.idempotencyKey ?? null,
+      externalUrl: args.externalUrl ?? null,
+      search: args.search ?? null,
       limit,
     },
     items: entries.slice(0, limit),
     total: entries.length,
   };
+}
+
+function csvCell(value: unknown) {
+  const raw =
+    value === null || value === undefined
+      ? ""
+      : typeof value === "string"
+        ? value
+        : JSON.stringify(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+}
+
+function writebackAuditTrailCsv(data: CompanyBrainWritebackAuditTrailResponse) {
+  const columns: Array<keyof CompanyBrainWritebackAuditTrailResponse["items"][number]> =
+    [
+      "at",
+      "adapter",
+      "proposalId",
+      "event",
+      "actor",
+      "title",
+      "destinationType",
+      "destinationRef",
+      "actionType",
+      "riskClass",
+      "actionPolicy",
+      "approvalStatus",
+      "executionStatus",
+      "reviewStatus",
+      "idempotencyKey",
+      "externalId",
+      "externalUrl",
+      "blockReasons",
+      "note",
+      "metadata",
+    ];
+  return [
+    columns.map(csvCell).join(","),
+    ...data.items.map((item) => columns.map((column) => csvCell(item[column])).join(",")),
+  ].join("\n");
+}
+
+function optionalNumberQuery(value: string | undefined) {
+  if (value === undefined || value.trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function buildWritebackSafetyDashboard(
@@ -3610,6 +3833,7 @@ function buildWritebackSafetyDashboard(
     },
     items,
     adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
+    destinationSummaries: buildWritebackDestinationSummaries(proposals, reviews),
     latestAuditTrail: buildWritebackAuditTrail({
       proposals,
       reviews,
@@ -7043,6 +7267,20 @@ app.get("/external-action-proposals", (c) => {
 app.get("/external-action-proposals/audit-trail", (c) => {
   const adapterParam = c.req.query("adapter")?.trim() || null;
   const proposalId = c.req.query("proposalId")?.trim() || null;
+  const guidanceItemId = c.req.query("guidanceId")?.trim() || c.req.query("guidanceItemId")?.trim() || null;
+  const destinationTypeParam = c.req.query("destinationType")?.trim() || null;
+  const actionTypeParam = c.req.query("actionType")?.trim() || null;
+  const riskClassParam = c.req.query("riskClass")?.trim() || null;
+  const executionStatusParam = c.req.query("executionStatus")?.trim() || null;
+  const actor = c.req.query("actor")?.trim() || null;
+  const idempotencyKey = c.req.query("idempotencyKey")?.trim() || null;
+  const externalUrl = c.req.query("externalUrl")?.trim() || null;
+  const search = c.req.query("q")?.trim() || c.req.query("search")?.trim() || null;
+  const format = c.req.query("format")?.trim().toLowerCase() ?? "json";
+  const fromAtParam = optionalNumberQuery(
+    c.req.query("fromAt") ?? c.req.query("from")
+  );
+  const toAtParam = optionalNumberQuery(c.req.query("toAt") ?? c.req.query("to"));
   const limitParam = Number(c.req.query("limit") ?? "50");
   const allowedAdapters: CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"][] =
     [
@@ -7061,6 +7299,51 @@ app.get("/external-action-proposals/audit-trail", (c) => {
         CompanyBrainWritebackAuditTrailResponse["filters"]["adapter"]
       >)
     : null;
+  const allowedDestinations: ExternalActionDestination[] = [
+    "github",
+    "slack",
+    "internal",
+    "unknown",
+  ];
+  const destinationType = allowedDestinations.includes(
+    destinationTypeParam as ExternalActionDestination
+  )
+    ? (destinationTypeParam as ExternalActionDestination)
+    : null;
+  const allowedActions: ExternalActionKind[] = [
+    "comment",
+    "github_comment",
+    "label",
+    "github_label",
+    "github_status",
+    "github_check",
+    "thread_reply",
+    "slack_thread_reply",
+    "draft",
+    "unknown",
+  ];
+  const actionType = allowedActions.includes(actionTypeParam as ExternalActionKind)
+    ? (actionTypeParam as ExternalActionKind)
+    : null;
+  const allowedRiskClasses: RiskClass[] = ["A", "B", "C", "unknown"];
+  const riskClass = allowedRiskClasses.includes(riskClassParam as RiskClass)
+    ? (riskClassParam as RiskClass)
+    : null;
+  const allowedExecutionStatuses: ExternalActionExecutionStatus[] = [
+    "not_started",
+    "blocked",
+    "dry_run",
+    "queued",
+    "completed",
+    "executed",
+    "failed",
+    "cancelled",
+  ];
+  const executionStatus = allowedExecutionStatuses.includes(
+    executionStatusParam as ExternalActionExecutionStatus
+  )
+    ? (executionStatusParam as ExternalActionExecutionStatus)
+    : null;
   const proposals = getDb()
     .select()
     .from(cbExternalActionProposals)
@@ -7078,8 +7361,27 @@ app.get("/external-action-proposals/audit-trail", (c) => {
     reviews,
     adapter,
     proposalId,
+    guidanceItemId,
+    destinationType,
+    actionType,
+    riskClass,
+    executionStatus,
+    actor,
+    fromAt: fromAtParam,
+    toAt: toAtParam,
+    idempotencyKey,
+    externalUrl,
+    search,
     limit: Number.isFinite(limitParam) ? limitParam : 50,
   });
+  if (format === "csv") {
+    return new Response(writebackAuditTrailCsv(data), {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename=aios-writeback-audit-trail.csv",
+      },
+    });
+  }
   return c.json({ data });
 });
 

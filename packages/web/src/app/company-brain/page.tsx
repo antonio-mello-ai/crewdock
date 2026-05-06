@@ -1697,6 +1697,32 @@ export default function CompanyBrainPage() {
                     ))}
                   </div>
                 ) : null}
+                {writebackSafetyDashboard.destinationSummaries.length ? (
+                  <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    {writebackSafetyDashboard.destinationSummaries
+                      .slice(0, 4)
+                      .map((destination) => (
+                        <div
+                          key={destination.destinationKey}
+                          className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs"
+                        >
+                          <p className="truncate font-medium text-neutral-300">
+                            {destination.destinationLabel}
+                          </p>
+                          <p className="mt-1 text-neutral-600">
+                            {destination.destinationType} · total{" "}
+                            {destination.proposalCount} · done{" "}
+                            {destination.completedCount}
+                          </p>
+                          <p className="mt-1 text-neutral-600">
+                            noop {destination.completedNoopCount} · blocked{" "}
+                            {destination.blockedCount} · mutation{" "}
+                            {destination.mutationAttemptedCount}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                ) : null}
                 {writebackSafetyDashboard.latestAuditTrail.length ? (
                   <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
                     <p className="text-xs font-medium text-neutral-300">
