@@ -99,7 +99,9 @@ Status Writeback Audit UI Filters/Export v0 em 2026-05-06: UI `/company-brain` a
 
 Status Writeback Evidence Packet JSON Export v0 em 2026-05-06: endpoint de evidence packet aceita `download=1` e retorna JSON formatado com `Content-Disposition`; UI adiciona link `JSON` por proposal e `Export evidence JSON` no packet carregado. Sem novas mutacoes.
 
-Proximo corte planejado: Writeback Evidence Packet Index v0 para listar rapidamente quais proposals ja tem packet exportavel, status de review e tamanho da trilha de auditoria.
+Status Writeback Evidence Packet Index v0 em 2026-05-06: Safety Dashboard agora inclui `evidencePacketIndex` por proposal com status de review, contagem de audit events, links existentes para guidance/signal/finding/work/workflow, hash atual, external URL e path de export JSON. UI mostra o indice com link JSON. Sem novas mutacoes.
+
+Proximo corte planejado: Writeback Evidence Integrity Gaps v0 para destacar proposals sem links completos de evidence/provenance ou com audit trail insuficiente.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -137,6 +139,7 @@ Proximo corte planejado: Writeback Evidence Packet Index v0 para listar rapidame
 - [x] **Adoption Dashboard Writeback Maturity v0** — refletir maturidade de writeback por source/projeto com stage, contadores, ultimo audit e gap de safety review
 - [x] **Writeback Audit UI Filters/Export v0** — expor busca, filtros e CSV do audit trail na UI sem novas mutacoes
 - [x] **Writeback Evidence Packet JSON Export v0** — exportar pacote auditavel por proposal como JSON pela API/UI
+- [x] **Writeback Evidence Packet Index v0** — indexar packets exportaveis no Safety Dashboard com status, audit count, links e hash
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

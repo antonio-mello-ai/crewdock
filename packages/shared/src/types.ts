@@ -2091,6 +2091,28 @@ export interface WritebackEvidencePacket {
   };
 }
 
+export interface WritebackEvidencePacketIndexItem {
+  proposalId: string;
+  title: string;
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  reviewStatus: WritebackExecutionReviewStatus;
+  auditEventCount: number;
+  latestAuditAt: number | null;
+  hasGuidance: boolean;
+  hasSignal: boolean;
+  hasFinding: boolean;
+  hasWorkItem: boolean;
+  hasWorkflowRun: boolean;
+  payloadHashCurrent: string;
+  externalUrl: string | null;
+  exportPath: string;
+  updatedAt: number;
+}
+
 export interface CompanyBrainWritebackSafetyDashboard {
   generatedAt: number;
   retryPolicy: WritebackRetryPolicy;
@@ -2098,6 +2120,7 @@ export interface CompanyBrainWritebackSafetyDashboard {
   adapterSummaries: WritebackAdapterSummary[];
   destinationSummaries: WritebackDestinationSummary[];
   operatingLoopMetrics: WritebackOperatingLoopMetrics;
+  evidencePacketIndex: WritebackEvidencePacketIndexItem[];
   latestAuditTrail: WritebackAuditTrailEntry[];
   stats: {
     proposalCount: number;

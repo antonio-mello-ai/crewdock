@@ -2150,6 +2150,51 @@ export default function CompanyBrainPage() {
                     </p>
                   ) : null}
                 </div>
+                {writebackSafetyDashboard.evidencePacketIndex.length ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <p className="text-xs font-medium text-neutral-300">
+                      Evidence packet index
+                    </p>
+                    <div className="mt-2 divide-y divide-neutral-800/40">
+                      {writebackSafetyDashboard.evidencePacketIndex
+                        .slice(0, 5)
+                        .map((packet) => (
+                          <div
+                            key={packet.proposalId}
+                            className="grid gap-2 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="truncate font-medium text-neutral-300">
+                                  {packet.title}
+                                </p>
+                                <StatusBadge value={packet.reviewStatus} />
+                                <StatusBadge value={packet.executionStatus} />
+                              </div>
+                              <p className="mt-1 truncate text-neutral-600">
+                                events {packet.auditEventCount} · guidance{" "}
+                                {packet.hasGuidance ? "yes" : "no"} · signal{" "}
+                                {packet.hasSignal ? "yes" : "no"} · work{" "}
+                                {packet.hasWorkItem ? "yes" : "no"}
+                              </p>
+                              <p className="mt-1 truncate text-neutral-700">
+                                {packet.payloadHashCurrent}
+                              </p>
+                            </div>
+                            <a
+                              href={companyBrainWritebackEvidencePacketJsonUrl(
+                                packet.proposalId
+                              )}
+                              className="inline-flex items-center gap-2 text-neutral-400 underline-offset-4 hover:underline"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              JSON
+                            </a>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 divide-y divide-neutral-800/40">
                   {writebackSafetyDashboard.items.length === 0 ? (
                     <p className="py-2 text-xs text-neutral-600">

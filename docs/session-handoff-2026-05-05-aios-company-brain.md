@@ -1529,7 +1529,39 @@ Dogfood read-only validado em `/tmp/aios-runtime-github-label-executor-dogfood.s
 - `payloadHashes.current=c3e689498f5679b96d3dc8a686ebc832213a117a7e10ea7e4056aa40e0e7097d`.
 - `externalRefs.externalUrl=https://github.com/antonio-mello-ai/crewdock/issues/3`.
 
-Proximo corte recomendado: Writeback Evidence Packet Index v0 para listar rapidamente quais proposals ja tem packet exportavel, status de review e tamanho da trilha de auditoria.
+## Slice Writeback Evidence Packet Index v0
+
+Objetivo: listar rapidamente quais proposals ja tem evidence packet exportavel e qual e o estado de auditoria.
+
+Implementado em 2026-05-06:
+
+1. Tipo `WritebackEvidencePacketIndexItem`.
+2. `CompanyBrainWritebackSafetyDashboard.evidencePacketIndex`.
+3. Cada item inclui:
+   - proposal id/title;
+   - destination/action/risk;
+   - approval/execution/review status;
+   - audit event count;
+   - latest audit timestamp;
+   - flags `hasGuidance`, `hasSignal`, `hasFinding`, `hasWorkItem`, `hasWorkflowRun`;
+   - payload hash atual;
+   - external URL;
+   - export path JSON;
+   - updatedAt.
+4. UI `/company-brain` mostra `Evidence packet index` com status, audit count, links presentes, hash e link JSON.
+5. Nenhuma rota nova de execute e nenhuma chamada externa.
+
+Dogfood read-only validado em `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43150`, proposal `fx3NheQm3Crv`:
+
+- `evidencePacketIndex.length=1`.
+- `reviewStatus=duplicate_prevented`.
+- `auditEventCount=4`.
+- `hasGuidance=true`, `hasSignal=true`, `hasFinding=true`, `hasWorkItem=true`, `hasWorkflowRun=true`.
+- `payloadHashCurrent=c3e689498f5679b96d3dc8a686ebc832213a117a7e10ea7e4056aa40e0e7097d`.
+- `externalUrl=https://github.com/antonio-mello-ai/crewdock/issues/3`.
+- `exportPath=/api/company-brain/external-action-proposals/fx3NheQm3Crv/evidence-packet?download=1`.
+
+Proximo corte recomendado: Writeback Evidence Integrity Gaps v0 para destacar proposals sem links completos de evidence/provenance ou com audit trail insuficiente.
 
 ## Dogfood ERP
 
@@ -1649,7 +1681,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0 e Writeback Evidence Packet JSON Export v0. O proximo corte recomendado e Writeback Evidence Packet Index v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0 e Writeback Evidence Packet Index v0. O proximo corte recomendado e Writeback Evidence Integrity Gaps v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

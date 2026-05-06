@@ -4208,6 +4208,54 @@ function buildWritebackEvidencePacket(
   };
 }
 
+function buildWritebackEvidencePacketIndex(
+  data: ReturnType<typeof listAll>,
+  reviews: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >
+): CompanyBrainWritebackSafetyDashboard["evidencePacketIndex"] {
+  const guidanceIds = new Set(data.guidanceItems.map((item) => item.id));
+  const signalIds = new Set(data.signals.map((item) => item.id));
+  const findingIds = new Set(data.alignmentFindings.map((item) => item.id));
+  const workItemIds = new Set(data.workItems.map((item) => item.id));
+  const workflowRunIds = new Set(data.workflowRuns.map((item) => item.id));
+
+  return data.externalActionProposals
+    .map((proposal) => {
+      const review =
+        reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal);
+      const latestAudit = latestExternalActionAudit(proposal);
+      return {
+        proposalId: proposal.id,
+        title: proposal.title,
+        destinationType: proposal.destinationType,
+        actionType: proposal.actionType,
+        riskClass: proposal.riskClass,
+        approvalStatus: proposal.approvalStatus,
+        executionStatus: proposal.executionStatus,
+        reviewStatus: review.status,
+        auditEventCount: proposal.auditTrail.length,
+        latestAuditAt: latestAudit?.at ?? null,
+        hasGuidance: guidanceIds.has(proposal.guidanceItemId),
+        hasSignal: proposal.signalId ? signalIds.has(proposal.signalId) : false,
+        hasFinding: proposal.findingId ? findingIds.has(proposal.findingId) : false,
+        hasWorkItem: proposal.workItemId ? workItemIds.has(proposal.workItemId) : false,
+        hasWorkflowRun: proposal.workflowRunId
+          ? workflowRunIds.has(proposal.workflowRunId)
+          : false,
+        payloadHashCurrent: review.payloadHashCurrent,
+        externalUrl: proposal.externalUrl,
+        exportPath: `/api/company-brain/external-action-proposals/${proposal.id}/evidence-packet?download=1`,
+        updatedAt: proposal.updatedAt,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (b.latestAuditAt ?? b.updatedAt) - (a.latestAuditAt ?? a.updatedAt)
+    );
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -4291,6 +4339,7 @@ function buildWritebackSafetyDashboard(
     adapterSummaries: buildWritebackAdapterSummaries(proposals, reviews),
     destinationSummaries: buildWritebackDestinationSummaries(proposals, reviews),
     operatingLoopMetrics: buildWritebackOperatingLoopMetrics(data, reviews, generatedAt),
+    evidencePacketIndex: buildWritebackEvidencePacketIndex(data, reviews),
     latestAuditTrail: buildWritebackAuditTrail({
       proposals,
       reviews,
