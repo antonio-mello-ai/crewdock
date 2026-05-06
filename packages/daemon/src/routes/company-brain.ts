@@ -7,6 +7,7 @@ import { nanoid } from "nanoid";
 import type {
   AlignmentClassification,
   CompanyBrainAdoptionDashboard,
+  CompanyBrainSourceHealthReport,
   CreateAgentContextRequest,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
@@ -719,9 +720,147 @@ function buildAdoptionDashboard(
   };
 }
 
+function buildSourceHealthReport(
+  data: ReturnType<typeof listAll>
+): CompanyBrainSourceHealthReport {
+  type SourceHealthIssueKind =
+    CompanyBrainSourceHealthReport["sources"][number]["issueKinds"][number];
+  type SourceFreshnessStatus =
+    CompanyBrainSourceHealthReport["sources"][number]["freshnessStatus"];
+
+  const generatedAt = now();
+  const staleAfterMs = 7 * 24 * 60 * 60 * 1000;
+
+  const sources = data.sources.map((source) => {
+    const artifacts = data.artifacts.filter((artifact) => artifact.sourceId === source.id);
+    const artifactIds = new Set(artifacts.map((artifact) => artifact.id));
+    const workItems = data.workItems.filter(
+      (item) =>
+        item.sourceId === source.id ||
+        (item.artifactId ? artifactIds.has(item.artifactId) : false)
+    );
+    const workItemIds = new Set(workItems.map((item) => item.id));
+    const workflowRuns = data.workflowRuns.filter(
+      (run) => run.workItemId !== null && workItemIds.has(run.workItemId)
+    );
+    const workflowRunIds = new Set(workflowRuns.map((run) => run.id));
+    const watchers = data.watchers.filter((watcher) =>
+      watcher.sourceIds.includes(source.id)
+    );
+    const watcherIds = new Set(watchers.map((watcher) => watcher.id));
+    const watcherRuns = data.watcherRuns.filter((run) =>
+      watcherIds.has(run.watcherId)
+    );
+    const signals = data.signals.filter(
+      (signal) =>
+        signal.sourceId === source.id ||
+        (signal.artifactId ? artifactIds.has(signal.artifactId) : false) ||
+        (signal.workItemId ? workItemIds.has(signal.workItemId) : false) ||
+        (signal.workflowRunId ? workflowRunIds.has(signal.workflowRunId) : false) ||
+        (signal.watcherId ? watcherIds.has(signal.watcherId) : false)
+    );
+    const signalIds = new Set(signals.map((signal) => signal.id));
+    const guidance = data.guidanceItems.filter(
+      (item) =>
+        (item.signalId ? signalIds.has(item.signalId) : false) ||
+        (item.workItemId ? workItemIds.has(item.workItemId) : false) ||
+        (item.workflowRunId ? workflowRunIds.has(item.workflowRunId) : false)
+    );
+    const openGuidance = guidance.filter((item) => ["new", "open"].includes(item.status));
+    const issueKinds = new Set<SourceHealthIssueKind>();
+
+    let freshnessStatus: SourceFreshnessStatus = "fresh";
+    if (source.syncError || source.healthStatus === "error") {
+      freshnessStatus = "error";
+      issueKinds.add("sync_error");
+    } else if (!source.lastSyncAt) {
+      freshnessStatus = "never_synced";
+      issueKinds.add("never_synced");
+    } else if (generatedAt - source.lastSyncAt > staleAfterMs) {
+      freshnessStatus = "stale";
+      issueKinds.add("stale");
+    } else if (source.healthStatus === "unknown") {
+      freshnessStatus = "unknown";
+      issueKinds.add("unknown_health");
+    }
+
+    if (!artifacts.length) issueKinds.add("no_artifacts");
+    if (!workItems.length) issueKinds.add("no_work_items");
+    if (!signals.length) issueKinds.add("no_signals");
+
+    return {
+      sourceId: source.id,
+      title: source.name,
+      sourceType: source.sourceType,
+      area: source.area,
+      owner: source.owner,
+      externalRef: source.externalRef,
+      healthStatus: source.healthStatus,
+      freshnessStatus,
+      lastSyncAt: source.lastSyncAt,
+      lastArtifactAt: latestTimestamp(artifacts.map((artifact) => artifact.ingestedAt)),
+      lastSignalAt: latestTimestamp(signals.map((signal) => signal.timestamp)),
+      lastWatcherRunAt: latestTimestamp(
+        watcherRuns.map((run) => run.finishedAt ?? run.startedAt)
+      ),
+      lastActivityAt: latestTimestamp([
+        source.lastSyncAt,
+        source.updatedAt,
+        ...artifacts.map((artifact) => artifact.ingestedAt),
+        ...workItems.map((item) => item.updatedAt),
+        ...workflowRuns.map((run) => run.updatedAt),
+        ...signals.map((signal) => signal.timestamp),
+        ...watcherRuns.map((run) => run.finishedAt ?? run.startedAt),
+      ]),
+      syncError: source.syncError,
+      artifactCount: artifacts.length,
+      workItemCount: workItems.length,
+      workflowRunCount: workflowRuns.length,
+      signalCount: signals.length,
+      watcherCount: watchers.length,
+      watcherRunCount: watcherRuns.length,
+      openGuidanceCount: openGuidance.length,
+      issueKinds: [...issueKinds],
+    };
+  });
+
+  sources.sort((a, b) => {
+    const issueDelta = b.issueKinds.length - a.issueKinds.length;
+    if (issueDelta !== 0) return issueDelta;
+    return (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0);
+  });
+
+  return {
+    generatedAt,
+    staleAfterMs,
+    sources,
+    stats: {
+      sourceCount: sources.length,
+      healthyCount: sources.filter(
+        (source) => source.healthStatus === "healthy" && source.freshnessStatus === "fresh"
+      ).length,
+      staleCount: sources.filter((source) => source.freshnessStatus === "stale").length,
+      errorCount: sources.filter((source) => source.freshnessStatus === "error").length,
+      unknownCount: sources.filter((source) => source.freshnessStatus === "unknown").length,
+      neverSyncedCount: sources.filter((source) => source.freshnessStatus === "never_synced")
+        .length,
+      sourceWithoutArtifactsCount: sources.filter((source) =>
+        source.issueKinds.includes("no_artifacts")
+      ).length,
+      sourceWithoutWorkItemsCount: sources.filter((source) =>
+        source.issueKinds.includes("no_work_items")
+      ).length,
+      sourceWithoutSignalsCount: sources.filter((source) =>
+        source.issueKinds.includes("no_signals")
+      ).length,
+    },
+  };
+}
+
 app.get("/summary", (c) => {
   const data = listAll();
   const adoptionDashboard = buildAdoptionDashboard(data);
+  const sourceHealthReport = buildSourceHealthReport(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -751,6 +890,7 @@ app.get("/summary", (c) => {
     data: {
       ...data,
       adoptionDashboard,
+      sourceHealthReport,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -790,6 +930,11 @@ app.get("/summary", (c) => {
 
 app.get("/adoption-dashboard", (c) => {
   const data = buildAdoptionDashboard(listAll());
+  return c.json({ data });
+});
+
+app.get("/source-health", (c) => {
+  const data = buildSourceHealthReport(listAll());
   return c.json({ data });
 });
 

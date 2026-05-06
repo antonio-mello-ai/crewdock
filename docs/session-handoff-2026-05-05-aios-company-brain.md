@@ -127,7 +127,7 @@ Agora existem:
 Ainda nao existem:
 
 - conector Slack com envelope comum;
-- source health dedicado com drill-down por fonte/freshness/volume.
+- writeback externo real com policy/HITL e auditoria completa.
 
 Parciais que precisam evoluir:
 
@@ -246,7 +246,6 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- Source Health hardening v0.
 - Slack ingestao read-only v0.
 
 ## Slice Decision v0
@@ -280,7 +279,6 @@ Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-
 Proximos cortes recomendados:
 
 - `ImprovementProposal v0`.
-- Source Health hardening v0.
 - Slack ingestao read-only v0.
 
 ## Slice AgentContext v0
@@ -318,7 +316,6 @@ Dogfood local AgentContext v0 validado em DB temporario `/tmp/aios-runtime-agent
 Proximos cortes recomendados:
 
 - Importer local docs/corp.
-- Source Health hardening v0.
 - Slack ingestao read-only v0.
 
 ## Slice ImprovementProposal v0
@@ -350,7 +347,6 @@ Dogfood local ImprovementProposal v0 validado em DB temporario `/tmp/aios-runtim
 
 Proximos cortes recomendados:
 
-- Source Health hardening v0.
 - Slack ingestao read-only v0.
 
 ## Slice Local Docs Importer v0
@@ -437,9 +433,35 @@ Dogfood local Adoption Dashboard v0 validado em DB temporario `/tmp/aios-runtime
 - Dashboard retornou gaps: `unlinkedWorkItemCount=2`, `pendingGateCount=1`, `slaRiskCount=1`, `openGuidanceCount=1`.
 - Projeto `Adoption dashboard GitHub sync` apareceu com `stage=improving`, `artifactCount=3`, `workItemCount=3`, `workflowRunCount=1`, `signalCount=1`, `improvementProposalCount=1`.
 
+## Slice Source Health v0
+
+Objetivo: separar saude/freshness de fontes da visao de adocao, dando drill-down operacional por source sem criar schema novo.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `SourceFreshnessStatus`, `SourceHealthIssueKind`, `SourceHealthSnapshot` e `CompanyBrainSourceHealthReport` em `packages/shared/src/types.ts`.
+2. Builder derivado no daemon, sem schema novo.
+3. `GET /api/company-brain/source-health`.
+4. `/api/company-brain/summary` inclui `sourceHealthReport`.
+5. UI `/company-brain` mostra Source Health dedicado com health/freshness, ultimo sync, sync error, artifacts/work/signals/watchers e issue kinds.
+6. MCP tool `get_company_brain_source_health`.
+7. Issue kinds v0: `sync_error`, `stale`, `never_synced`, `unknown_health`, `no_artifacts`, `no_work_items` e `no_signals`.
+8. Nenhum writeback externo.
+
+Dogfood local Source Health v0 validado em DB temporario `/tmp/aios-runtime-source-health-dogfood.sqlite`, daemon em `127.0.0.1:43111`:
+
+- Source sincronizado via GitHub adapter: `zy6YwkURdUV_`, `issuesSeen=1`.
+- Source propositalmente vazio: `_kOs9YO8cy_p`.
+- Watcher linkado ao source sincronizado: `R23Jv66QDaA-`.
+- WatcherRun: `rVuQ3IyGcmSb`.
+- Report retornou `sourceCount=2`, `healthyCount=1`, `neverSyncedCount=1`, `sourceWithoutArtifactsCount=1`, `sourceWithoutWorkItemsCount=1`, `sourceWithoutSignalsCount=1`.
+- Source `Source Health GitHub sync`: `freshnessStatus=fresh`, `healthStatus=healthy`, `artifactCount=2`, `workItemCount=2`, `signalCount=1`, `watcherCount=1`, `watcherRunCount=1`, `openGuidanceCount=1`, `issueKinds=[]`.
+- Source `Uninstrumented source health dogfood`: `freshnessStatus=never_synced`, `healthStatus=unknown`, `artifactCount=0`, `workItemCount=0`, `signalCount=0`, `issueKinds=[never_synced,no_artifacts,no_work_items,no_signals]`.
+
 Proximos cortes recomendados:
 
-- Source Health hardening v0.
 - Slack ingestao read-only v0.
 
 ## Dogfood ERP
@@ -560,12 +582,12 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Adoption Dashboard v0, focado em `Source Health hardening v0`, sem recriar o kernel, watchers ou adapters ja entregues.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Source Health v0, focado em `Slack ingestao read-only v0`, sem recriar o kernel, watchers ou adapters ja entregues.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- expor source health dedicado com freshness, volume de artifacts/work items/signals, ultimo sync, ultimo erro e status agregado;
-- destacar sources sem artifacts, sources stale/error/unknown e sources sem caminho para work item ou workflow;
-- reaproveitar `adoptionDashboard` quando fizer sentido, evitando schema novo sem necessidade;
+- implementar adapter/importer Slack read-only com envelope equivalente a local docs/GitHub Issues;
+- gerar `Source` + `Artifact` com raw_ref/content_ref/hash/metadata/provenance, sem postar ou responder no Slack;
+- permitir uso manual/simulado se credencial Slack real nao estiver disponivel;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

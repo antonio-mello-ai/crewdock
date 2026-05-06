@@ -139,6 +139,7 @@ function StatusBadge({ value }: { value: string }) {
     value === "breached" ||
     value === "at_risk" ||
     value === "critical" ||
+    value === "error" ||
     value === "drift" ||
     value === "contradiction" ||
     value === "source_unhealthy" ||
@@ -148,12 +149,21 @@ function StatusBadge({ value }: { value: string }) {
     value === "sla_risk" ||
     value === "missing_workflow" ||
     value === "missing_signal" ||
-    value === "open_guidance"
+    value === "open_guidance" ||
+    value === "stale" ||
+    value === "never_synced" ||
+    value === "sync_error" ||
+    value === "unknown_health" ||
+    value === "no_artifacts" ||
+    value === "no_work_items" ||
+    value === "no_signals"
       ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
       : value === "done" ||
           value === "completed" ||
           value === "passed" ||
           value === "on_track" ||
+          value === "healthy" ||
+          value === "fresh" ||
           value === "aligned" ||
           value === "accepted" ||
           value === "closed_loop" ||
@@ -207,6 +217,7 @@ export default function CompanyBrainPage() {
   const agentContexts = summary?.agentContexts ?? [];
   const improvementProposals = summary?.improvementProposals ?? [];
   const adoptionDashboard = summary?.adoptionDashboard;
+  const sourceHealthReport = summary?.sourceHealthReport;
 
   const developmentBlueprint = blueprints.find(
     (blueprint) => blueprint.id === "development-blueprint-v0"
@@ -744,6 +755,65 @@ export default function CompanyBrainPage() {
                     ))
                   )}
                 </div>
+              </div>
+            </section>
+          ) : null}
+
+          {sourceHealthReport ? (
+            <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Database className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Source Health
+                  </h2>
+                </div>
+              </div>
+              <div className="divide-y divide-neutral-800/40">
+                {sourceHealthReport.sources.length === 0 ? (
+                  <EmptyState label="No sources to inspect" />
+                ) : (
+                  sourceHealthReport.sources.slice(0, 8).map((source) => (
+                    <div key={source.sourceId} className="px-5 py-4">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium text-neutral-200">
+                              {source.title}
+                            </p>
+                            <StatusBadge value={source.healthStatus} />
+                            <StatusBadge value={source.freshnessStatus} />
+                          </div>
+                          <p className="mt-1 text-xs text-neutral-600">
+                            {source.area} · {source.sourceType} ·{" "}
+                            {source.owner ?? "no owner"} · sync{" "}
+                            {source.lastSyncAt
+                              ? formatTimeAgo(source.lastSyncAt)
+                              : "never"}
+                          </p>
+                          {source.syncError ? (
+                            <p className="mt-2 text-xs text-amber-300">
+                              {source.syncError}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="grid grid-cols-4 gap-2 text-left xl:w-96">
+                          <MiniMetric label="artifacts" value={source.artifactCount} />
+                          <MiniMetric label="work" value={source.workItemCount} />
+                          <MiniMetric label="signals" value={source.signalCount} />
+                          <MiniMetric label="watchers" value={source.watcherCount} />
+                        </div>
+                      </div>
+                      {source.issueKinds.length ? (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {source.issueKinds.map((issue) => (
+                            <StatusBadge key={issue} value={issue} />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ))
+                )}
               </div>
             </section>
           ) : null}

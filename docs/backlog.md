@@ -25,6 +25,8 @@ Status GitHub Issues Sync Adapter v0 em 2026-05-06: adapter read-only real imple
 
 Status Adoption Dashboard v0 em 2026-05-06: dashboard derivado do Company Brain implementado via summary/API/UI/MCP, mostrando frentes por source, estágio de closed loop, work items sem priority/goal, gates pendentes, SLA risk, source health e guidance aberta.
 
+Status Source Health v0 em 2026-05-06: relatório dedicado por source implementado via summary/API/UI/MCP, com freshness, ultimo sync, erro, volumes de artifacts/work items/workflow runs/signals/watchers/guidance e issue kinds.
+
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
 - [x] **Watcher / Operating Loop Layer v0** — adicionar `Watcher` e `WatcherRun` no schema/tipos/API, com `source_ids`, `trigger_type`, `schedule`, `scope_query`, `target_workflow_blueprint_id`, `risk_class`, `action_policy`, `status`, `last_run_at`, `next_run_at`, `failure_policy` e `output_policy`
@@ -52,7 +54,7 @@ Status Adoption Dashboard v0 em 2026-05-06: dashboard derivado do Company Brain 
 - [x] **GitHub Issues sync adapter v0** — sincronizar issues reais do GitHub em modo read-only para `Source`, `Artifact` e `WorkItem` canonico com dedupe, links, source health e provenance
 - [ ] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente
 - [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/source/artifact/local docs importer/GitHub issues sync adapter/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
-- [ ] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
+- [x] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte
 - [ ] **Boundary Juntos em Sala** — manter self-improving de escolas fora do core; promover aprendizados apenas como artifacts/signals/proposals com gates
 - [ ] **Demo Felhen v0.1** — demonstrar estrategia -> evidencia -> drift/guidance -> workflow run -> learning usando dogfood interno
 

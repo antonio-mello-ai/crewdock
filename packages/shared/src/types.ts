@@ -1236,6 +1236,64 @@ export interface CompanyBrainAdoptionDashboard {
   };
 }
 
+export type SourceFreshnessStatus =
+  | "fresh"
+  | "stale"
+  | "never_synced"
+  | "error"
+  | "unknown";
+
+export type SourceHealthIssueKind =
+  | "sync_error"
+  | "stale"
+  | "never_synced"
+  | "unknown_health"
+  | "no_artifacts"
+  | "no_work_items"
+  | "no_signals";
+
+export interface SourceHealthSnapshot {
+  sourceId: string;
+  title: string;
+  sourceType: SourceType;
+  area: CompanyBrainArea;
+  owner: string | null;
+  externalRef: string | null;
+  healthStatus: HealthStatus;
+  freshnessStatus: SourceFreshnessStatus;
+  lastSyncAt: number | null;
+  lastArtifactAt: number | null;
+  lastSignalAt: number | null;
+  lastWatcherRunAt: number | null;
+  lastActivityAt: number | null;
+  syncError: string | null;
+  artifactCount: number;
+  workItemCount: number;
+  workflowRunCount: number;
+  signalCount: number;
+  watcherCount: number;
+  watcherRunCount: number;
+  openGuidanceCount: number;
+  issueKinds: SourceHealthIssueKind[];
+}
+
+export interface CompanyBrainSourceHealthReport {
+  generatedAt: number;
+  staleAfterMs: number;
+  sources: SourceHealthSnapshot[];
+  stats: {
+    sourceCount: number;
+    healthyCount: number;
+    staleCount: number;
+    errorCount: number;
+    unknownCount: number;
+    neverSyncedCount: number;
+    sourceWithoutArtifactsCount: number;
+    sourceWithoutWorkItemsCount: number;
+    sourceWithoutSignalsCount: number;
+  };
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -1256,6 +1314,7 @@ export interface CompanyBrainSummary {
   agentContexts: AgentContext[];
   improvementProposals: ImprovementProposal[];
   adoptionDashboard: CompanyBrainAdoptionDashboard;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
   stats: {
     sourceCount: number;
     artifactCount: number;
