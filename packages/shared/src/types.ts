@@ -878,6 +878,27 @@ export interface CreateSignalRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export type ArtifactInsightExtractionMode = "decision" | "signal" | "both";
+
+export interface ExtractArtifactInsightsRequest {
+  artifactId: string;
+  mode?: ArtifactInsightExtractionMode;
+  priorityId?: string | null;
+  goalId?: string | null;
+  workItemId?: string | null;
+  owner?: string | null;
+  signalSeverity?: SignalSeverity;
+  signalSource?: SignalSource;
+}
+
+export interface ExtractArtifactInsightsResponse {
+  artifact: Artifact;
+  decision: Decision | null;
+  signal: Signal | null;
+  decisionCreated: boolean;
+  signalCreated: boolean;
+}
+
 export interface AlignmentFinding {
   id: string;
   priorityId: string | null;

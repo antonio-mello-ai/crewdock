@@ -584,6 +584,33 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-strategy-tradeoff-dog
 
 Proximo corte recomendado: extractor v0 para transformar artifacts reais de Slack/docs em Decision/Signal candidatos com provenance e review pendente.
 
+## Slice Artifact Insights Extractor v0
+
+Objetivo: permitir que artifacts reais de Slack/docs/issues virem candidatos internos de Decision e Signal sem LLM obrigatório, sem auto-approve e sem writeback externo.
+
+Implementado em 2026-05-06:
+
+1. Tipos `ArtifactInsightExtractionMode`, `ExtractArtifactInsightsRequest` e `ExtractArtifactInsightsResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/extractors/artifact-insights`.
+3. Extractor cria `Decision` candidata com `status=proposed`, source artifact, priority/goal opcionais e provenance `createdFrom=extractor:artifact_insights`.
+4. Extractor cria `Signal` candidato no envelope AutoImprove, com `humanReviewStatus=pending` na provenance e tags `candidate`, `artifact_extractor_v0` e artifact type.
+5. Dedupe por artifact para decision/signal do extractor v0.
+6. UI `/company-brain` tem formulario `Extract` para artifact/mode/severity/priority/work item.
+7. MCP tool `extract_company_brain_artifact_insights`.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-artifact-extractor-dogfood.sqlite`, daemon em `127.0.0.1:43116`:
+
+- Source: `31poeMQzmT7L`.
+- Artifact Slack: `LLgB3qj3oGAr`.
+- Priority: `U-5bRD9RSphp`.
+- Primeiro extract: Decision `W8-geFz-d6tt`, Signal `OlGGbCGAGc-U`, ambos criados.
+- Decision ficou `status=proposed` e review pendente na provenance.
+- Signal ficou `source=transcript`, severity `warn`, tags `candidate/artifact_extractor_v0/slack_message` e review pendente.
+- Segundo extract reutilizou os mesmos objetos (`decisionCreated=false`, `signalCreated=false`).
+- Summary retornou `decisionCount=1`, `signalCount=1` e artifact link `candidate_source_for_decision`.
+
+Proximo corte recomendado: review/update API/UI/MCP para decisions candidates ou extractor de AlignmentFinding/Guidance a partir de signal candidato aprovado.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -702,11 +729,11 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Strategy Tradeoff v0. O corte recomendado e `Decision/Signal extractor v0`: transformar artifacts reais de Slack/docs em candidates de Decision e Signal com provenance, review pendente e link opcional a priority/goal/work item.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Artifact Insights Extractor v0. O corte recomendado e `Decision candidate review v0` ou `Signal -> Finding/Guidance extractor v0`, mantendo candidates sem auto-approve e qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- criar extractor interno/manual-assistido para artifacts existentes;
-- gerar candidates sem writeback externo e sem auto-approve;
+- adicionar review/update para decisions candidates ou gerar finding/guidance a partir de signal candidato aprovado;
+- preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 

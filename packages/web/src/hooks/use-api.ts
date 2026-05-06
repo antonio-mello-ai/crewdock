@@ -37,6 +37,8 @@ import type {
   CreateWatcherRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  ExtractArtifactInsightsRequest,
+  ExtractArtifactInsightsResponse,
   GenerateAgentContextRequest,
   ImportSlackMessagesRequest,
   ImportSlackMessagesResponse,
@@ -621,6 +623,22 @@ export function useCreateCompanyBrainSignal() {
   return useMutation<ApiResponse<Signal>, Error, CreateSignalRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/signals", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useExtractCompanyBrainArtifactInsights() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ExtractArtifactInsightsResponse>,
+    Error,
+    ExtractArtifactInsightsRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/extractors/artifact-insights", {
         method: "POST",
         body: JSON.stringify(body),
       }),

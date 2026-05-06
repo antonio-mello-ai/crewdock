@@ -27,6 +27,7 @@ import {
   useCreateCompanyBrainWatcher,
   useCreateCompanyBrainWorkflowRun,
   useCreateCompanyBrainWorkItem,
+  useExtractCompanyBrainArtifactInsights,
   useGenerateCompanyBrainAgentContext,
   useImportCompanyBrainSlackMessages,
   useRunCompanyBrainWatcher,
@@ -54,6 +55,7 @@ import type {
   WorkItemStatus,
   ActionPolicy,
   AgentContextType,
+  ArtifactInsightExtractionMode,
   ImprovementChangeClass,
 } from "@aios/shared";
 
@@ -136,6 +138,11 @@ const slaStatuses: SlaStatus[] = ["not_set", "on_track", "at_risk", "breached"];
 const signalSeverities: SignalSeverity[] = ["info", "warn", "critical"];
 const githubIssueStates = ["open", "closed", "all"] as const;
 type GitHubIssueState = (typeof githubIssueStates)[number];
+const artifactExtractionModes: ArtifactInsightExtractionMode[] = [
+  "decision",
+  "signal",
+  "both",
+];
 const actionPolicies: ActionPolicy[] = [
   "observe_only",
   "create_artifacts",
@@ -219,6 +226,7 @@ export default function CompanyBrainPage() {
   const createGoal = useCreateCompanyBrainGoal();
   const createDecision = useCreateCompanyBrainDecision();
   const createStrategyTradeoff = useCreateCompanyBrainStrategyTradeoff();
+  const extractArtifactInsights = useExtractCompanyBrainArtifactInsights();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
@@ -308,6 +316,15 @@ export default function CompanyBrainPage() {
     title: "ERP REF issue evidence",
     rawRef: "",
     summary: "External GitHub issue registered as execution evidence.",
+  });
+
+  const [artifactExtractorForm, setArtifactExtractorForm] = useState({
+    artifactId: "",
+    mode: "both" as ArtifactInsightExtractionMode,
+    priorityId: "",
+    goalId: "",
+    workItemId: "",
+    signalSeverity: "info" as SignalSeverity,
   });
 
   const [decisionForm, setDecisionForm] = useState({
@@ -475,6 +492,20 @@ export default function CompanyBrainPage() {
       area: "development",
       humanReviewStatus: "approved",
       visibility: "internal",
+    });
+  };
+
+  const handleExtractArtifactInsights = (event: FormEvent) => {
+    event.preventDefault();
+    if (!artifactExtractorForm.artifactId) return;
+    extractArtifactInsights.mutate({
+      artifactId: artifactExtractorForm.artifactId,
+      mode: artifactExtractorForm.mode,
+      priorityId: artifactExtractorForm.priorityId || null,
+      goalId: artifactExtractorForm.goalId || null,
+      workItemId: artifactExtractorForm.workItemId || null,
+      signalSeverity: artifactExtractorForm.signalSeverity,
+      owner: "Felhen",
     });
   };
 
@@ -1700,6 +1731,112 @@ export default function CompanyBrainPage() {
               <SubmitButton
                 pending={createArtifact.isPending}
                 disabled={!artifactForm.sourceId}
+              />
+            </KernelForm>
+
+            <KernelForm
+              title="Extract"
+              icon={RefreshCw}
+              onSubmit={handleExtractArtifactInsights}
+            >
+              <FieldLabel>Artifact</FieldLabel>
+              <Select
+                value={artifactExtractorForm.artifactId}
+                onChange={(event) =>
+                  setArtifactExtractorForm({
+                    ...artifactExtractorForm,
+                    artifactId: event.target.value,
+                  })
+                }
+              >
+                <option value="">select artifact</option>
+                {artifacts.map((artifact) => (
+                  <option key={artifact.id} value={artifact.id}>
+                    {artifact.title}
+                  </option>
+                ))}
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Mode</FieldLabel>
+                  <Select
+                    value={artifactExtractorForm.mode}
+                    onChange={(event) =>
+                      setArtifactExtractorForm({
+                        ...artifactExtractorForm,
+                        mode: event.target.value as ArtifactInsightExtractionMode,
+                      })
+                    }
+                  >
+                    {artifactExtractionModes.map((mode) => (
+                      <option key={mode} value={mode}>
+                        {mode}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Severity</FieldLabel>
+                  <Select
+                    value={artifactExtractorForm.signalSeverity}
+                    onChange={(event) =>
+                      setArtifactExtractorForm({
+                        ...artifactExtractorForm,
+                        signalSeverity: event.target.value as SignalSeverity,
+                      })
+                    }
+                  >
+                    {signalSeverities.map((severity) => (
+                      <option key={severity} value={severity}>
+                        {severity}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Priority</FieldLabel>
+                  <Select
+                    value={artifactExtractorForm.priorityId}
+                    onChange={(event) =>
+                      setArtifactExtractorForm({
+                        ...artifactExtractorForm,
+                        priorityId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no priority</option>
+                    {priorities.map((priority) => (
+                      <option key={priority.id} value={priority.id}>
+                        {priority.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Work item</FieldLabel>
+                  <Select
+                    value={artifactExtractorForm.workItemId}
+                    onChange={(event) =>
+                      setArtifactExtractorForm({
+                        ...artifactExtractorForm,
+                        workItemId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no work item</option>
+                    {workItems.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <SubmitButton
+                pending={extractArtifactInsights.isPending}
+                disabled={!artifactExtractorForm.artifactId}
               />
             </KernelForm>
 

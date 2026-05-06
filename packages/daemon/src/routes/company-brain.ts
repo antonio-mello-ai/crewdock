@@ -24,6 +24,7 @@ import type {
   CreateWorkflowBlueprintRequest,
   CreateWorkflowRunRequest,
   CreateWorkItemRequest,
+  ExtractArtifactInsightsRequest,
   GuidanceAudience,
   GenerateAgentContextRequest,
   ImportLocalDocsRequest,
@@ -362,6 +363,23 @@ function severityFromRisk(riskClass: string): SignalSeverity {
   if (riskClass === "C") return "critical";
   if (riskClass === "B") return "warn";
   return "info";
+}
+
+function signalSourceFromArtifact(artifactType: string) {
+  if (artifactType.includes("slack") || artifactType.includes("meeting")) {
+    return "transcript" as const;
+  }
+  if (artifactType.includes("github") || artifactType.includes("issue")) {
+    return "support" as const;
+  }
+  if (artifactType.includes("error") || artifactType.includes("incident")) {
+    return "error" as const;
+  }
+  return "qa" as const;
+}
+
+function candidateText(title: string, summary: string | null | undefined) {
+  return summarizeSlackText(`${title}. ${summary ?? ""}`).slice(0, 500);
 }
 
 function classifyAlignment(args: {
@@ -2721,6 +2739,181 @@ app.post("/work-items", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.post("/extractors/artifact-insights", async (c) => {
+  try {
+    const body = await c.req.json<ExtractArtifactInsightsRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const artifactId = requireText(body.artifactId, "artifactId");
+    const artifact = db.select().from(cbArtifacts).where(eq(cbArtifacts.id, artifactId)).get();
+    if (!artifact) throw new Error("artifactId not found");
+    const source = db.select().from(cbSources).where(eq(cbSources.id, artifact.sourceId)).get();
+    const priorityId = body.priorityId ?? null;
+    if (priorityId) {
+      const priority = db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, priorityId))
+        .get();
+      if (!priority) throw new Error("priorityId not found");
+    }
+    const goalId = body.goalId ?? null;
+    if (goalId) {
+      const goal = db.select().from(cbGoals).where(eq(cbGoals.id, goalId)).get();
+      if (!goal) throw new Error("goalId not found");
+    }
+    const workItemId = body.workItemId ?? null;
+    if (workItemId) {
+      const workItem = db
+        .select()
+        .from(cbWorkItems)
+        .where(eq(cbWorkItems.id, workItemId))
+        .get();
+      if (!workItem) throw new Error("workItemId not found");
+    }
+
+    const mode = body.mode ?? "both";
+    const text = candidateText(artifact.title, artifact.summary);
+    const owner = body.owner ?? source?.owner ?? null;
+    let decision = null;
+    let signal = null;
+    let decisionCreated = false;
+    let signalCreated = false;
+
+    if (mode === "decision" || mode === "both") {
+      decision =
+        db
+          .select()
+          .from(cbDecisions)
+          .all()
+          .find(
+            (item) =>
+              item.sourceArtifactIds.includes(artifact.id) &&
+              item.provenance?.createdFrom === "extractor:artifact_insights"
+          ) ?? null;
+      if (!decision) {
+        decision = {
+          id: nanoid(12),
+          title: `Decision candidate: ${artifact.title.slice(0, 90)}`,
+          summary: text,
+          rationale:
+            "Candidate extracted from an artifact by extractor v0. Human review is required before treating it as an accepted decision.",
+          area: artifact.area,
+          owner,
+          ownerType: owner ? (source?.ownerType ?? "human") : ("unknown" as const),
+          status: "proposed" as const,
+          decidedAt: null,
+          sourceArtifactIds: [artifact.id],
+          priorityIds: priorityId ? [priorityId] : [],
+          goalIds: goalId ? [goalId] : [],
+          visibility: artifact.visibility,
+          provenance: {
+            sourceId: artifact.sourceId,
+            rawRef: artifact.rawRef,
+            artifactId: artifact.id,
+            createdFrom: "extractor:artifact_insights",
+            confidence: 0.65,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: artifact.visibility,
+            notes: "candidate=true; extractor=artifact_insights_v0",
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        db.insert(cbDecisions).values(decision).run();
+        db.insert(cbArtifactLinks)
+          .values({
+            id: nanoid(12),
+            artifactId: artifact.id,
+            targetType: "decision",
+            targetId: decision.id,
+            relationship: "candidate_source_for_decision",
+            confidence: 0.65,
+            rationale: "Decision candidate extracted from this artifact.",
+            createdAt: timestamp,
+          })
+          .run();
+        decisionCreated = true;
+      }
+    }
+
+    if (mode === "signal" || mode === "both") {
+      signal =
+        db
+          .select()
+          .from(cbSignals)
+          .all()
+          .find(
+            (item) =>
+              item.artifactId === artifact.id &&
+              item.metadata?.extractor === "artifact_insights_v0"
+          ) ?? null;
+      if (!signal) {
+        signal = {
+          id: nanoid(12),
+          source: body.signalSource ?? signalSourceFromArtifact(artifact.artifactType),
+          scope: "core" as const,
+          entityType: "job" as const,
+          entityId: workItemId ?? artifact.id,
+          timestamp: artifact.occurredAt,
+          summary: `Candidate signal: ${text}`,
+          rawRef: artifact.rawRef,
+          severity: body.signalSeverity ?? "info",
+          confidence: 0.65,
+          tags: ["candidate", "artifact_extractor_v0", artifact.artifactType],
+          area: artifact.area,
+          sourceId: artifact.sourceId,
+          artifactId: artifact.id,
+          workItemId,
+          workflowRunId: null,
+          watcherId: null,
+          watcherRunId: null,
+          visibility: artifact.visibility,
+          provenance: {
+            sourceId: artifact.sourceId,
+            rawRef: artifact.rawRef,
+            artifactId: artifact.id,
+            createdFrom: "extractor:artifact_insights",
+            confidence: 0.65,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: artifact.visibility,
+            notes: "candidate=true; extractor=artifact_insights_v0",
+          },
+          metadata: {
+            extractor: "artifact_insights_v0",
+            candidate: true,
+            mode,
+            priorityId,
+            goalId,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        db.insert(cbSignals).values(signal).run();
+        signalCreated = true;
+      }
+    }
+
+    return c.json(
+      {
+        data: {
+          artifact,
+          decision,
+          signal,
+          decisionCreated,
+          signalCreated,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "extract_failed", message }, 400);
   }
 });
 

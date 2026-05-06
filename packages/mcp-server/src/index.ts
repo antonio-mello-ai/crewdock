@@ -275,7 +275,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, source health, artifacts, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, source health, artifacts, extractors, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -696,6 +696,37 @@ server.registerTool(
           decidedAt: Date.now(),
           visibility: "internal",
         }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "extract_company_brain_artifact_insights",
+  {
+    title: "Extract Company Brain artifact insights",
+    description:
+      "Create internal Decision and/or Signal candidates from an existing artifact with pending human review and provenance. Does not approve decisions or write externally.",
+    inputSchema: {
+      artifactId: z.string().min(1),
+      mode: z.enum(["decision", "signal", "both"]).default("both"),
+      priorityId: z.string().optional(),
+      goalId: z.string().optional(),
+      workItemId: z.string().optional(),
+      owner: z.string().optional(),
+      signalSeverity: z.enum(["info", "warn", "critical"]).default("info"),
+      signalSource: z
+        .enum(["feedback", "telemetry", "transcript", "error", "support", "qa"])
+        .optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/extractors/artifact-insights",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
       }
     );
     return formatJsonResult(result.data);
