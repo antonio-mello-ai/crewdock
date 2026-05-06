@@ -27,6 +27,7 @@ import type {
   GenerateAgentContextRequest,
   ImportLocalDocsRequest,
   ImportSlackMessagesRequest,
+  RunFelhenDemoRequest,
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
@@ -950,6 +951,506 @@ app.get("/adoption-dashboard", (c) => {
 app.get("/source-health", (c) => {
   const data = buildSourceHealthReport(listAll());
   return c.json({ data });
+});
+
+app.post("/demo/felhen-v0-1", async (c) => {
+  try {
+    const body = (await c.req
+      .json<RunFelhenDemoRequest>()
+      .catch(() => ({}))) as RunFelhenDemoRequest;
+    const db = getDb();
+    const timestamp = now();
+    const owner = body.owner ?? "Felhen";
+    const visibility = body.visibility ?? "internal";
+    const demoRef = "aios://demo/felhen-v0.1";
+
+    let source =
+      db
+        .select()
+        .from(cbSources)
+        .all()
+        .find((item) => item.externalRef === demoRef) ?? null;
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: "Felhen Demo v0.1",
+        sourceType: "runtime" as const,
+        area: "platform" as const,
+        externalRef: demoRef,
+        status: "active" as const,
+        healthStatus: "healthy" as const,
+        owner,
+        ownerType: "team" as const,
+        visibility,
+        lastSyncAt: timestamp,
+        syncError: null,
+        metadata: {
+          demo: "felhen-v0.1",
+          readOnly: true,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    } else {
+      source = {
+        ...source,
+        healthStatus: "healthy" as const,
+        lastSyncAt: timestamp,
+        syncError: null,
+        updatedAt: timestamp,
+      };
+      db.update(cbSources)
+        .set({
+          healthStatus: source.healthStatus,
+          lastSyncAt: source.lastSyncAt,
+          syncError: source.syncError,
+          updatedAt: source.updatedAt,
+        })
+        .where(eq(cbSources.id, source.id))
+        .run();
+    }
+
+    let priority =
+      db
+        .select()
+        .from(cbStrategicPriorities)
+        .all()
+        .find((item) => item.title === "Felhen AIOS Demo v0.1 closed loop") ?? null;
+    if (!priority) {
+      priority = {
+        id: nanoid(12),
+        title: "Felhen AIOS Demo v0.1 closed loop",
+        description: "Demonstrate strategy to learning through the Company Brain.",
+        area: "platform" as const,
+        owner,
+        ownerType: "team" as const,
+        status: "active" as const,
+        timeHorizon: "2026-05-06 demo checkpoint",
+        reviewCadence: "daily",
+        successCriteria:
+          "Strategy, evidence, work item, workflow run, signal, finding, guidance and improvement proposal are visible in AIOS.",
+        visibility,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbStrategicPriorities).values(priority).run();
+    }
+
+    let goal =
+      db
+        .select()
+        .from(cbGoals)
+        .all()
+        .find((item) => item.title === "Demo Felhen v0.1 accepted") ?? null;
+    if (!goal) {
+      goal = {
+        id: nanoid(12),
+        priorityId: priority.id,
+        title: "Demo Felhen v0.1 accepted",
+        description: "Operational demo proves the AIOS kernel can close a loop.",
+        area: "platform" as const,
+        owner,
+        ownerType: "team" as const,
+        status: "on_track" as const,
+        dueAt: timestamp + 24 * 60 * 60 * 1000,
+        reviewCadence: "daily",
+        slaStatus: "on_track" as const,
+        confidence: 1,
+        targetMetric: "closed_loop_objects_created",
+        targetValue: "1 complete chain",
+        currentValue: null,
+        visibility,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbGoals).values(goal).run();
+    }
+    if (!goal) throw new Error("demo goal not available");
+
+    const artifactRawRef = `${demoRef}/evidence/source-health-slack`;
+    let artifact =
+      db
+        .select()
+        .from(cbArtifacts)
+        .all()
+        .find((item) => item.rawRef === artifactRawRef) ?? null;
+    if (!artifact) {
+      const summary =
+        "Felhen demo evidence: local docs, GitHub Issues, Slack import, Adoption Dashboard and Source Health are available in Company Brain.";
+      artifact = {
+        id: nanoid(12),
+        sourceId: source.id,
+        artifactType: "demo_evidence",
+        area: "platform" as const,
+        title: "Felhen Demo v0.1 evidence",
+        summary,
+        contentRef: artifactRawRef,
+        rawRef: artifactRawRef,
+        author: owner,
+        occurredAt: timestamp,
+        ingestedAt: timestamp,
+        hash: stableHash(summary),
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: artifactRawRef,
+          createdFrom: "demo:felhen-v0.1:evidence",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "approved" as const,
+          visibility,
+          notes: "read_only=true",
+        },
+        humanReviewStatus: "approved" as const,
+        confidence: 1,
+        metadata: {
+          demo: "felhen-v0.1",
+          readOnly: true,
+        },
+      };
+      db.insert(cbArtifacts).values(artifact).run();
+    }
+
+    let workItem =
+      db
+        .select()
+        .from(cbWorkItems)
+        .all()
+        .find(
+          (item) =>
+            item.externalProvider === "aios" &&
+            item.externalId === "felhen-demo-v0.1#closed-loop"
+        ) ?? null;
+    if (!workItem) {
+      workItem = {
+        id: nanoid(12),
+        title: "Felhen Demo v0.1 closed-loop work item",
+        description: "Demonstrate strategy to evidence to workflow to learning in AIOS.",
+        area: "platform" as const,
+        owner,
+        ownerType: "team" as const,
+        status: "in_progress" as const,
+        priorityId: priority.id,
+        goalId: goal.id,
+        milestoneId: null,
+        externalProvider: "aios",
+        externalId: "felhen-demo-v0.1#closed-loop",
+        externalUrl: demoRef,
+        riskClass: "B" as const,
+        dueAt: goal.dueAt,
+        blockedReason: null,
+        labels: ["demo", "company-brain", "closed-loop"],
+        sourceId: source.id,
+        artifactId: artifact.id,
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: demoRef,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.1:work_item",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "approved" as const,
+          visibility,
+          notes: "read_only=true",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbWorkItems).values(workItem).run();
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId: artifact.id,
+          targetType: "work_item",
+          targetId: workItem.id,
+          relationship: "demo_evidence_for_work",
+          confidence: 1,
+          rationale: "Felhen Demo v0.1 evidence supports the demo work item.",
+          createdAt: timestamp,
+        })
+        .run();
+    }
+
+    const blueprint = db
+      .select()
+      .from(cbWorkflowBlueprints)
+      .where(eq(cbWorkflowBlueprints.id, "development-blueprint-v0"))
+      .get();
+    if (!blueprint) throw new Error("development-blueprint-v0 not found");
+    const stages = blueprint.stages as WorkflowBlueprintStage[];
+    let workflowRun =
+      db
+        .select()
+        .from(cbWorkflowRuns)
+        .all()
+        .find(
+          (run) =>
+            run.workItemId === workItem.id &&
+            run.title === "Felhen Demo v0.1 Development Blueprint run"
+        ) ?? null;
+    if (!workflowRun) {
+      workflowRun = {
+        id: nanoid(12),
+        blueprintId: blueprint.id,
+        workItemId: workItem.id,
+        title: "Felhen Demo v0.1 Development Blueprint run",
+        workflowArea: "platform" as const,
+        status: "running" as const,
+        currentStep: stages[0]?.key ?? null,
+        gateStatus: "pending" as const,
+        slaStatus: "on_track" as const,
+        owner,
+        ownerType: "team" as const,
+        dueAt: goal.dueAt,
+        startedAt: timestamp,
+        finishedAt: null,
+        sourceArtifactIds: [artifact.id],
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: demoRef,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.1:workflow_run",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "approved" as const,
+          visibility,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbWorkflowRuns).values(workflowRun).run();
+      for (const [index, stage] of stages.entries()) {
+        db.insert(cbWorkflowSteps)
+          .values({
+            id: `${workflowRun.id}-${stage.key}`,
+            runId: workflowRun.id,
+            blueprintId: blueprint.id,
+            stepKey: stage.key,
+            title: stage.title,
+            position: index + 1,
+            owner: null,
+            ownerType: stage.ownerType,
+            status: index === 0 ? "running" : "not_started",
+            gateStatus: index === 0 ? "pending" : "not_started",
+            slaStatus: "not_set",
+            dueAt: null,
+            evidenceArtifactIds: index === 0 ? [artifact.id] : [],
+            requiredArtifact: stage.artifactExpected,
+            completedAt: null,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          })
+          .run();
+      }
+    }
+
+    let signal =
+      db
+        .select()
+        .from(cbSignals)
+        .all()
+        .find((item) => item.rawRef === `${demoRef}/signal/closed-loop-ready`) ?? null;
+    if (!signal) {
+      signal = {
+        id: nanoid(12),
+        source: "qa" as const,
+        scope: "core" as const,
+        entityType: "job" as const,
+        entityId: workItem.id,
+        timestamp,
+        summary: "Felhen demo closed-loop chain is ready for internal review.",
+        rawRef: `${demoRef}/signal/closed-loop-ready`,
+        severity: "info" as const,
+        confidence: 0.95,
+        tags: ["demo", "closed_loop", "felhen"],
+        area: "platform" as const,
+        sourceId: source.id,
+        artifactId: artifact.id,
+        workItemId: workItem.id,
+        workflowRunId: workflowRun.id,
+        watcherId: null,
+        watcherRunId: null,
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: `${demoRef}/signal/closed-loop-ready`,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.1:signal",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "approved" as const,
+          visibility,
+        },
+        metadata: {
+          demo: "felhen-v0.1",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSignals).values(signal).run();
+    }
+
+    let alignmentFinding =
+      db
+        .select()
+        .from(cbAlignmentFindings)
+        .all()
+        .find((item) => item.workItemId === workItem.id && item.signalIds.includes(signal.id)) ??
+      null;
+    if (!alignmentFinding) {
+      alignmentFinding = {
+        id: nanoid(12),
+        priorityId: priority.id,
+        goalId: goal.id,
+        artifactIds: [artifact.id],
+        signalIds: [signal.id],
+        workItemId: workItem.id,
+        workflowRunId: workflowRun.id,
+        area: "platform" as const,
+        classification: "aligned" as const,
+        rationale:
+          "Demo work item, workflow run and signal are linked to the AIOS demo priority and goal.",
+        confidence: 0.95,
+        suggestedAction: "Review the demo chain in Adoption Dashboard and Source Health.",
+        severity: "info" as const,
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: `${demoRef}/finding/aligned`,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.1:alignment_finding",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "approved" as const,
+          visibility,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbAlignmentFindings).values(alignmentFinding).run();
+    }
+
+    let guidanceItem =
+      db
+        .select()
+        .from(cbGuidanceItems)
+        .all()
+        .find((item) => item.signalId === signal.id && item.findingId === alignmentFinding.id) ??
+      null;
+    if (!guidanceItem) {
+      guidanceItem = {
+        id: nanoid(12),
+        audience: "team" as const,
+        priorityId: priority.id,
+        goalId: goal.id,
+        findingId: alignmentFinding.id,
+        signalId: signal.id,
+        workItemId: workItem.id,
+        workflowRunId: workflowRun.id,
+        area: "platform" as const,
+        title: "Review Felhen Demo v0.1 closed loop",
+        action: "Use the demo chain to validate AIOS closed-loop operating readiness.",
+        dueAt: goal.dueAt,
+        severity: "info" as const,
+        status: "open" as const,
+        feedbackStatus: "pending" as const,
+        feedbackNote: null,
+        feedbackAt: null,
+        generatedFrom: {
+          demo: "felhen-v0.1",
+          signalId: signal.id,
+          findingId: alignmentFinding.id,
+        },
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: `${demoRef}/guidance/review`,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.1:guidance",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbGuidanceItems).values(guidanceItem).run();
+    }
+
+    let improvementProposal =
+      db
+        .select()
+        .from(cbImprovementProposals)
+        .all()
+        .find((item) => item.title === "Felhen Demo v0.1 operating loop learning") ?? null;
+    if (!improvementProposal) {
+      improvementProposal = {
+        id: nanoid(12),
+        title: "Felhen Demo v0.1 operating loop learning",
+        hypothesis:
+          "If the demo chain is visible end-to-end, future AIOS slices can be selected from adoption and source health gaps.",
+        area: "platform" as const,
+        owner,
+        ownerType: "team" as const,
+        signalIds: [signal.id],
+        alignmentFindingIds: [alignmentFinding.id],
+        guidanceItemIds: [guidanceItem.id],
+        agentContextIds: [],
+        sourceArtifactIds: [artifact.id],
+        workItemIds: [workItem.id],
+        priorityIds: [priority.id],
+        goalIds: [goal.id],
+        changeClass: "B" as const,
+        patchRef: null,
+        validationPlan: "Validate via demo endpoint, summary, adoption dashboard, source health and build.",
+        impactReview: null,
+        status: "proposed" as const,
+        promotionStatus: "candidate" as const,
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: `${demoRef}/improvement/demo-learning`,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.1:improvement_proposal",
+          confidence: 0.9,
+          extractedAt: timestamp,
+          humanReviewStatus: "needs_review" as const,
+          visibility,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbImprovementProposals).values(improvementProposal).run();
+    }
+
+    const data = listAll();
+    return c.json(
+      {
+        data: {
+          source,
+          priority,
+          goal,
+          artifact,
+          workItem,
+          workflowRun,
+          signal,
+          alignmentFinding,
+          guidanceItem,
+          improvementProposal,
+          adoptionDashboard: buildAdoptionDashboard(data),
+          sourceHealthReport: buildSourceHealthReport(data),
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "demo_failed", message }, 400);
+  }
 });
 
 app.get("/sources", (c) => {

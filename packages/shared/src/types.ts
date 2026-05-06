@@ -517,6 +517,26 @@ export interface ImportSlackMessagesResponse {
   messagesSeen: number;
 }
 
+export interface RunFelhenDemoRequest {
+  owner?: string | null;
+  visibility?: Visibility;
+}
+
+export interface RunFelhenDemoResponse {
+  source: Source;
+  priority: StrategicPriority;
+  goal: Goal;
+  artifact: Artifact;
+  workItem: WorkItem;
+  workflowRun: WorkflowRun;
+  signal: Signal;
+  alignmentFinding: AlignmentFinding;
+  guidanceItem: GuidanceItem;
+  improvementProposal: ImprovementProposal;
+  adoptionDashboard: CompanyBrainAdoptionDashboard;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+}
+
 export interface SyncGitHubIssuesRequest {
   repo: string;
   state?: "open" | "closed" | "all";

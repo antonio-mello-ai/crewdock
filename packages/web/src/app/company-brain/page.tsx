@@ -28,6 +28,7 @@ import {
   useGenerateCompanyBrainAgentContext,
   useImportCompanyBrainSlackMessages,
   useRunCompanyBrainWatcher,
+  useRunFelhenDemo,
   useSyncCompanyBrainGitHubIssues,
   useUpdateCompanyBrainGuidanceItem,
   useUpdateCompanyBrainImprovementProposal,
@@ -197,6 +198,7 @@ export default function CompanyBrainPage() {
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
   const runWatcher = useRunCompanyBrainWatcher();
+  const runFelhenDemo = useRunFelhenDemo();
   const syncGitHubIssues = useSyncCompanyBrainGitHubIssues();
   const importSlackMessages = useImportCompanyBrainSlackMessages();
   const updateGuidance = useUpdateCompanyBrainGuidanceItem();
@@ -618,6 +620,13 @@ export default function CompanyBrainPage() {
     });
   };
 
+  const handleRunFelhenDemo = () => {
+    runFelhenDemo.mutate({
+      owner: "Felhen",
+      visibility: "internal",
+    });
+  };
+
   const updateGuidanceFeedback = (
     id: string,
     status: "accepted" | "done" | "ignored",
@@ -705,11 +714,27 @@ export default function CompanyBrainPage() {
           {adoptionDashboard ? (
             <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
               <div className="border-b border-neutral-800/50 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <Workflow className="h-4 w-4 text-neutral-500" />
-                  <h2 className="text-sm font-semibold text-neutral-200">
-                    Adoption Dashboard
-                  </h2>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <Workflow className="h-4 w-4 text-neutral-500" />
+                    <h2 className="text-sm font-semibold text-neutral-200">
+                      Adoption Dashboard
+                    </h2>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRunFelhenDemo}
+                    disabled={runFelhenDemo.isPending}
+                  >
+                    {runFelhenDemo.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                    Run demo
+                  </Button>
                 </div>
               </div>
               <div className="grid gap-0 lg:grid-cols-[1.5fr_1fr]">

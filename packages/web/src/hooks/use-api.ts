@@ -39,6 +39,8 @@ import type {
   GenerateAgentContextRequest,
   ImportSlackMessagesRequest,
   ImportSlackMessagesResponse,
+  RunFelhenDemoRequest,
+  RunFelhenDemoResponse,
   RunWatcherRequest,
   RunWatcherResponse,
   SyncGitHubIssuesRequest,
@@ -435,6 +437,18 @@ export function useCompanyBrainSummary() {
     queryKey: ["company-brain", "summary"],
     queryFn: () => api("/api/company-brain/summary"),
     refetchInterval: 10_000,
+  });
+}
+
+export function useRunFelhenDemo() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<RunFelhenDemoResponse>, Error, RunFelhenDemoRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/demo/felhen-v0-1", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });
 }
 

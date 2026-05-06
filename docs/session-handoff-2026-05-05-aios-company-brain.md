@@ -492,10 +492,42 @@ Dogfood local Slack Ingestao v0 validado em DB temporario `/tmp/aios-runtime-sla
 - Summary retornou `sourceCount=1`, `artifactCount=1`, `sourceTypes=[slack]`.
 - Source Health retornou `freshnessStatus=fresh`, `artifactCount=1`, `issueKinds=[no_work_items,no_signals]`.
 
+## Slice Demo Felhen v0.1
+
+Objetivo: criar uma demo interna e reproduzivel que atravesse o loop operacional completo do AIOS sem depender de sistemas externos.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `RunFelhenDemoRequest` e `RunFelhenDemoResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/demo/felhen-v0-1`.
+3. Runner cria ou reutiliza `Source`, `StrategicPriority`, `Goal`, `Artifact`, `WorkItem`, `WorkflowRun`, `Signal`, `AlignmentFinding`, `GuidanceItem` e `ImprovementProposal`.
+4. Runner retorna `adoptionDashboard` e `sourceHealthReport` ja recalculados.
+5. UI `/company-brain` tem botao `Run demo` no Adoption Dashboard.
+6. MCP tool `run_felhen_demo_v0_1`.
+7. Nenhum writeback externo.
+
+Dogfood local Demo Felhen v0.1 validado em DB temporario `/tmp/aios-runtime-felhen-demo-dogfood.sqlite`, daemon em `127.0.0.1:43113`:
+
+- Source: `qdshqDZCkjjM`.
+- Priority: `orHMRfMAgktR`.
+- Goal: `MZ--Ifjv9uJS`.
+- Artifact: `mIiXJt8OmRVA`.
+- WorkItem: `EG0L6CV0QXgY`.
+- WorkflowRun: `Ej_ashwY9aBW`.
+- Signal: `2r0NMJAF4ccu`.
+- AlignmentFinding: `7qzqYJjgm7Lm`.
+- GuidanceItem: `kHnyBHAD0wqz`.
+- ImprovementProposal: `h8RlB5M81_13`.
+- Adoption Dashboard retornou `projectCount=1`, `closedLoopProjectCount=1`, `improvingProjectCount=1`, `pendingGateCount=1`, `openGuidanceCount=1`.
+- Source Health retornou `sourceCount=1`, `healthyCount=1`, sem stale/error/never synced e sem sources sem artifact/work/signal.
+- Segunda execucao reutilizou source, work item, signal e improvement proposal (`sameSource=true`, `sameWorkItem=true`, `sameSignal=true`, `sameProposal=true`).
+
 Proximos cortes recomendados:
 
-- Demo Felhen v0.1.
 - Slack API adapter real quando houver token/workspace definidos.
+- Strategy tradeoffs v0 se a proxima sessao continuar sem credenciais Slack.
 
 ## Dogfood ERP
 
@@ -615,12 +647,11 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Slack Ingestao v0, focado em `Demo Felhen v0.1`, sem recriar o kernel, watchers ou adapters ja entregues.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos Demo Felhen v0.1. Se houver `SLACK_BOT_TOKEN` e workspace/canais definidos, focar em `Slack API adapter real read-only`; se nao houver credencial, focar em `Strategy tradeoffs v0`.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- criar um dataset/dogfood demonstravel que atravesse estrategia -> evidencia -> work item -> workflow run -> signal/finding/guidance -> improvement proposal;
-- expor a demo via API/UI/MCP ou seed/manual runner sem writeback externo;
-- documentar exatamente quais objetos foram criados e quais gaps ainda aparecem em Adoption Dashboard/Source Health;
+- para Slack API real: ler mensagens/canais selecionados em modo read-only e gerar o mesmo envelope de `Source` + `Artifact` ja usado pelo importer manual;
+- para Strategy tradeoffs: adicionar tradeoffs/constraints/rationale ligados a priority/decision sem mexer em adapters externos;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.
 
 Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como fontes/dogfood/adapters, nao como schema do runtime.

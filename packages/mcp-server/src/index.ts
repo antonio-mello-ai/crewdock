@@ -319,6 +319,29 @@ server.registerTool(
 );
 
 server.registerTool(
+  "run_felhen_demo_v0_1",
+  {
+    title: "Run Felhen Demo v0.1",
+    description:
+      "Create or refresh the internal Felhen Demo v0.1 closed-loop dataset: strategy, goal, evidence, work item, workflow run, signal, finding, guidance and improvement proposal. No external writeback.",
+    inputSchema: {
+      owner: z.string().optional(),
+      visibility: z.enum(["internal", "restricted", "public"]).default("internal"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/demo/felhen-v0-1",
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_source",
   {
     title: "Register Company Brain source",
