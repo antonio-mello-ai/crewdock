@@ -1162,7 +1162,7 @@ export interface CreateExternalActionProposalRequest {
 
 export interface UpdateExternalActionProposalRequest {
   approvalStatus: "approved" | "rejected";
-  actor?: string | null;
+  actor: string;
   rejectionReason?: string | null;
   note?: string | null;
 }

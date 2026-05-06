@@ -6148,6 +6148,13 @@ app.put("/external-action-proposals/:id", async (c) => {
     const actor = body.actor?.trim() || null;
 
     if (body.approvalStatus === "approved") {
+      if (!actor) {
+        throw new Error("actor is required to approve writeback proposals");
+      }
+      const approvalNote = body.note?.trim();
+      if (!approvalNote) {
+        throw new Error("approval note is required to approve writeback proposals");
+      }
       if (existing.approvalStatus === "blocked" || existing.riskClass === "C") {
         throw new Error(
           "proposal is blocked by Writeback Governance v0 and cannot be approved"
@@ -6156,14 +6163,14 @@ app.put("/external-action-proposals/:id", async (c) => {
       const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
         actor,
         event: "approved",
-        note:
-          body.note ??
-          "Approved for the internal queue only. External execution remains disabled in v0.",
+        note: approvalNote,
         metadata: {
           destinationType: existing.destinationType,
           destinationRef: existing.destinationRef,
           actionType: existing.actionType,
           payload: existing.payload,
+          payloadHash: stableHash(JSON.stringify(existing.payload)),
+          idempotencyKey: existing.idempotencyKey,
           executionStatus: "not_started",
           externalId: existing.externalId,
           errorSummary: existing.errorSummary,
@@ -6189,6 +6196,12 @@ app.put("/external-action-proposals/:id", async (c) => {
 
     if (body.approvalStatus === "rejected") {
       const rejectionReason = body.rejectionReason?.trim() || body.note?.trim() || null;
+      if (!actor) {
+        throw new Error("actor is required to reject writeback proposals");
+      }
+      if (!rejectionReason) {
+        throw new Error("rejection reason is required to reject writeback proposals");
+      }
       const auditTrail = appendAuditEvent(existing.auditTrail ?? [], {
         actor,
         event: "rejected",
@@ -6198,6 +6211,8 @@ app.put("/external-action-proposals/:id", async (c) => {
           destinationRef: existing.destinationRef,
           actionType: existing.actionType,
           payload: existing.payload,
+          payloadHash: stableHash(JSON.stringify(existing.payload)),
+          idempotencyKey: existing.idempotencyKey,
           previousExecutionStatus: existing.executionStatus,
           externalId: existing.externalId,
           errorSummary: existing.errorSummary,

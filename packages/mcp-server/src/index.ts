@@ -1339,11 +1339,11 @@ server.registerTool(
   {
     title: "Review Company Brain writeback proposal",
     description:
-      "Approve or reject an internal writeback proposal. Approval records HITL state; adapter-specific execute tools still enforce risk, policy and idempotency gates.",
+      "Approve or reject an internal writeback proposal with an actor and rationale. Approval records HITL state; adapter-specific execute tools still enforce preview, risk, policy and idempotency gates.",
     inputSchema: {
       id: z.string().min(1),
       approvalStatus: z.enum(["approved", "rejected"]),
-      actor: z.string().optional(),
+      actor: z.string().min(1),
       rejectionReason: z.string().optional(),
       note: z.string().optional(),
     },

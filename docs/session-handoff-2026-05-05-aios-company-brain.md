@@ -965,7 +965,32 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-hitl-hardening-dogfoo
 - Slack proposal `K20ZAIgicmB-`: execute antes de preview retornou 400 `Slack thread reply writeback preview is required after approval before execution`, manteve `executionStatus=not_started`, audit `slack_thread_reply_preview_required`; preview posterior retornou `dry_run` com marker.
 - Dashboard refletiu `proposalCount=2`, `approvedReadyCount=2`, `failedExecutionCount=0`, `completedExternalWriteCount=0`.
 
-Proximo corte recomendado: HITL hardening / retry safety complementar antes de qualquer label/status/assign: approval/rejection reason obrigatoria, idempotency/payload review explicito, retry seguro e visao de diff/payload antes de executar.
+## Slice Writeback HITL Rationale v0
+
+Objetivo: fortalecer aprovacao humana antes de qualquer execute real, exigindo actor e rationale explicitos e deixando hash do payload/idempotency no audit trail.
+
+Implementado em 2026-05-06:
+
+1. `UpdateExternalActionProposalRequest.actor` passa a ser obrigatorio no tipo compartilhado.
+2. API `PUT /api/company-brain/external-action-proposals/:id` passa a rejeitar approve sem `actor`.
+3. Approve exige `note` nao vazio.
+4. Reject exige `actor` e `rejectionReason` ou `note` nao vazio.
+5. Audit event `approved` e `rejected` agora inclui:
+   - `payloadHash`
+   - `idempotencyKey`
+   - payload e destino revisados
+6. MCP `review_company_brain_external_action_proposal` passa a exigir `actor` e descreve rationale/HITL.
+7. UI ja enviava `actor=Antonio`, note de approval e rejection reason; continuou compativel.
+
+Dogfood local validado em DB temporario `/tmp/aios-runtime-hitl-rationale-dogfood.sqlite`, daemon em `127.0.0.1:43129`, sem writeback externo:
+
+- Proposal approve `y6XQ9cCJmT2X`: approve sem actor retornou 400 `actor is required to approve writeback proposals`.
+- A mesma proposal sem note retornou 400 `approval note is required to approve writeback proposals`.
+- Approve com actor/note concluiu `approvalStatus=approved`, audit `approved`, `payloadHash` e `idempotencyKey` presentes.
+- Proposal reject `olsaKbBNaGEU`: reject sem reason retornou 400 `rejection reason is required to reject writeback proposals`.
+- Reject com actor/reason concluiu `approvalStatus=rejected`, audit `rejected`, `payloadHash` e `idempotencyKey` presentes.
+
+Proximo corte recomendado: retry safety / idempotent execution review antes de qualquer label/status/assign: explicitar retries seguros, replay detection, payload/diff review em UI e limites por destino/acao.
 
 ## Dogfood ERP
 
@@ -1085,7 +1110,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0 e Writeback Preview Gate v0. O proximo corte recomendado e HITL hardening / retry safety complementar antes de labels/status/assign ou qualquer acao externa mais forte.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0 e Writeback HITL Rationale v0. O proximo corte recomendado e retry safety / idempotent execution review antes de labels/status/assign ou qualquer acao externa mais forte.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
