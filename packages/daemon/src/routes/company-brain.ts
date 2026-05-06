@@ -7855,7 +7855,16 @@ app.get("/external-action-proposals/:id/evidence-packet", (c) => {
       404
     );
   }
-  return c.json({ data: buildWritebackEvidencePacket(proposal) });
+  const packet = buildWritebackEvidencePacket(proposal);
+  if (c.req.query("download") === "1") {
+    return new Response(JSON.stringify(packet, null, 2), {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Disposition": `attachment; filename=aios-writeback-evidence-${proposal.id}.json`,
+      },
+    });
+  }
+  return c.json({ data: packet });
 });
 
 app.post("/external-action-proposals/from-guidance", async (c) => {

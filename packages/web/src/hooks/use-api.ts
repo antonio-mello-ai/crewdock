@@ -882,6 +882,10 @@ export function useGetCompanyBrainWritebackEvidencePacket() {
   });
 }
 
+export function companyBrainWritebackEvidencePacketJsonUrl(id: string) {
+  return `${DAEMON_URL}/api/company-brain/external-action-proposals/${id}/evidence-packet?download=1`;
+}
+
 export function usePreviewCompanyBrainGitHubLabelProposal() {
   const qc = useQueryClient();
   return useMutation<

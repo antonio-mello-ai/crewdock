@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   companyBrainWritebackAuditTrailCsvUrl,
+  companyBrainWritebackEvidencePacketJsonUrl,
   type CompanyBrainWritebackAuditTrailFilters,
   useCompanyBrainSummary,
   useCreateCompanyBrainArtifact,
@@ -2630,6 +2631,15 @@ export default function CompanyBrainPage() {
                       {getWritebackEvidencePacket.data.data.externalRefs.externalUrl ??
                         "no external url"}
                     </p>
+                    <a
+                      href={companyBrainWritebackEvidencePacketJsonUrl(
+                        getWritebackEvidencePacket.data.data.proposal.id
+                      )}
+                      className="mt-2 inline-flex items-center gap-2 text-xs text-neutral-400 underline-offset-4 hover:underline"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Export evidence JSON
+                    </a>
                   </div>
                 ) : null}
               </form>
@@ -2693,6 +2703,15 @@ export default function CompanyBrainPage() {
                               <FileText className="h-4 w-4" />
                               Evidence
                             </Button>
+                            <a
+                              href={companyBrainWritebackEvidencePacketJsonUrl(
+                                proposal.id
+                              )}
+                              className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                            >
+                              <Download className="h-4 w-4" />
+                              JSON
+                            </a>
                             {proposal.destinationType === "slack" ? (
                               <>
                                 <Button
