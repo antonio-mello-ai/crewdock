@@ -1163,7 +1163,48 @@ Dogfood local validado em DB temporario `/tmp/aios-runtime-writeback-audit-revie
 - Safety Dashboard retornou `reviewStatus=blocked`.
 - `auditReview` retornou `eventCount=2`, `latestEvent=github_status_check_previewed`, `latestActor=writeback-audit-review-dogfood`, `approvalEventAt=null`, `previewEventAt=1778096098054`, `executionEventAt=null`, `hasExternalRef=false`, `hasError=false`, payloadHash `aef16370c0fe82d50e1e0c009df51a487d0a321cfcebb48aa4a9ec37e308f18a`.
 
-Proximo corte recomendado: avaliar executor real de GitHub label somente em repo controlado, com um unico label, approval, preview, retry safety, idempotency e audit review.
+## Slice GitHub Label Executor v0
+
+Objetivo: executar somente GitHub label add Risk B ja previsto, com alvo controlado, sem abrir assign/status/close/merge/deploy ou qualquer outra mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. Rota `POST /api/company-brain/external-action-proposals/:id/github-label/execute`.
+2. MCP tool `execute_company_brain_github_label_writeback`.
+3. UI `/company-brain` com botao `Apply label`, habilitado apenas quando Safety Review retorna `ready_to_execute`.
+4. Executor exige:
+   - `destinationType=github`;
+   - `actionType=label/github_label`;
+   - `approvalStatus=approved`;
+   - `riskClass=B`;
+   - `actionPolicy=writeback_allowed`;
+   - HITL actor/rationale na aprovacao;
+   - preview apos aprovacao;
+   - Retry Safety `ready_to_execute`;
+   - `idempotencyKey`;
+   - `mode=add`;
+   - exatamente um label;
+   - alvo/label allowlisted por `AIOS_GITHUB_LABEL_WRITEBACK_ALLOWLIST`.
+5. Allowlist default do v0: `antonio-mello-ai/crewdock#3=enhancement`.
+6. Antes de qualquer write, o executor le labels atuais da issue/PR.
+7. Se o label aprovado ja existe, grava audit `github_label_completed_noop`, retorna `completed_noop`, preenche `externalId/externalUrl` e nao chama a write API.
+8. Reexecucao de proposal `completed` retorna `already_completed`.
+9. Se o label estiver ausente, o executor verifica que o label ja existe no repo antes de adicionar; nao cria label novo.
+10. `github_status/github_check`, assign, close/reopen, merge, deploy e notification-read seguem bloqueados.
+
+Dogfood real validado em DB temporario `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon em `127.0.0.1:43134`, usando alvo aprovado `antonio-mello-ai/crewdock#3`:
+
+- Guidance aceita: `OqzwuwF4VjPo`.
+- Proposal aprovada: `fx3NheQm3Crv`.
+- Target: `antonio-mello-ai/crewdock#3`.
+- Label: `enhancement`.
+- Preview retornou `status=dry_run`, `executionBlocked=false`, labels `["enhancement"]`.
+- Safety antes do execute retornou `reviewStatus=ready_to_execute`, `reviewFlags=[]`, audit `github_label_previewed`.
+- Execute retornou `status=completed_noop`, `mutationAttempted=false`, `missingLabels=[]`, `currentHasEnhancement=true`, `externalUrl=https://github.com/antonio-mello-ai/crewdock/issues/3`.
+- Reexecute retornou `status=already_completed`, `mutationAttempted=false`.
+- Safety apos execute retornou `reviewStatus=duplicate_prevented`, flags `duplicate_prevented/completed`, audit `github_label_completed_noop`.
+
+Proximo corte recomendado: reforcar revisao read-only da fila pos-writeback com foco em labels executadas/noop e manter status/check, assign, close/reopen, merge, deploy e notification-read bloqueados.
 
 ## Dogfood ERP
 
@@ -1283,7 +1324,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only e Writeback Audit Review v0. O proximo corte recomendado e avaliar executor real de GitHub label somente em repo controlado, com um unico label, approval, preview, retry safety, idempotency e audit review.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0 e GitHub Label Executor v0. O proximo corte recomendado e reforcar revisao read-only da fila pos-writeback com foco em labels executadas/noop, mantendo status/check, assign, close/reopen, merge, deploy e notification-read bloqueados.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

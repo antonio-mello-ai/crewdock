@@ -25,6 +25,7 @@ import {
   useCreateCompanyBrainGuidanceItem,
   useCreateCompanyBrainImprovementProposal,
   useExecuteCompanyBrainGitHubCommentWriteback,
+  useExecuteCompanyBrainGitHubLabelWriteback,
   useExecuteCompanyBrainSlackThreadReplyWriteback,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
@@ -267,6 +268,7 @@ export default function CompanyBrainPage() {
   const previewGitHubCommentWriteback =
     usePreviewCompanyBrainGitHubCommentWriteback();
   const previewGitHubLabelProposal = usePreviewCompanyBrainGitHubLabelProposal();
+  const executeGitHubLabelWriteback = useExecuteCompanyBrainGitHubLabelWriteback();
   const previewGitHubStatusCheckProposal =
     usePreviewCompanyBrainGitHubStatusCheckProposal();
   const executeGitHubCommentWriteback =
@@ -1021,6 +1023,17 @@ export default function CompanyBrainPage() {
     !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
     proposal.approvalStatus !== "rejected";
 
+  const canExecuteGitHubLabelWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    (proposal.actionType === "label" || proposal.actionType === "github_label") &&
+    proposal.approvalStatus === "approved" &&
+    proposal.riskClass === "B" &&
+    proposal.actionPolicy === "writeback_allowed" &&
+    proposal.executionStatus === "dry_run" &&
+    writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
+
   const canPreviewGitHubStatusCheckProposal = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
@@ -1060,6 +1073,19 @@ export default function CompanyBrainPage() {
 
   const previewGitHubLabelProposalDryRun = (id: string) => {
     previewGitHubLabelProposal.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const executeGitHubLabelProposal = (id: string) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Apply this approved GitHub label now?")
+    ) {
+      return;
+    }
+    executeGitHubLabelWriteback.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -2024,7 +2050,28 @@ export default function CompanyBrainPage() {
                       {previewGitHubLabelProposal.data.data.labels.join(", ")}
                     </p>
                     <p className="mt-1 text-xs text-neutral-600">
-                      preview-only · no GitHub label writeback executor
+                      {previewGitHubLabelProposal.data.data.status} ·{" "}
+                      {previewGitHubLabelProposal.data.data.executionBlocked
+                        ? "execution blocked"
+                        : "ready for gated executor"}
+                    </p>
+                  </div>
+                ) : null}
+                {executeGitHubLabelWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {executeGitHubLabelWriteback.data.data.target.fullName}#
+                      {executeGitHubLabelWriteback.data.data.target.number} ·{" "}
+                      {executeGitHubLabelWriteback.data.data.status}
+                    </p>
+                    <p className="mt-2 text-xs text-neutral-300">
+                      {executeGitHubLabelWriteback.data.data.labels.join(", ")}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-600">
+                      mutation{" "}
+                      {executeGitHubLabelWriteback.data.data.mutationAttempted
+                        ? "attempted"
+                        : "not needed"}
                     </p>
                   </div>
                 ) : null}
@@ -2144,21 +2191,38 @@ export default function CompanyBrainPage() {
                             ) : proposal.destinationType === "github" &&
                               (proposal.actionType === "label" ||
                                 proposal.actionType === "github_label") ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={
-                                  previewGitHubLabelProposal.isPending ||
-                                  !canPreviewGitHubLabelProposal(proposal)
-                                }
-                                onClick={() =>
-                                  previewGitHubLabelProposalDryRun(proposal.id)
-                                }
-                              >
-                                <FileText className="h-4 w-4" />
-                                Preview labels
-                              </Button>
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    previewGitHubLabelProposal.isPending ||
+                                    !canPreviewGitHubLabelProposal(proposal)
+                                  }
+                                  onClick={() =>
+                                    previewGitHubLabelProposalDryRun(proposal.id)
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Preview labels
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    executeGitHubLabelWriteback.isPending ||
+                                    !canExecuteGitHubLabelWriteback(proposal)
+                                  }
+                                  onClick={() =>
+                                    executeGitHubLabelProposal(proposal.id)
+                                  }
+                                >
+                                  <GitPullRequest className="h-4 w-4" />
+                                  Apply label
+                                </Button>
+                              </>
                             ) : proposal.destinationType === "github" &&
                               (proposal.actionType === "github_status" ||
                                 proposal.actionType === "github_check") ? (

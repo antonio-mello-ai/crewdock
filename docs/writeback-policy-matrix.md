@@ -32,7 +32,7 @@ execute.
 | risk_class | Meaning | Allowed action_policy | Execution posture |
 | --- | --- | --- | --- |
 | A | Internal action, draft, private note, or non-mutating preparation. | `observe_only`, `create_artifacts`, `create_work_items`, `request_human` for internal draft. | No external writeback. May create internal artifacts, work items, drafts or proposals. |
-| B | Low-risk external response that does not change state, access, ownership, deployment or public lifecycle. | `request_human`, then `writeback_allowed` only after explicit approval. | May execute only allowlisted comment/reply adapters after HITL, preview, idempotency and retry-safety gates. |
+| B | Low-risk external response or allowlisted routing metadata that does not change access, ownership, deployment or public lifecycle. | `request_human`, then `writeback_allowed` only after explicit approval. | May execute only allowlisted comment/reply/label-add adapters after HITL, preview, idempotency and retry-safety gates. |
 | C | Destructive, state-changing, public, sensitive, access-changing or operationally irreversible action. | None in v0. | Blocked. Requires a future reinforced approval model and explicit implementation. |
 | unknown | Unclassified action. | None. | Blocked until reclassified. |
 
@@ -43,7 +43,7 @@ execute.
 | `internal` | `draft` | A | Allowed as internal proposal/draft only. | No external adapter call. |
 | `github` | `comment` / `github_comment` | B | Executable. | Issue/PR comments only; requires `GITHUB_TOKEN`/`GH_TOKEN`, approval, preview, idempotency marker and Retry Safety review. |
 | `slack` | `thread_reply` / `slack_thread_reply` | B | Executable. | Existing thread replies only; requires `SLACK_BOT_TOKEN`, approval, preview, idempotency marker and Retry Safety review. |
-| `github` | `label` / `github_label` | B or C depending label semantics | Preview-only proposal implemented. | No execution in v0. Shows target labels and risk classification before any future write. |
+| `github` | `label` / `github_label` | B only for allowlisted low-risk add; C otherwise | Executable for allowlisted add v0. | One existing repo label only; requires approval, preview, Retry Safety, allowlist and current-label read. Remove/set/create-label remain blocked. |
 | `github` | `github_status` / `github_check` | B | Preview-only proposal implemented. | No execution in v0. Shows repo, PR/SHA, context/name, proposed state/conclusion and risk rationale before any future write. |
 | `github` | `assign` / `unassign` | C | Blocked. | Changes ownership and routing. |
 | `github` | `close` / `reopen` | C | Blocked. | Changes lifecycle state. |
@@ -98,14 +98,42 @@ Slack thread reply:
 13. Existing thread is read and marker is checked before POST; marker reuse
     completes without a duplicate reply.
 
+GitHub label add:
+
+1. `destinationType=github`.
+2. `actionType=label` or `github_label`.
+3. `riskClass=B`.
+4. `actionPolicy=writeback_allowed`.
+5. `approvalStatus=approved` with actor and rationale.
+6. `executionStatus=not_started`, `dry_run` or retryable `failed`.
+7. `destinationRef` validates as issue/PR URL, `owner/repo#number` or
+   compatible repo issue ref.
+8. `payload.labels` resolves to exactly one label.
+9. `payload.mode=add`.
+10. `idempotencyKey` is present.
+11. Target and label are allowlisted by `AIOS_GITHUB_LABEL_WRITEBACK_ALLOWLIST`.
+    The v0 default is the dogfood target
+    `antonio-mello-ai/crewdock#3=enhancement`.
+12. Preview exists after approval.
+13. Retry Safety review returns `ready_to_execute`, or `retryable_failed` with
+    `retryRationale`.
+14. Before any write, current issue/PR labels are read.
+15. If the approved label is already present, execution completes as
+    `completed_noop` without calling the GitHub label write API.
+16. If the label is missing, the adapter verifies the repo label already exists
+    before adding it. It must not create new labels.
+17. Completed proposals return `already_completed` on replay and never write
+    again.
+
 ## Preview-Only Candidates
 
 Preview-only candidates may create and review `ExternalActionProposal` records,
 but must not call write APIs:
 
-- GitHub label proposal v0. Implemented as preview-only.
 - GitHub status/check conclusion proposal. Implemented as preview-only.
 - GitHub assignee proposal.
+- GitHub label proposals outside the v0 allowlist, with `mode=remove/set`, or
+  with more than one label.
 - Slack top-level announcement draft.
 
 Each preview-only candidate must include:

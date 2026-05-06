@@ -1205,12 +1205,19 @@ export interface GitHubLabelProposalPreviewResponse {
   target: GitHubCommentWritebackTarget;
   labels: string[];
   mode: GitHubLabelActionMode;
+  currentLabels?: string[];
+  missingLabels?: string[];
   idempotencyKey: string;
-  dryRun: true;
-  status: "preview_only";
-  executionBlocked: true;
+  dryRun: boolean;
+  status: "dry_run" | "preview_only" | "completed" | "already_completed" | "completed_noop" | "failed";
+  executionBlocked: boolean;
+  mutationAttempted?: boolean;
+  externalId?: string | null;
+  externalUrl?: string | null;
   policySummary: string;
 }
+
+export type GitHubLabelWritebackResponse = GitHubLabelProposalPreviewResponse;
 
 export interface GitHubStatusCheckTarget {
   repo: string;

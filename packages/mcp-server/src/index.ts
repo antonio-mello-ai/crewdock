@@ -1392,7 +1392,7 @@ server.registerTool(
   {
     title: "Execute GitHub comment writeback",
     description:
-      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed, matching payload/destination/idempotency review, and a prior preview after approval. Failed retries require retryRationale. This is the only GitHub writeback action exposed here; it does not label, assign, close, merge, deploy, or mark notifications read.",
+      "Post a GitHub issue/PR comment for an approved Risk B Company Brain proposal with action_policy=writeback_allowed, matching payload/destination/idempotency review, and a prior preview after approval. Failed retries require retryRationale. This does not label, assign, close, merge, deploy, or mark notifications read.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
@@ -1416,7 +1416,7 @@ server.registerTool(
   {
     title: "Preview GitHub label proposal",
     description:
-      "Dry-run a preview-only GitHub label ExternalActionProposal. Returns target, label mode and labels without calling GitHub write APIs. There is no label execute tool in this cut.",
+      "Dry-run a GitHub label ExternalActionProposal. Returns target, label mode, labels and execution-blocked state without calling GitHub write APIs.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
@@ -1428,6 +1428,30 @@ server.registerTool(
       {
         method: "POST",
         body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "execute_company_brain_github_label_writeback",
+  {
+    title: "Execute GitHub label writeback",
+    description:
+      "Apply one approved allowlisted GitHub label add for a Risk B Company Brain proposal with action_policy=writeback_allowed, prior preview after approval, HITL actor/rationale, idempotency and Retry Safety review. The executor reads current labels first and completes as noop when the approved label already exists. It does not remove/set/create labels, assign, close, merge, deploy, status/check, or mark notifications read.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().min(1),
+      retryRationale: z.string().optional(),
+    },
+  },
+  async ({ id, actor, retryRationale }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-label/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor, retryRationale }),
       }
     );
     return formatJsonResult(result.data);
