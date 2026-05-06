@@ -339,6 +339,12 @@ export type SignalEntityType =
   | "screen"
   | "job";
 export type SignalSeverity = "info" | "warn" | "critical";
+export type DecisionStatus =
+  | "proposed"
+  | "accepted"
+  | "superseded"
+  | "rejected"
+  | "archived";
 export type AlignmentClassification =
   | "aligned"
   | "weak"
@@ -588,6 +594,41 @@ export interface CreateWorkItemRequest {
   labels?: string[];
   sourceId?: string | null;
   artifactId?: string | null;
+  visibility?: Visibility;
+  provenance?: Provenance | null;
+}
+
+export interface Decision {
+  id: string;
+  title: string;
+  summary: string | null;
+  rationale: string | null;
+  area: CompanyBrainArea;
+  owner: string | null;
+  ownerType: OwnerType;
+  status: DecisionStatus;
+  decidedAt: number | null;
+  sourceArtifactIds: string[];
+  priorityIds: string[];
+  goalIds: string[];
+  visibility: Visibility;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateDecisionRequest {
+  title: string;
+  summary?: string | null;
+  rationale?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  status?: DecisionStatus;
+  decidedAt?: number | null;
+  sourceArtifactIds?: string[];
+  priorityIds?: string[];
+  goalIds?: string[];
   visibility?: Visibility;
   provenance?: Provenance | null;
 }
@@ -954,6 +995,7 @@ export interface CompanyBrainSummary {
   priorities: StrategicPriority[];
   goals: Goal[];
   milestones: Milestone[];
+  decisions: Decision[];
   workItems: WorkItem[];
   workflowBlueprints: WorkflowBlueprint[];
   workflowRuns: WorkflowRun[];
@@ -969,6 +1011,8 @@ export interface CompanyBrainSummary {
     artifactCount: number;
     priorityCount: number;
     goalCount: number;
+    decisionCount: number;
+    activeDecisionCount: number;
     workItemCount: number;
     unlinkedWorkItemCount: number;
     activeWorkflowRunCount: number;

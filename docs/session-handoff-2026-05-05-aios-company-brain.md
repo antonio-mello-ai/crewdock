@@ -132,9 +132,9 @@ Ainda nao existem:
 
 Parciais que precisam evoluir:
 
-- Strategy layer ainda nao tem tradeoffs/decisions.
+- Strategy layer ainda nao tem tradeoffs completos; `Decision v0` ja existe.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/signals/alignment findings/guidance/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
+- MCP cobre sources/artifacts/decisions/signals/alignment findings/guidance/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
 
 ## Slice Watcher / Operating Loop Layer
 
@@ -220,7 +220,7 @@ Dogfood local Closed Loop v0 validado em DB temporario `/tmp/aios-runtime-loop-d
 Proximos cortes recomendados:
 
 - Melhorar Drift/Alignment alem da heuristica v0, incluindo `drift` e `contradiction` a partir de regras de strategy/decision.
-- Adicionar `Decision`, `AgentContext` e `ImprovementProposal`.
+- Adicionar `AgentContext` e `ImprovementProposal`.
 - Depois disso, avaliar adapters/read-only reais e writeback gated, sem auto-writeback por default.
 
 ## Slice Guidance Feedback v0
@@ -247,7 +247,42 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- `Decision v0`.
+- `AgentContext v0`.
+- `ImprovementProposal v0`.
+- Importer local docs/corp.
+- GitHub Issues sync adapter real sem writeback automatico agressivo.
+- Adoption Dashboard.
+
+## Slice Decision v0
+
+Objetivo: adicionar `Decision` como objeto horizontal do Company Brain, registrando escolhas com racional e fonte rastreavel.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipo `Decision` e `CreateDecisionRequest` em `packages/shared/src/types.ts`.
+2. Tabela `cb_decisions` com `title`, `summary`, `rationale`, `area`, `owner`, `owner_type`, `status`, `decided_at`, `source_artifact_ids`, `priority_ids`, `goal_ids`, `visibility`, `provenance`, timestamps e indices.
+3. Rotas `GET/POST /api/company-brain/decisions`.
+4. `summary` inclui `decisions`, `decisionCount` e `activeDecisionCount`.
+5. Criacao de decision valida source artifacts/priorities/goals e cria `ArtifactLink` `source_for_decision`.
+6. UI `/company-brain` tem formulario de Decision, metrica de Decisions, contagem no Strategy Map e painel Decisions.
+7. MCP tool `create_company_brain_decision`.
+8. Nenhum writeback externo automatico.
+
+Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-dogfood.sqlite`, daemon em `127.0.0.1:43105`:
+
+- Source `AIOS runtime handoff docs`: `_ATp_xmuln_2`.
+- Artifact `Guidance feedback handoff evidence`: `NyJiC8HImHt3`.
+- Priority `AIOS operating safety and provenance`: `nDDpdVozNcuR`.
+- Goal `Decision v0 captures rationale and source links`: `2VGkNywbqsei`.
+- Decision `External writeback requires accepted guidance feedback`: `mLics6GXc_ZT`, `status=accepted`.
+- Decision linkou `sourceArtifactIds=[NyJiC8HImHt3]`, `priorityIds=[nDDpdVozNcuR]`, `goalIds=[2VGkNywbqsei]`.
+- ArtifactLink criado: `targetType=decision`, `relationship=source_for_decision`.
+- Summary retornou `decisionCount=1`, `activeDecisionCount=1`.
+
+Proximos cortes recomendados:
+
 - `AgentContext v0`.
 - `ImprovementProposal v0`.
 - Importer local docs/corp.
@@ -323,12 +358,12 @@ Objetos fora do Slice 1 original / pendencias posteriores:
 
 - `Metric`
 - `Cadence`
-- `Decision`
+- `Decision` (implementado no Decision v0; extractors reais ficam pendentes)
 - `Signal` (implementado no Closed Loop v0; hardening e extractors reais ficam pendentes)
 - `AlignmentFinding` (implementado no Closed Loop v0; drift/contradiction mais ricos ficam pendentes)
-- `GuidanceItem` (implementado no Closed Loop v0; feedback/update workflow fica pendente)
+- `GuidanceItem` (implementado no Closed Loop v0; feedback/update implementado no Guidance Feedback v0)
 
-Se o diff crescer, deixar `Decision/Signal/Alignment/Guidance` para Slice 2.
+Se o diff crescer, deixar extractors/importers reais para cortes posteriores.
 
 ### Aceite do Slice 1
 

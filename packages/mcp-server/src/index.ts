@@ -275,7 +275,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: sources, artifacts, signals, alignment findings, guidance, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: sources, artifacts, decisions, signals, alignment findings, guidance, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -393,6 +393,57 @@ server.registerTool(
           author,
           visibility,
           humanReviewStatus: "approved",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_decision",
+  {
+    title: "Register Company Brain decision",
+    description:
+      "Register a decision with rationale, owner, source artifacts, priorities, status, visibility and provenance.",
+    inputSchema: {
+      title: z.string().min(1),
+      summary: z.string().optional(),
+      rationale: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("strategy"),
+      owner: z.string().optional(),
+      status: z
+        .enum(["proposed", "accepted", "superseded", "rejected", "archived"])
+        .default("proposed"),
+      sourceArtifactIds: z.array(z.string()).default([]),
+      priorityIds: z.array(z.string()).default([]),
+      goalIds: z.array(z.string()).default([]),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/decisions",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          ownerType: input.owner ? "human" : "unknown",
+          decidedAt: Date.now(),
+          visibility: "internal",
         }),
       }
     );

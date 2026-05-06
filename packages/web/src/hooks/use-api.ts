@@ -25,6 +25,7 @@ import type {
   CompanyBrainSummary,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
+  CreateDecisionRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateSignalRequest,
@@ -38,6 +39,7 @@ import type {
   UpdateGuidanceItemRequest,
   AlignmentFinding,
   Artifact,
+  Decision,
   Goal,
   GuidanceItem,
   Signal,
@@ -471,6 +473,18 @@ export function useCreateCompanyBrainGoal() {
   return useMutation<ApiResponse<Goal>, Error, CreateGoalRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/goals", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCreateCompanyBrainDecision() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<Decision>, Error, CreateDecisionRequest>({
+    mutationFn: (body) =>
+      api("/api/company-brain/decisions", {
         method: "POST",
         body: JSON.stringify(body),
       }),

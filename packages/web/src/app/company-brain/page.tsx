@@ -17,6 +17,7 @@ import {
 import {
   useCompanyBrainSummary,
   useCreateCompanyBrainArtifact,
+  useCreateCompanyBrainDecision,
   useCreateCompanyBrainGoal,
   useCreateCompanyBrainPriority,
   useCreateCompanyBrainSource,
@@ -33,6 +34,7 @@ import { Select } from "@/components/ui/select";
 import { formatTimeAgo } from "@/lib/utils";
 import type {
   CompanyBrainArea,
+  DecisionStatus,
   GoalStatus,
   RiskClass,
   SlaStatus,
@@ -70,6 +72,14 @@ const goalStatuses: GoalStatus[] = [
   "at_risk",
   "blocked",
   "done",
+];
+
+const decisionStatuses: DecisionStatus[] = [
+  "proposed",
+  "accepted",
+  "superseded",
+  "rejected",
+  "archived",
 ];
 
 const workStatuses: WorkItemStatus[] = [
@@ -140,6 +150,7 @@ export default function CompanyBrainPage() {
   const createArtifact = useCreateCompanyBrainArtifact();
   const createPriority = useCreateCompanyBrainPriority();
   const createGoal = useCreateCompanyBrainGoal();
+  const createDecision = useCreateCompanyBrainDecision();
   const createWorkItem = useCreateCompanyBrainWorkItem();
   const createWorkflowRun = useCreateCompanyBrainWorkflowRun();
   const createWatcher = useCreateCompanyBrainWatcher();
@@ -151,6 +162,7 @@ export default function CompanyBrainPage() {
   const artifacts = summary?.artifacts ?? [];
   const priorities = summary?.priorities ?? [];
   const goals = summary?.goals ?? [];
+  const decisions = summary?.decisions ?? [];
   const workItems = summary?.workItems ?? [];
   const blueprints = summary?.workflowBlueprints ?? [];
   const runs = summary?.workflowRuns ?? [];
@@ -216,6 +228,20 @@ export default function CompanyBrainPage() {
     title: "ERP REF issue evidence",
     rawRef: "",
     summary: "External GitHub issue registered as execution evidence.",
+  });
+
+  const [decisionForm, setDecisionForm] = useState({
+    title: "Closed loop guidance requires human feedback before writeback",
+    summary:
+      "Guidance can be accepted, completed or ignored inside AIOS before any external writeback.",
+    rationale:
+      "The Company Brain should capture intent and feedback internally before adapters mutate external systems.",
+    area: "platform" as CompanyBrainArea,
+    owner: "Antonio",
+    status: "accepted" as DecisionStatus,
+    sourceArtifactId: "",
+    priorityId: "",
+    goalId: "",
   });
 
   const [workItemForm, setWorkItemForm] = useState({
@@ -297,6 +323,26 @@ export default function CompanyBrainPage() {
       artifactType: "github_issue",
       area: "development",
       humanReviewStatus: "approved",
+      visibility: "internal",
+    });
+  };
+
+  const handleCreateDecision = (event: FormEvent) => {
+    event.preventDefault();
+    createDecision.mutate({
+      title: decisionForm.title,
+      summary: decisionForm.summary || null,
+      rationale: decisionForm.rationale || null,
+      area: decisionForm.area,
+      owner: decisionForm.owner || null,
+      ownerType: decisionForm.owner ? "human" : "unknown",
+      status: decisionForm.status,
+      decidedAt: Date.now(),
+      sourceArtifactIds: decisionForm.sourceArtifactId
+        ? [decisionForm.sourceArtifactId]
+        : [],
+      priorityIds: decisionForm.priorityId ? [decisionForm.priorityId] : [],
+      goalIds: decisionForm.goalId ? [decisionForm.goalId] : [],
       visibility: "internal",
     });
   };
@@ -401,9 +447,14 @@ export default function CompanyBrainPage() {
             Strategy, goals, evidence, work items, workflow runs and gates.
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-7">
           <Metric icon={Database} label="Sources" value={summary?.stats.sourceCount ?? 0} />
           <Metric icon={Target} label="Goals" value={summary?.stats.goalCount ?? 0} />
+          <Metric
+            icon={CheckCircle2}
+            label="Decisions"
+            value={summary?.stats.decisionCount ?? 0}
+          />
           <Metric
             icon={AlertTriangle}
             label="Unlinked"
@@ -884,7 +935,7 @@ export default function CompanyBrainPage() {
             </KernelForm>
           </section>
 
-          <section className="grid gap-4 lg:grid-cols-3">
+          <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
             <KernelForm title="Evidence" icon={FileText} onSubmit={handleCreateArtifact}>
               <FieldLabel>Source</FieldLabel>
               <Select
@@ -926,6 +977,120 @@ export default function CompanyBrainPage() {
                 pending={createArtifact.isPending}
                 disabled={!artifactForm.sourceId}
               />
+            </KernelForm>
+
+            <KernelForm title="Decision" icon={CheckCircle2} onSubmit={handleCreateDecision}>
+              <FieldLabel>Title</FieldLabel>
+              <Input
+                value={decisionForm.title}
+                onChange={(event) =>
+                  setDecisionForm({ ...decisionForm, title: event.target.value })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Area</FieldLabel>
+                  <Select
+                    value={decisionForm.area}
+                    onChange={(event) =>
+                      setDecisionForm({
+                        ...decisionForm,
+                        area: event.target.value as CompanyBrainArea,
+                      })
+                    }
+                  >
+                    {areas.map((area) => (
+                      <option key={area} value={area}>
+                        {area}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Status</FieldLabel>
+                  <Select
+                    value={decisionForm.status}
+                    onChange={(event) =>
+                      setDecisionForm({
+                        ...decisionForm,
+                        status: event.target.value as DecisionStatus,
+                      })
+                    }
+                  >
+                    {decisionStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <FieldLabel>Source artifact</FieldLabel>
+              <Select
+                value={decisionForm.sourceArtifactId}
+                onChange={(event) =>
+                  setDecisionForm({
+                    ...decisionForm,
+                    sourceArtifactId: event.target.value,
+                  })
+                }
+              >
+                <option value="">no artifact source</option>
+                {artifacts.map((artifact) => (
+                  <option key={artifact.id} value={artifact.id}>
+                    {artifact.title}
+                  </option>
+                ))}
+              </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>Priority</FieldLabel>
+                  <Select
+                    value={decisionForm.priorityId}
+                    onChange={(event) =>
+                      setDecisionForm({
+                        ...decisionForm,
+                        priorityId: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="">no priority</option>
+                    {priorities.map((priority) => (
+                      <option key={priority.id} value={priority.id}>
+                        {priority.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Goal</FieldLabel>
+                  <Select
+                    value={decisionForm.goalId}
+                    onChange={(event) =>
+                      setDecisionForm({ ...decisionForm, goalId: event.target.value })
+                    }
+                  >
+                    <option value="">no goal</option>
+                    {goals.map((goal) => (
+                      <option key={goal.id} value={goal.id}>
+                        {goal.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <FieldLabel>Rationale</FieldLabel>
+              <textarea
+                value={decisionForm.rationale}
+                onChange={(event) =>
+                  setDecisionForm({
+                    ...decisionForm,
+                    rationale: event.target.value,
+                  })
+                }
+                className="min-h-20 rounded-md border border-neutral-800 bg-transparent px-3 py-2 text-sm text-neutral-200 outline-none focus:border-neutral-600"
+              />
+              <SubmitButton pending={createDecision.isPending} />
             </KernelForm>
 
             <KernelForm title="Work item" icon={GitPullRequest} onSubmit={handleCreateWorkItem}>
@@ -1281,6 +1446,9 @@ export default function CompanyBrainPage() {
                     const priorityWork = workItems.filter(
                       (item) => item.priorityId === priority.id
                     );
+                    const priorityDecisions = decisions.filter((decision) =>
+                      decision.priorityIds.includes(priority.id)
+                    );
                     return (
                       <div key={priority.id} className="px-5 py-4">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -1306,7 +1474,9 @@ export default function CompanyBrainPage() {
                             {priorityGoals.length} goal
                             {priorityGoals.length === 1 ? "" : "s"} ·{" "}
                             {priorityWork.length} work item
-                            {priorityWork.length === 1 ? "" : "s"}
+                            {priorityWork.length === 1 ? "" : "s"} ·{" "}
+                            {priorityDecisions.length} decision
+                            {priorityDecisions.length === 1 ? "" : "s"}
                           </p>
                         </div>
                         <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -1366,6 +1536,45 @@ export default function CompanyBrainPage() {
                   ))
                 )}
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+            <div className="border-b border-neutral-800/50 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-neutral-500" />
+                <h2 className="text-sm font-semibold text-neutral-200">
+                  Decisions
+                </h2>
+              </div>
+            </div>
+            <div className="divide-y divide-neutral-800/40">
+              {decisions.length === 0 ? (
+                <EmptyState label="No decisions registered" />
+              ) : (
+                decisions.slice(0, 8).map((decision) => (
+                  <div key={decision.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-neutral-200">
+                          {decision.title}
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-600">
+                          {decision.owner ?? "no owner"} · {decision.area} ·{" "}
+                          {decision.priorityIds.length} priorities ·{" "}
+                          {decision.sourceArtifactIds.length} artifacts
+                        </p>
+                        {decision.rationale && (
+                          <p className="mt-2 line-clamp-2 text-sm text-neutral-500">
+                            {decision.rationale}
+                          </p>
+                        )}
+                      </div>
+                      <StatusBadge value={decision.status} />
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </section>
 

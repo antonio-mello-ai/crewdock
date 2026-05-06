@@ -6,6 +6,7 @@ import type {
   AlignmentClassification,
   CreateArtifactRequest,
   CreateAlignmentFindingRequest,
+  CreateDecisionRequest,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateMilestoneRequest,
@@ -27,6 +28,7 @@ import {
   cbAlignmentFindings,
   cbArtifactLinks,
   cbArtifacts,
+  cbDecisions,
   cbGoals,
   cbGuidanceItems,
   cbMilestones,
@@ -131,6 +133,12 @@ function listAll() {
     .from(cbMilestones)
     .orderBy(desc(cbMilestones.updatedAt))
     .all();
+  const decisions = db
+    .select()
+    .from(cbDecisions)
+    .orderBy(desc(cbDecisions.updatedAt))
+    .limit(100)
+    .all();
   const workItems = db
     .select()
     .from(cbWorkItems)
@@ -192,6 +200,7 @@ function listAll() {
     priorities,
     goals,
     milestones,
+    decisions,
     workItems,
     workflowBlueprints,
     workflowRuns,
@@ -240,6 +249,10 @@ app.get("/summary", (c) => {
         artifactCount: data.artifacts.length,
         priorityCount: data.priorities.length,
         goalCount: data.goals.length,
+        decisionCount: data.decisions.length,
+        activeDecisionCount: data.decisions.filter((decision) =>
+          ["proposed", "accepted"].includes(decision.status)
+        ).length,
         workItemCount: data.workItems.length,
         unlinkedWorkItemCount,
         activeWorkflowRunCount,
@@ -457,6 +470,92 @@ app.post("/milestones", async (c) => {
       updatedAt: timestamp,
     };
     getDb().insert(cbMilestones).values(row).run();
+    return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.get("/decisions", (c) => {
+  const data = getDb()
+    .select()
+    .from(cbDecisions)
+    .orderBy(desc(cbDecisions.updatedAt))
+    .limit(100)
+    .all();
+  return c.json({ data, total: data.length });
+});
+
+app.post("/decisions", async (c) => {
+  try {
+    const body = await c.req.json<CreateDecisionRequest>();
+    const db = getDb();
+    const timestamp = now();
+    const sourceArtifactIds = body.sourceArtifactIds ?? [];
+    for (const artifactId of sourceArtifactIds) {
+      const artifact = db
+        .select()
+        .from(cbArtifacts)
+        .where(eq(cbArtifacts.id, artifactId))
+        .get();
+      if (!artifact) throw new Error(`sourceArtifactIds contains unknown artifact ${artifactId}`);
+    }
+    const priorityIds = body.priorityIds ?? [];
+    for (const priorityId of priorityIds) {
+      const priority = db
+        .select()
+        .from(cbStrategicPriorities)
+        .where(eq(cbStrategicPriorities.id, priorityId))
+        .get();
+      if (!priority) throw new Error(`priorityIds contains unknown priority ${priorityId}`);
+    }
+    const goalIds = body.goalIds ?? [];
+    for (const goalId of goalIds) {
+      const goal = db.select().from(cbGoals).where(eq(cbGoals.id, goalId)).get();
+      if (!goal) throw new Error(`goalIds contains unknown goal ${goalId}`);
+    }
+    const row = {
+      id: nanoid(12),
+      title: requireText(body.title, "title"),
+      summary: body.summary ?? null,
+      rationale: body.rationale ?? null,
+      area: body.area ?? "strategy",
+      owner: body.owner ?? null,
+      ownerType: body.ownerType ?? "unknown",
+      status: body.status ?? "proposed",
+      decidedAt: body.decidedAt ?? null,
+      sourceArtifactIds,
+      priorityIds,
+      goalIds,
+      visibility: body.visibility ?? "internal",
+      provenance: body.provenance ?? {
+        rawRef: sourceArtifactIds[0] ?? priorityIds[0] ?? undefined,
+        artifactId: sourceArtifactIds[0],
+        createdFrom: "api:decision",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "approved",
+        visibility: body.visibility ?? "internal",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbDecisions).values(row).run();
+    for (const artifactId of sourceArtifactIds) {
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId,
+          targetType: "decision",
+          targetId: row.id,
+          relationship: "source_for_decision",
+          confidence: 1,
+          rationale: "Decision created with this artifact as source evidence.",
+          createdAt: timestamp,
+        })
+        .run();
+    }
     return c.json({ data: row }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

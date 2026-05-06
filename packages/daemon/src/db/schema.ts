@@ -3,6 +3,7 @@ import type {
   CompanyBrainArea,
   ActionPolicy,
   AlignmentClassification,
+  DecisionStatus,
   GateStatus,
   GoalStatus,
   GuidanceAudience,
@@ -253,6 +254,28 @@ export const cbWorkItems = sqliteTable("cb_work_items", {
   labels: text("labels", { mode: "json" }).$type<string[]>().notNull().default([]),
   sourceId: text("source_id"),
   artifactId: text("artifact_id"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbDecisions = sqliteTable("cb_decisions", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  summary: text("summary"),
+  rationale: text("rationale"),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("strategy"),
+  owner: text("owner"),
+  ownerType: text("owner_type").$type<OwnerType>().notNull().default("unknown"),
+  status: text("status").$type<DecisionStatus>().notNull().default("proposed"),
+  decidedAt: integer("decided_at", { mode: "number" }),
+  sourceArtifactIds: text("source_artifact_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  priorityIds: text("priority_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
+  goalIds: text("goal_ids", { mode: "json" }).$type<string[]>().notNull().default([]),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),

@@ -229,6 +229,25 @@ CREATE TABLE IF NOT EXISTS cb_work_items (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cb_decisions (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  summary TEXT,
+  rationale TEXT,
+  area TEXT NOT NULL DEFAULT 'strategy',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'unknown',
+  status TEXT NOT NULL DEFAULT 'proposed',
+  decided_at INTEGER,
+  source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+  priority_ids TEXT NOT NULL DEFAULT '[]',
+  goal_ids TEXT NOT NULL DEFAULT '[]',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS cb_signals (
   id TEXT PRIMARY KEY,
   source TEXT NOT NULL,
@@ -427,6 +446,8 @@ CREATE INDEX IF NOT EXISTS idx_cb_milestones_goal_id ON cb_milestones(goal_id);
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_status ON cb_work_items(status);
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_external ON cb_work_items(external_provider, external_id);
 CREATE INDEX IF NOT EXISTS idx_cb_work_items_links ON cb_work_items(priority_id, goal_id);
+CREATE INDEX IF NOT EXISTS idx_cb_decisions_status ON cb_decisions(status);
+CREATE INDEX IF NOT EXISTS idx_cb_decisions_area ON cb_decisions(area);
 CREATE INDEX IF NOT EXISTS idx_cb_signals_artifact_id ON cb_signals(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_cb_signals_watcher_run_id ON cb_signals(watcher_run_id);
 CREATE INDEX IF NOT EXISTS idx_cb_signals_severity ON cb_signals(severity);
