@@ -93,7 +93,9 @@ Status Operating Loop Metrics v0 em 2026-05-06: Safety Dashboard agora mede o lo
 
 Status AIOS Briefing Writeback Safety v0 em 2026-05-06: briefing interno agora inclui secao `writeback_safety` com approvals pendentes, falhas, execucoes externas recentes, duplicacoes evitadas, bloqueios de safety/policy, stale approvals/previews e proximos passos de auditoria. Artifact de briefing guarda stats/metrics de writeback em metadata. Sem chamadas externas.
 
-Proximo corte planejado: Adoption Dashboard refletir maturidade de writeback por source/projeto, usando sinais read-only de proposals, audit trail, safety blocks, completed/noop e metrics.
+Status Adoption Dashboard Writeback Maturity v0 em 2026-05-06: Adoption Dashboard agora reflete maturidade de writeback por source/projeto, com stage `none/proposal_created/pending_review/preview_ready/executed_or_noop/blocked_or_failed`, contadores de proposals, completed/noop, blocked/failed, duplicate prevention, mutation attempts, stale review, ultimo audit e gap `writeback_needs_review`. Exposto em summary/API/UI/MCP sem novas mutacoes.
+
+Proximo corte planejado: Writeback Audit UI Filters/Export v0 para expor na UI os filtros e CSV ja existentes na API/MCP de audit trail.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -128,6 +130,7 @@ Proximo corte planejado: Adoption Dashboard refletir maturidade de writeback por
 - [x] **Writeback Evidence Packet v0** — gerar pacote auditavel por proposal com guidance, approval, preview, execution, retry safety, refs externas, hashes e timeline
 - [x] **Operating Loop Metrics v0** — medir tempo guidance/proposal/approval/preview/execution, taxas de outcomes, duplicacoes evitadas e stale approval/preview em summary/API/UI/MCP
 - [x] **AIOS Briefing Writeback Safety v0** — incluir writeback safety no briefing com pendencias, falhas, execucoes recentes, bloqueios, stale review e metadata auditavel
+- [x] **Adoption Dashboard Writeback Maturity v0** — refletir maturidade de writeback por source/projeto com stage, contadores, ultimo audit e gap de safety review
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

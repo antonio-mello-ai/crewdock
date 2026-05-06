@@ -1445,7 +1445,39 @@ Dogfood read-only validado:
 - DB `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43144`: run do `watcher-aios-briefing-v0` gerou artifact `qDkhTUBAlCNK`; secao `writeback_safety` mostrou `1 completed external writes`, `1 duplicates prevented`, `0 mutation attempts` e evento recente `github_label_completed_noop`; metadata trouxe `writebackSafetyStats` e `writebackOperatingLoopMetrics`.
 - DB `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon `127.0.0.1:43145`: run do `watcher-aios-briefing-v0` gerou artifact `Vt8B8QIkSdco`; secao `writeback_safety` mostrou `4 blocked by safety`, `0 mutation attempts` e bloqueios `github_status_check_preview_only`, `github_label_target_not_allowlisted`, `github_label_single_label_required` e `github_label_mode_not_supported`; next step manteve os itens fora de execucao.
 
-Proximo corte recomendado: Adoption Dashboard refletir maturidade de writeback por source/projeto, usando proposals, audit trail, safety blocks, completed/noop e metrics em modo read-only.
+## Slice Adoption Dashboard Writeback Maturity v0
+
+Objetivo: refletir maturidade de writeback por source/projeto no Adoption Dashboard, sem executar nenhuma acao externa.
+
+Implementado em 2026-05-06:
+
+1. `AdoptionProjectStatus.writebackMaturity`.
+2. `WritebackMaturityStage`: `none`, `proposal_created`, `pending_review`, `preview_ready`, `executed_or_noop`, `blocked_or_failed`.
+3. Metricas por projeto:
+   - proposals;
+   - pending/approved;
+   - completed/noop;
+   - failed/blocked;
+   - duplicates prevented;
+   - mutation attempts;
+   - stale approvals/previews;
+   - latest audit timestamp;
+   - latest external URL.
+4. Novo gap `writeback_needs_review` quando o projeto tem blocked/failed/stale writeback safety.
+5. Stats globais no Adoption Dashboard:
+   - `writebackProjectCount`;
+   - `writebackCompletedProjectCount`;
+   - `writebackNeedsReviewProjectCount`;
+   - `duplicatePreventedWritebackCount`.
+6. UI `/company-brain` mostra stage de writeback, contadores `writeback`, `wb done`, `wb review` e ultimo external URL por projeto.
+7. Nenhuma rota de execute nova e nenhuma chamada externa.
+
+Dogfood read-only validado:
+
+- DB `/tmp/aios-runtime-github-label-executor-dogfood.sqlite`, daemon `127.0.0.1:43146`: Adoption Dashboard retornou `writebackProjectCount=1`, `writebackCompletedProjectCount=1`, `duplicatePreventedWritebackCount=1`; projeto `Felhen Demo v0.1` com stage `executed_or_noop`, `proposalCount=1`, `completedNoopCount=1`, `mutationAttemptedCount=0`, latest URL `https://github.com/antonio-mello-ai/crewdock/issues/3`.
+- DB `/tmp/aios-runtime-writeback-negative-review-dogfood.sqlite`, daemon `127.0.0.1:43147`: Adoption Dashboard retornou `writebackProjectCount=1`, `writebackNeedsReviewProjectCount=1`; projeto `Felhen Demo v0.1` com stage `blocked_or_failed`, `proposalCount=4`, `blockedCount=4`, `mutationAttemptedCount=0`, gap `writeback_needs_review`.
+
+Proximo corte recomendado: Writeback Audit UI Filters/Export v0 para expor na UI os filtros e CSV ja existentes na API/MCP de audit trail.
 
 ## Dogfood ERP
 
@@ -1565,7 +1597,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0 e AIOS Briefing Writeback Safety v0. O proximo corte recomendado e Adoption Dashboard refletir maturidade de writeback por source/projeto. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0 e Adoption Dashboard Writeback Maturity v0. O proximo corte recomendado e Writeback Audit UI Filters/Export v0. Pare antes de novo executor real ate existir alvo controlado e aprovacao explicita.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

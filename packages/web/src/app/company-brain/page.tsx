@@ -1302,6 +1302,9 @@ export default function CompanyBrainPage() {
                               </p>
                               <StatusBadge value={project.stage} />
                               <StatusBadge value={project.healthStatus} />
+                              {project.writebackMaturity.stage !== "none" ? (
+                                <StatusBadge value={project.writebackMaturity.stage} />
+                              ) : null}
                             </div>
                             <p className="mt-1 text-xs text-neutral-600">
                               {project.area} · {project.sourceType} ·{" "}
@@ -1311,7 +1314,7 @@ export default function CompanyBrainPage() {
                                 : "no activity"}
                             </p>
                           </div>
-                          <div className="grid grid-cols-3 gap-2 text-left xl:w-72">
+                          <div className="grid grid-cols-3 gap-2 text-left xl:w-[28rem]">
                             <MiniMetric
                               label="evidence"
                               value={project.metrics.artifactCount}
@@ -1324,8 +1327,39 @@ export default function CompanyBrainPage() {
                               label="signals"
                               value={project.metrics.signalCount}
                             />
+                            <MiniMetric
+                              label="writeback"
+                              value={project.writebackMaturity.proposalCount}
+                            />
+                            <MiniMetric
+                              label="wb done"
+                              value={
+                                project.writebackMaturity.completedCount +
+                                project.writebackMaturity.completedNoopCount
+                              }
+                            />
+                            <MiniMetric
+                              label="wb review"
+                              value={
+                                project.writebackMaturity.pendingApprovalCount +
+                                project.writebackMaturity.blockedCount +
+                                project.writebackMaturity.failedCount +
+                                project.writebackMaturity.staleApprovalCount +
+                                project.writebackMaturity.stalePreviewCount
+                              }
+                            />
                           </div>
                         </div>
+                        {project.writebackMaturity.latestExternalUrl ? (
+                          <a
+                            href={project.writebackMaturity.latestExternalUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 block truncate text-xs text-neutral-500 underline-offset-4 hover:underline"
+                          >
+                            {project.writebackMaturity.latestExternalUrl}
+                          </a>
+                        ) : null}
                         {project.gapKinds.length ? (
                           <div className="mt-3 flex flex-wrap gap-1.5">
                             {project.gapKinds.map((gap) => (

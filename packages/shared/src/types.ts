@@ -1613,7 +1613,16 @@ export type AdoptionGapKind =
   | "sla_risk"
   | "missing_workflow"
   | "missing_signal"
-  | "open_guidance";
+  | "open_guidance"
+  | "writeback_needs_review";
+
+export type WritebackMaturityStage =
+  | "none"
+  | "proposal_created"
+  | "pending_review"
+  | "preview_ready"
+  | "executed_or_noop"
+  | "blocked_or_failed";
 
 export interface AdoptionGap {
   id: string;
@@ -1649,6 +1658,22 @@ export interface AdoptionProjectStatus {
     gateBlockedCount: number;
     slaAtRiskCount: number;
   };
+  writebackMaturity: {
+    stage: WritebackMaturityStage;
+    proposalCount: number;
+    pendingApprovalCount: number;
+    approvedCount: number;
+    completedCount: number;
+    completedNoopCount: number;
+    failedCount: number;
+    blockedCount: number;
+    duplicatePreventedCount: number;
+    mutationAttemptedCount: number;
+    staleApprovalCount: number;
+    stalePreviewCount: number;
+    latestAuditAt: number | null;
+    latestExternalUrl: string | null;
+  };
   gapKinds: AdoptionGapKind[];
 }
 
@@ -1665,6 +1690,10 @@ export interface CompanyBrainAdoptionDashboard {
     pendingGateCount: number;
     slaRiskCount: number;
     openGuidanceCount: number;
+    writebackProjectCount: number;
+    writebackCompletedProjectCount: number;
+    writebackNeedsReviewProjectCount: number;
+    duplicatePreventedWritebackCount: number;
   };
 }
 

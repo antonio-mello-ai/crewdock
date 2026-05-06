@@ -1898,6 +1898,91 @@ function buildAdoptionDashboard(
   const staleAfterMs = 7 * 24 * 60 * 60 * 1000;
   const gaps: AdoptionGap[] = [];
   const workItemById = new Map(data.workItems.map((item) => [item.id, item]));
+  const writebackReviews = new Map(
+    data.externalActionProposals.map((proposal) => [
+      proposal.id,
+      buildWritebackExecutionReview(proposal, generatedAt),
+    ])
+  );
+  const writebackMaturityFor = (
+    writebackProposals: ExternalActionProposal[]
+  ): AdoptionProject["writebackMaturity"] => {
+    const reviews = writebackProposals.map(
+      (proposal) =>
+        writebackReviews.get(proposal.id) ??
+        buildWritebackExecutionReview(proposal, generatedAt)
+    );
+    const latestAuditAt = latestTimestamp(
+      writebackProposals.map((proposal) => latestExternalActionAudit(proposal)?.at)
+    );
+    const sortedByAudit = [...writebackProposals].sort(
+      (a, b) =>
+        (latestExternalActionAudit(b)?.at ?? b.updatedAt) -
+        (latestExternalActionAudit(a)?.at ?? a.updatedAt)
+    );
+    const pendingApprovalCount = writebackProposals.filter(
+      (proposal) => proposal.approvalStatus === "pending"
+    ).length;
+    const approvedCount = writebackProposals.filter(
+      (proposal) => proposal.approvalStatus === "approved"
+    ).length;
+    const completedCount = writebackProposals.filter(isCompletedExternalWriteback).length;
+    const completedNoopCount = writebackProposals.filter(hasCompletedNoopAudit).length;
+    const failedCount = writebackProposals.filter(
+      (proposal) => proposal.executionStatus === "failed"
+    ).length;
+    const blockedCount = reviews.filter((review) => review.status === "blocked").length;
+    const duplicatePreventedCount = writebackProposals.filter(
+      hasDuplicateAvoidanceAudit
+    ).length;
+    const mutationAttemptedCount = writebackProposals.filter(
+      hasExternalMutationAttemptAudit
+    ).length;
+    const staleApprovalCount = writebackProposals.filter((proposal) => {
+      const review = writebackReviews.get(proposal.id);
+      return (
+        proposal.approvalStatus === "approved" &&
+        proposal.approvedAt !== null &&
+        review?.previewAt === null &&
+        generatedAt - proposal.approvedAt > WRITEBACK_PREVIEW_STALE_MS
+      );
+    }).length;
+    const stalePreviewCount = reviews.filter((review) =>
+      review.flags.includes("stale_preview")
+    ).length;
+    const needsReview =
+      pendingApprovalCount +
+      failedCount +
+      blockedCount +
+      staleApprovalCount +
+      stalePreviewCount;
+    let stage: AdoptionProject["writebackMaturity"]["stage"] = "none";
+    if (writebackProposals.length) stage = "proposal_created";
+    if (pendingApprovalCount) stage = "pending_review";
+    if (approvedCount && !pendingApprovalCount) stage = "preview_ready";
+    if (completedCount || completedNoopCount || duplicatePreventedCount) {
+      stage = "executed_or_noop";
+    }
+    if (needsReview) stage = "blocked_or_failed";
+
+    return {
+      stage,
+      proposalCount: writebackProposals.length,
+      pendingApprovalCount,
+      approvedCount,
+      completedCount,
+      completedNoopCount,
+      failedCount,
+      blockedCount,
+      duplicatePreventedCount,
+      mutationAttemptedCount,
+      staleApprovalCount,
+      stalePreviewCount,
+      latestAuditAt,
+      latestExternalUrl:
+        sortedByAudit.find((proposal) => proposal.externalUrl)?.externalUrl ?? null,
+    };
+  };
 
   const addGap = (gap: AdoptionGap) => {
     if (!gaps.some((item) => item.id === gap.id)) gaps.push(gap);
@@ -1948,6 +2033,15 @@ function buildAdoptionDashboard(
         proposal.alignmentFindingIds.some((id) => findingIds.has(id)) ||
         proposal.guidanceItemIds.some((id) => guidanceIds.has(id))
     );
+    const writebackProposals = data.externalActionProposals.filter(
+      (proposal) =>
+        guidanceIds.has(proposal.guidanceItemId) ||
+        (proposal.signalId ? signalIds.has(proposal.signalId) : false) ||
+        (proposal.findingId ? findingIds.has(proposal.findingId) : false) ||
+        (proposal.workItemId ? workItemIds.has(proposal.workItemId) : false) ||
+        (proposal.workflowRunId ? workflowRunIds.has(proposal.workflowRunId) : false)
+    );
+    const writebackMaturity = writebackMaturityFor(writebackProposals);
     const openGuidance = guidance.filter((item) => ["new", "open"].includes(item.status));
     const activeWorkflowRuns = workflowRuns.filter((run) =>
       ["planned", "running", "blocked", "needs_human"].includes(run.status)
@@ -2028,13 +2122,27 @@ function buildAdoptionDashboard(
     if (gateBlocked.length) gapKinds.add("pending_gate");
     if (slaAtRisk.length) gapKinds.add("sla_risk");
     if (openGuidance.length) gapKinds.add("open_guidance");
+    if (writebackMaturity.stage === "blocked_or_failed") {
+      gapKinds.add("writeback_needs_review");
+      addGap({
+        id: `writeback_needs_review:${source.id}`,
+        kind: "writeback_needs_review",
+        title: `${source.name} writeback safety needs review`,
+        severity: writebackMaturity.failedCount ? "critical" : "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale: `${writebackMaturity.blockedCount} blocked, ${writebackMaturity.failedCount} failed, ${writebackMaturity.staleApprovalCount} stale approvals, ${writebackMaturity.stalePreviewCount} stale previews.`,
+      });
+    }
 
     let stage: AdoptionProject["stage"] = "source_registered";
     if (artifacts.length) stage = "evidence_only";
     if (workItems.length) stage = "work_linked";
     if (workflowRuns.length) stage = activeWorkflowRuns.length ? "workflow_running" : "workflow_tracked";
     if (signals.length || guidance.length) stage = "closed_loop";
-    if (proposals.length) stage = "improving";
+    if (proposals.length || writebackProposals.length) stage = "improving";
 
     return {
       id: source.id,
@@ -2053,6 +2161,8 @@ function buildAdoptionDashboard(
         ...signals.map((signal) => signal.timestamp),
         ...guidance.map((item) => item.updatedAt),
         ...proposals.map((proposal) => proposal.updatedAt),
+        ...writebackProposals.map((proposal) => proposal.updatedAt),
+        writebackMaturity.latestAuditAt,
       ]),
       sourceIds: [source.id],
       metrics: {
@@ -2067,6 +2177,7 @@ function buildAdoptionDashboard(
         gateBlockedCount: gateBlocked.length,
         slaAtRiskCount: slaAtRisk.length,
       },
+      writebackMaturity,
       gapKinds: [...gapKinds],
     };
   });
@@ -2170,6 +2281,23 @@ function buildAdoptionDashboard(
       pendingGateCount: gaps.filter((gap) => gap.kind === "pending_gate").length,
       slaRiskCount: gaps.filter((gap) => gap.kind === "sla_risk").length,
       openGuidanceCount: gaps.filter((gap) => gap.kind === "open_guidance").length,
+      writebackProjectCount: projects.filter(
+        (project) => project.writebackMaturity.proposalCount > 0
+      ).length,
+      writebackCompletedProjectCount: projects.filter((project) =>
+        ["executed_or_noop", "blocked_or_failed"].includes(
+          project.writebackMaturity.stage
+        ) &&
+        (project.writebackMaturity.completedCount > 0 ||
+          project.writebackMaturity.completedNoopCount > 0)
+      ).length,
+      writebackNeedsReviewProjectCount: projects.filter(
+        (project) => project.writebackMaturity.stage === "blocked_or_failed"
+      ).length,
+      duplicatePreventedWritebackCount: projects.reduce(
+        (sum, project) => sum + project.writebackMaturity.duplicatePreventedCount,
+        0
+      ),
     },
   };
 }
