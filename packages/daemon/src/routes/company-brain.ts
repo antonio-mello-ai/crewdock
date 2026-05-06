@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
@@ -21,6 +23,7 @@ import type {
   CreateWorkItemRequest,
   GuidanceAudience,
   GenerateAgentContextRequest,
+  ImportLocalDocsRequest,
   SignalSeverity,
   RunWatcherRequest,
   UpdateGuidanceItemRequest,
@@ -28,6 +31,7 @@ import type {
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
+import { config } from "../config.js";
 import {
   cbAgentContexts,
   cbAlignmentFindings,
@@ -57,6 +61,52 @@ function now() {
 
 function stableHash(input: string) {
   return createHash("sha256").update(input).digest("hex");
+}
+
+function allowedLocalDocRoots() {
+  const envRoots = process.env.AIOS_LOCAL_DOC_IMPORT_ROOTS?.split(",") ?? [];
+  return [
+    ...envRoots,
+    config.projectsDir,
+    process.cwd(),
+    resolve(process.cwd(), "../../.."),
+  ]
+    .map((root) => root.trim())
+    .filter(Boolean)
+    .map((root) => resolve(root));
+}
+
+function resolveImportPath(inputPath: string) {
+  const absolutePath = resolve(inputPath);
+  const allowedRoot = allowedLocalDocRoots().find((root) => {
+    const rel = relative(root, absolutePath);
+    return rel === "" || (!!rel && !rel.startsWith("..") && !rel.startsWith("/"));
+  });
+  if (!allowedRoot) {
+    throw new Error(`path is outside allowed import roots: ${inputPath}`);
+  }
+  if (!existsSync(absolutePath)) {
+    throw new Error(`path not found: ${inputPath}`);
+  }
+  const stat = statSync(absolutePath);
+  if (!stat.isFile()) {
+    throw new Error(`path is not a file: ${inputPath}`);
+  }
+  if (!/\.(md|mdx|txt)$/i.test(absolutePath)) {
+    throw new Error(`unsupported file type: ${inputPath}`);
+  }
+  return { absolutePath, allowedRoot, stat };
+}
+
+function summarizeDoc(content: string) {
+  return content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(" ")
+    .replaceAll(/[#*_`]/g, "")
+    .slice(0, 500);
 }
 
 function requireText(value: unknown, field: string) {
@@ -474,6 +524,112 @@ app.post("/artifacts", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
+  }
+});
+
+app.post("/importers/local-docs", async (c) => {
+  try {
+    const body = await c.req.json<ImportLocalDocsRequest>();
+    if (!Array.isArray(body.paths) || body.paths.length === 0) {
+      throw new Error("paths is required");
+    }
+    const db = getDb();
+    const timestamp = now();
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? "Local docs import",
+        sourceType: "local_doc" as const,
+        area: body.area ?? "platform",
+        externalRef: "local_docs",
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          importer: "local_docs",
+          allowedRoots: allowedLocalDocRoots(),
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const artifactsCreated = [];
+    for (const inputPath of body.paths) {
+      const { absolutePath, allowedRoot, stat } = resolveImportPath(inputPath);
+      const content = readFileSync(absolutePath, "utf-8");
+      const rawRef = absolutePath;
+      const title = basename(absolutePath).replace(/\.(md|mdx|txt)$/i, "");
+      const artifact = {
+        id: nanoid(12),
+        sourceId: source.id,
+        artifactType: body.artifactType ?? "local_doc",
+        area: body.area ?? source.area,
+        title,
+        summary: summarizeDoc(content),
+        contentRef: absolutePath,
+        rawRef,
+        author: body.owner ?? source.owner ?? "local_docs_importer",
+        occurredAt: stat.mtimeMs,
+        ingestedAt: timestamp,
+        hash: stableHash(content),
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef,
+          createdFrom: "importer:local_docs",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: `allowed_root=${allowedRoot}`,
+        },
+        humanReviewStatus: "pending" as const,
+        confidence: 1,
+        metadata: {
+          importer: "local_docs",
+          importPath: absolutePath,
+          allowedRoot,
+          sizeBytes: stat.size,
+          mtimeMs: stat.mtimeMs,
+          relativePath: relative(allowedRoot, absolutePath),
+        },
+      };
+      db.insert(cbArtifacts).values(artifact).run();
+      artifactsCreated.push(artifact);
+    }
+
+    db.update(cbSources)
+      .set({
+        lastSyncAt: timestamp,
+        healthStatus: "healthy",
+        syncError: null,
+        updatedAt: timestamp,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          source,
+          artifactsCreated,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "import_failed", message }, 400);
   }
 });
 

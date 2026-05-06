@@ -401,6 +401,50 @@ server.registerTool(
 );
 
 server.registerTool(
+  "import_company_brain_local_docs",
+  {
+    title: "Import local docs into Company Brain",
+    description:
+      "Read local markdown/text files and import them as Company Brain artifacts with hash, raw_ref, provenance and a local_doc source. Read-only importer; no external writeback.",
+    inputSchema: {
+      paths: z.array(z.string().min(1)).min(1),
+      sourceId: z.string().optional(),
+      sourceName: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("platform"),
+      owner: z.string().optional(),
+      artifactType: z.string().default("local_doc"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/importers/local-docs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_decision",
   {
     title: "Register Company Brain decision",

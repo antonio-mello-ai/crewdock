@@ -474,6 +474,21 @@ export interface CreateArtifactRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface ImportLocalDocsRequest {
+  paths: string[];
+  sourceId?: string | null;
+  sourceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+  artifactType?: string;
+}
+
+export interface ImportLocalDocsResponse {
+  source: Source;
+  artifactsCreated: Artifact[];
+}
+
 export interface StrategicPriority {
   id: string;
   title: string;

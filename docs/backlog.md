@@ -19,6 +19,8 @@ Status AgentContext v0 em 2026-05-06: `AgentContext` implementado como contexto 
 
 Status ImprovementProposal v0 em 2026-05-06: `ImprovementProposal` implementado para o loop AutoImprove interno, com signals, hypothesis, change class, patch ref, validation plan, impact review e promotion status, sem auto-apply.
 
+Status Local Docs Importer v0 em 2026-05-06: importer read-only para markdown/text local implementado via API/MCP, gerando `Source` + `Artifact` com hash, raw_ref, metadata e provenance.
+
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
 - [x] **Watcher / Operating Loop Layer v0** — adicionar `Watcher` e `WatcherRun` no schema/tipos/API, com `source_ids`, `trigger_type`, `schedule`, `scope_query`, `target_workflow_blueprint_id`, `risk_class`, `action_policy`, `status`, `last_run_at`, `next_run_at`, `failure_policy` e `output_policy`
@@ -42,7 +44,7 @@ Status ImprovementProposal v0 em 2026-05-06: `ImprovementProposal` implementado 
 - [x] **Guidance feedback/update v0** — aceitar, concluir ou ignorar `GuidanceItem` via API/UI/MCP com nota e timestamp de feedback
 - [x] **Agent Context Generator v0** — transformar conhecimento aprovado em specs, prompts, playbooks, constraints ou briefing executavel para agentes
 - [x] **AutoImprove UI/API v0** — normalizar signal -> hypothesis -> patch/proposal -> validation -> impact review -> promotion. Implementado como proposal/review interno sem auto-apply/promote externo.
-- [ ] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
+- [x] **Connector manual/local docs v0** — ingerir `corp/aios/`, `corp/docs/action/`, `corp/docs/estrategia/` e artifacts locais com o mesmo envelope dos conectores futuros
 - [ ] **Slack ingestao v0** — implementar read-only para canais/threads selecionados ou importer manual com envelope final equivalente
 - [x] **MCP tools Company Brain** — expor create/read de artifacts, decisions, agent contexts, improvement proposals, work items, workflow runs, guidance e signals para agentes. Implementado para summary/source/artifact/decision/signal/alignment finding/guidance/agent context/improvement proposal/work item/workflow run/watcher.
 - [ ] **Source health** — mostrar ultima ingestao, erros, volume e freshness por fonte

@@ -125,14 +125,14 @@ Ainda nao existem:
 
 - drift/alignment findings;
 - guidance items;
-- conectores Slack/GitHub/docs com envelope comum;
+- conectores Slack/GitHub com envelope comum;
 - adoption dashboard para enxergar quais frentes estao em closed loop.
 
 Parciais que precisam evoluir:
 
 - Strategy layer ainda nao tem tradeoffs completos; `Decision v0` ja existe.
 - Operating Architecture Kernel tem campos multi-area, visibility, provenance, risk/gate/SLA, mas ainda nao tem camada de governance/writeback/audit completa.
-- MCP cobre sources/artifacts/decisions/signals/alignment findings/guidance/agent contexts/improvement proposals/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
+- MCP cobre sources/artifacts/local docs importer/decisions/signals/alignment findings/guidance/agent contexts/improvement proposals/work items/runs/watchers; adapters externos e writeback seguem fora do core v0.
 
 ## Slice Watcher / Operating Loop Layer
 
@@ -218,7 +218,7 @@ Dogfood local Closed Loop v0 validado em DB temporario `/tmp/aios-runtime-loop-d
 Proximos cortes recomendados:
 
 - Melhorar Drift/Alignment alem da heuristica v0, incluindo `drift` e `contradiction` a partir de regras de strategy/decision.
-- Adicionar importer local docs/corp e adapters reais.
+- Adicionar adapters reais.
 - Depois disso, avaliar adapters/read-only reais e writeback gated, sem auto-writeback por default.
 
 ## Slice Guidance Feedback v0
@@ -245,7 +245,6 @@ Dogfood local Guidance Feedback v0 validado em DB temporario `/tmp/aios-runtime-
 
 Proximos cortes recomendados:
 
-- Importer local docs/corp.
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
@@ -280,7 +279,6 @@ Dogfood local Decision v0 validado em DB temporario `/tmp/aios-runtime-decision-
 Proximos cortes recomendados:
 
 - `ImprovementProposal v0`.
-- Importer local docs/corp.
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
@@ -351,7 +349,37 @@ Dogfood local ImprovementProposal v0 validado em DB temporario `/tmp/aios-runtim
 
 Proximos cortes recomendados:
 
-- Importer local docs/corp.
+- GitHub Issues sync adapter real sem writeback automatico agressivo.
+- Adoption Dashboard.
+
+## Slice Local Docs Importer v0
+
+Objetivo: ingerir markdown/text local no envelope comum do Company Brain, como base para extractors futuros de strategy/decision/signals.
+
+Status em 2026-05-06: implementado.
+
+Implementado:
+
+1. Tipos `ImportLocalDocsRequest` e `ImportLocalDocsResponse` em `packages/shared/src/types.ts`.
+2. Rota `POST /api/company-brain/importers/local-docs`.
+3. Importer read-only restrito a raizes permitidas (`AIOS_LOCAL_DOC_IMPORT_ROOTS`, `config.projectsDir`, `process.cwd()` e raiz do workspace).
+4. Suporte a `.md`, `.mdx` e `.txt`.
+5. Cria ou reutiliza `Source` `local_doc`.
+6. Cria `Artifact` com `raw_ref`, `content_ref`, hash de conteudo, summary simples, metadata de path/tamanho/mtime e provenance `createdFrom=importer:local_docs`.
+7. Atualiza source health/freshness.
+8. MCP tool `import_company_brain_local_docs`.
+9. Nenhum writeback externo.
+
+Dogfood local Local Docs Importer v0 validado em DB temporario `/tmp/aios-runtime-local-docs-dogfood.sqlite`, daemon em `127.0.0.1:43108`, com `AIOS_LOCAL_DOC_IMPORT_ROOTS=/Users/antoniomello/felhencloud`:
+
+- Source criado: `sJlpyLSm0mNv`, `name=Corp AIOS roadmap docs`, `sourceType=local_doc`, `area=strategy`.
+- Artifact `aios-product-roadmap`: `2j1DT7C79SkF`, hash prefix `71a1b204017c`, raw_ref `/Users/antoniomello/felhencloud/corp/docs/action/aios-product-roadmap.md`.
+- Artifact `felhen-autoimprove-core`: `mMwjR1x8vZWf`, hash prefix `83c387230ee4`, raw_ref `/Users/antoniomello/felhencloud/corp/docs/estrategia/felhen-autoimprove-core.md`.
+- Ambos com provenance `createdFrom=importer:local_docs`.
+- Summary retornou `sourceCount=1`, `artifactCount=2`.
+
+Proximos cortes recomendados:
+
 - GitHub Issues sync adapter real sem writeback automatico agressivo.
 - Adoption Dashboard.
 
