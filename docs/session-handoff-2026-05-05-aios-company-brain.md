@@ -580,6 +580,34 @@ Dogfood real validado em DB temporario `/tmp/aios-runtime-slack-incremental-dogf
 
 Proximo corte recomendado: GitHub PR/CI watcher real, depois GitHub notifications watcher e somente depois writeback controlado com `action_policy`, `risk_class`, HITL e audit trail.
 
+## Slice GitHub PR/CI Watcher v0
+
+Objetivo: criar watcher real/read-only para PRs e CI, conectando GitHub pull requests/check-runs ao Company Brain sem writeback no GitHub.
+
+Implementado em 2026-05-06:
+
+1. Seed `watcher-github-pr-ci-v0` em `packages/daemon/src/db/client.ts`, com `actionPolicy=observe_only`, `riskClass=B`, `targetWorkflowBlueprintId=development-blueprint-v0` e `outputPolicy=pr_ci_artifacts_and_gap_signals`.
+2. Tipos `SyncGitHubPrCiRequest` e `SyncGitHubPrCiResponse` em `packages/shared/src/types.ts`.
+3. `POST /api/company-brain/adapters/github/pr-ci/sync` busca PRs reais, commit combined status e check-runs via GitHub API.
+4. O route cria/reutiliza Source `github_repo`, cria Artifact `github_pr_ci` por PR/head SHA e registra `WatcherRun` com artifacts/signals.
+5. Signals AutoImprove sao criados apenas quando CI/status esta `pending`, `failure` ou `error`, ou quando check-runs falham/ficam pendentes.
+6. Source metadata registra repo, watcher, ultimo run, pulls/checks/failing checks e `actionPolicy=observe_only`.
+7. UI `/company-brain` adiciona formulario `GitHub PR/CI`; MCP expõe `sync_company_brain_github_pr_ci`.
+8. Nenhum writeback GitHub foi implementado.
+
+Dogfood real validado em DB temporario `/tmp/aios-runtime-github-pr-ci-dogfood.sqlite`, daemon em `127.0.0.1:43122`:
+
+- Repo usado: `home-assistant/core` como fallback publico com PR aberto visivel.
+- Source: `-dLmM5UfyAGp`.
+- WatcherRun: `_XNELEWejtB4`, `watcherId=watcher-github-pr-ci-v0`.
+- PRs vistos: `1`.
+- Artifacts `github_pr_ci` criados: `1`.
+- Signals AutoImprove criados: `1`.
+- Checks vistos: `36`; failing checks: `1`.
+- Watcher permaneceu `active`.
+
+Proximo corte recomendado: GitHub notifications watcher, depois writeback controlado somente com `action_policy`, `risk_class`, HITL e audit trail.
+
 ## Slice Strategy Tradeoff v0
 
 Objetivo: tornar tradeoffs, constraints, non-goals, riscos, dependencias e principios objetos explicitos do Company Brain, ligados a priority/decision/evidence em vez de texto solto em roadmap.
@@ -853,10 +881,10 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: implementar o proximo slice do Company Brain apos Slack Threads/Incremental Sync v0. O corte recomendado e GitHub PR/CI watcher real, mantendo qualquer writeback externo bloqueado.
+Objetivo da sessao: implementar o proximo slice do Company Brain apos GitHub PR/CI Watcher v0. O corte recomendado e GitHub notifications watcher, mantendo qualquer writeback externo bloqueado.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
-- criar watcher real de GitHub PR/CI em modo read-only;
+- criar watcher de GitHub notifications em modo read-only;
 - preservar provenance, status e human review;
 - expor em API/UI/MCP ou summary quando fizer sentido;
 - manter writeback externo bloqueado sem HITL/action_policy explicita.

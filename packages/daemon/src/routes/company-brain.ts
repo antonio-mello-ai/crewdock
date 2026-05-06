@@ -40,6 +40,7 @@ import type {
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
+  SyncGitHubPrCiRequest,
   SyncSlackChannelRequest,
   UpdateDecisionRequest,
   UpdateGuidanceItemRequest,
@@ -82,6 +83,7 @@ function stableHash(input: string) {
 
 const AIOS_BRIEFING_SOURCE_ID = "source-aios-briefing-v0";
 const AIOS_BRIEFING_WATCHER_ID = "watcher-aios-briefing-v0";
+const GITHUB_PR_CI_WATCHER_ID = "watcher-github-pr-ci-v0";
 
 function allowedLocalDocRoots() {
   const envRoots = process.env.AIOS_LOCAL_DOC_IMPORT_ROOTS?.split(",") ?? [];
@@ -336,6 +338,63 @@ interface GitHubIssuePayload {
   pull_request?: unknown;
 }
 
+interface GitHubPullRequestPayload {
+  id: number;
+  number: number;
+  state: "open" | "closed";
+  title: string;
+  body: string | null;
+  html_url: string;
+  url: string;
+  draft?: boolean;
+  merged_at: string | null;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  user: { login: string } | null;
+  head: {
+    sha: string;
+    ref: string;
+    repo: { full_name: string } | null;
+  };
+  base: {
+    ref: string;
+    repo: { full_name: string } | null;
+  };
+}
+
+interface GitHubCommitStatusPayload {
+  state: "error" | "failure" | "pending" | "success";
+  statuses: Array<{
+    id: number;
+    context: string;
+    state: string;
+    target_url: string | null;
+    description: string | null;
+    updated_at: string;
+  }>;
+}
+
+interface GitHubCheckRunPayload {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string | null;
+  details_url: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  output?: {
+    title?: string | null;
+    summary?: string | null;
+  };
+}
+
+interface GitHubCheckRunsPayload {
+  total_count: number;
+  check_runs: GitHubCheckRunPayload[];
+}
+
 function parseGitHubRepo(repo: string) {
   const normalized = repo
     .trim()
@@ -349,14 +408,12 @@ function parseGitHubRepo(repo: string) {
   return { owner, name, fullName: `${owner}/${name}` };
 }
 
-async function fetchGitHubIssues(repo: string, state: string, limit: number) {
-  const parsed = parseGitHubRepo(repo);
-  const token = process.env.GITHUB_TOKEN;
-  const url = new URL(
-    `https://api.github.com/repos/${parsed.owner}/${parsed.name}/issues`
-  );
-  url.searchParams.set("state", state);
-  url.searchParams.set("per_page", String(Math.max(1, Math.min(limit, 100))));
+async function githubApi<T>(path: string, params: Record<string, string> = {}) {
+  const token = getSecretEnv("GITHUB_TOKEN") ?? getSecretEnv("GH_TOKEN");
+  const url = new URL(`https://api.github.com${path}`);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
   const res = await fetch(url, {
     headers: {
       Accept: "application/vnd.github+json",
@@ -366,13 +423,53 @@ async function fetchGitHubIssues(repo: string, state: string, limit: number) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`GitHub issues fetch failed ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`GitHub API failed ${res.status}: ${text.slice(0, 300)}`);
   }
-  const issues = (await res.json()) as GitHubIssuePayload[];
+  return (await res.json()) as T;
+}
+
+async function fetchGitHubIssues(repo: string, state: string, limit: number) {
+  const parsed = parseGitHubRepo(repo);
+  const issues = await githubApi<GitHubIssuePayload[]>(
+    `/repos/${parsed.owner}/${parsed.name}/issues`,
+    {
+      state,
+      per_page: String(Math.max(1, Math.min(limit, 100))),
+    }
+  );
   return {
     repo: parsed,
     issues: issues.filter((issue) => !issue.pull_request),
   };
+}
+
+async function fetchGitHubPullRequestsWithCi(repo: string, state: string, limit: number) {
+  const parsed = parseGitHubRepo(repo);
+  const pulls = await githubApi<GitHubPullRequestPayload[]>(
+    `/repos/${parsed.owner}/${parsed.name}/pulls`,
+    {
+      state,
+      per_page: String(Math.max(1, Math.min(limit, 100))),
+    }
+  );
+  const enriched = [];
+  for (const pull of pulls) {
+    const [combinedStatus, checkRuns] = await Promise.all([
+      githubApi<GitHubCommitStatusPayload>(
+        `/repos/${parsed.owner}/${parsed.name}/commits/${pull.head.sha}/status`
+      ).catch(() => null),
+      githubApi<GitHubCheckRunsPayload>(
+        `/repos/${parsed.owner}/${parsed.name}/commits/${pull.head.sha}/check-runs`,
+        { per_page: "100" }
+      ).catch(() => null),
+    ]);
+    enriched.push({
+      pull,
+      combinedStatus,
+      checkRuns: checkRuns?.check_runs ?? [],
+    });
+  }
+  return { repo: parsed, pulls: enriched };
 }
 
 function requireText(value: unknown, field: string) {
@@ -3395,6 +3492,399 @@ app.post("/adapters/github/issues/sync", async (c) => {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "sync_failed", message }, 400);
+  }
+});
+
+app.post("/adapters/github/pr-ci/sync", async (c) => {
+  const db = getDb();
+  const timestamp = now();
+  const runId = nanoid(12);
+
+  try {
+    const body = await c.req.json<SyncGitHubPrCiRequest>();
+    const watcher = db
+      .select()
+      .from(cbWatchers)
+      .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
+      .get();
+    if (!watcher) throw new Error("GitHub PR/CI watcher seed not found");
+    if (watcher.status !== "active") throw new Error("GitHub PR/CI watcher is not active");
+
+    const { repo, pulls } = await fetchGitHubPullRequestsWithCi(
+      requireText(body.repo, "repo"),
+      body.state ?? "open",
+      body.limit ?? 25
+    );
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source =
+        db
+          .select()
+          .from(cbSources)
+          .all()
+          .find(
+            (item) =>
+              item.sourceType === "github_repo" &&
+              item.externalRef === `https://github.com/${repo.fullName}/pulls`
+          ) ?? null;
+    }
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? `${repo.fullName} GitHub PR/CI`,
+        sourceType: "github_repo" as const,
+        area: body.area ?? "development",
+        externalRef: `https://github.com/${repo.fullName}/pulls`,
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          adapter: "github_pr_ci",
+          repo: repo.fullName,
+          readOnly: true,
+          actionPolicy: "observe_only",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const existingArtifacts = db.select().from(cbArtifacts).all();
+    const existingSignals = db.select().from(cbSignals).all();
+    const artifactsCreated = [];
+    const signalsCreated = [];
+    let checksSeen = 0;
+    let failingChecksSeen = 0;
+
+    for (const item of pulls) {
+      const pull = item.pull;
+      const statusState = item.combinedStatus?.state ?? "pending";
+      const failingChecks = item.checkRuns.filter((check) =>
+        ["failure", "timed_out", "cancelled", "action_required"].includes(
+          check.conclusion ?? ""
+        )
+      );
+      const pendingChecks = item.checkRuns.filter(
+        (check) => check.status !== "completed" || check.conclusion === null
+      );
+      checksSeen += item.checkRuns.length + (item.combinedStatus?.statuses.length ?? 0);
+      failingChecksSeen += failingChecks.length;
+
+      const rawRef = `${pull.html_url}@${pull.head.sha}`;
+      let artifact = existingArtifacts.find((candidate) => candidate.rawRef === rawRef);
+      if (!artifact) {
+        const payload = JSON.stringify({
+          id: pull.id,
+          number: pull.number,
+          title: pull.title,
+          state: pull.state,
+          draft: pull.draft ?? false,
+          mergedAt: pull.merged_at,
+          headSha: pull.head.sha,
+          statusState,
+          checkRuns: item.checkRuns.map((check) => ({
+            id: check.id,
+            name: check.name,
+            status: check.status,
+            conclusion: check.conclusion,
+          })),
+        });
+        artifact = {
+          id: nanoid(12),
+          sourceId: source.id,
+          artifactType: "github_pr_ci",
+          area: body.area ?? source.area,
+          title: `PR #${pull.number} ${pull.title}`,
+          summary:
+            pull.body?.trim().slice(0, 500) ??
+            `GitHub PR ${pull.number} CI status is ${statusState}.`,
+          contentRef: pull.url,
+          rawRef,
+          author: pull.user?.login ?? null,
+          occurredAt: Date.parse(pull.updated_at || pull.created_at),
+          ingestedAt: timestamp,
+          hash: stableHash(payload),
+          visibility: body.visibility ?? source.visibility,
+          provenance: {
+            sourceId: source.id,
+            rawRef,
+            createdFrom: "watcher:github_pr_ci:artifact",
+            confidence: 1,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: body.visibility ?? source.visibility,
+            notes: "read_only=true; action_policy=observe_only",
+          },
+          humanReviewStatus: "pending" as const,
+          confidence: 1,
+          metadata: {
+            adapter: "github_pr_ci",
+            watcherId: watcher.id,
+            watcherRunId: runId,
+            readOnly: true,
+            actionPolicy: "observe_only",
+            repo: repo.fullName,
+            pullRequestId: pull.id,
+            number: pull.number,
+            state: pull.state,
+            draft: pull.draft ?? false,
+            mergedAt: pull.merged_at,
+            headSha: pull.head.sha,
+            headRef: pull.head.ref,
+            baseRef: pull.base.ref,
+            statusState,
+            checkRuns: item.checkRuns.map((check) => ({
+              id: check.id,
+              name: check.name,
+              status: check.status,
+              conclusion: check.conclusion,
+              htmlUrl: check.html_url,
+              detailsUrl: check.details_url,
+              startedAt: check.started_at,
+              completedAt: check.completed_at,
+            })),
+          },
+        };
+        db.insert(cbArtifacts).values(artifact).run();
+        existingArtifacts.push(artifact);
+        artifactsCreated.push(artifact);
+      }
+
+      const needsSignal =
+        body.createSignals !== false &&
+        (["error", "failure", "pending"].includes(statusState) ||
+          failingChecks.length > 0 ||
+          pendingChecks.length > 0);
+      if (!needsSignal) continue;
+
+      const signalRawRef = `${rawRef}#ci`;
+      if (
+        existingSignals.some(
+          (signal) =>
+            signal.rawRef === signalRawRef &&
+            signal.metadata?.headSha === pull.head.sha &&
+            signal.metadata?.statusState === statusState
+        )
+      ) {
+        continue;
+      }
+      const severity: SignalSeverity =
+        statusState === "error" || statusState === "failure" || failingChecks.length
+          ? "critical"
+          : "warn";
+      const summary = `GitHub PR #${pull.number} CI is ${statusState}; ${failingChecks.length} failing checks, ${pendingChecks.length} pending checks.`;
+      const signalId = nanoid(12);
+      const tags = [
+        "github_pr_ci",
+        repo.fullName,
+        `pr:${pull.number}`,
+        `status:${statusState}`,
+      ];
+      const envelope = {
+        source: "qa" as const,
+        scope: "core" as const,
+        entity_type: "job" as const,
+        entity_id: `${repo.fullName}#${pull.number}:${pull.head.sha}`,
+        timestamp,
+        summary,
+        raw_ref: signalRawRef,
+        severity,
+        confidence: 0.95,
+        tags,
+      };
+      const signal = {
+        id: signalId,
+        source: "qa" as const,
+        scope: "core" as const,
+        entityType: "job" as const,
+        entityId: `${repo.fullName}#${pull.number}:${pull.head.sha}`,
+        timestamp,
+        summary,
+        rawRef: signalRawRef,
+        severity,
+        confidence: 0.95,
+        tags,
+        area: body.area ?? source.area,
+        sourceId: source.id,
+        artifactId: artifact.id,
+        workItemId: null,
+        workflowRunId: null,
+        watcherId: watcher.id,
+        watcherRunId: runId,
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: signalRawRef,
+          artifactId: artifact.id,
+          createdFrom: "watcher:github_pr_ci:signal",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: "read_only=true; action_policy=observe_only",
+        },
+        metadata: {
+          autoImproveEnvelope: envelope,
+          repo: repo.fullName,
+          pullRequestNumber: pull.number,
+          headSha: pull.head.sha,
+          statusState,
+          failingChecks: failingChecks.map((check) => check.name),
+          pendingChecks: pendingChecks.map((check) => check.name),
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSignals).values(signal).run();
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId: artifact.id,
+          targetType: "signal",
+          targetId: signal.id,
+          relationship: "generated_signal",
+          confidence: signal.confidence,
+          rationale: "GitHub PR/CI watcher normalized CI state into an internal signal.",
+          createdAt: timestamp,
+        })
+        .run();
+      existingSignals.push(signal);
+      signalsCreated.push(signal);
+    }
+
+    const finishedAt = now();
+    const run = {
+      id: runId,
+      watcherId: watcher.id,
+      startedAt: timestamp,
+      finishedAt,
+      status: "completed" as const,
+      triggerRef: `https://github.com/${repo.fullName}/pulls`,
+      sourceIds: [source.id],
+      artifactsCreated: artifactsCreated.map((artifact) => artifact.id),
+      signalsCreated: signalsCreated.map((signal) => signal.id),
+      alignmentFindingsCreated: [],
+      workItemsCreated: [],
+      guidanceCreated: [],
+      workflowRunsLinked: [],
+      errorSummary: null,
+      actionPolicy: watcher.actionPolicy,
+      riskClass: watcher.riskClass,
+      provenance: {
+        sourceId: source.id,
+        rawRef: `https://github.com/${repo.fullName}/pulls`,
+        createdFrom: "watcher:github_pr_ci:run",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending" as const,
+        visibility: watcher.visibility,
+      },
+      createdAt: timestamp,
+      updatedAt: finishedAt,
+    };
+    db.insert(cbWatcherRuns).values(run).run();
+
+    const updatedSource = {
+      ...source,
+      lastSyncAt: finishedAt,
+      healthStatus: "healthy" as const,
+      syncError: null,
+      metadata: {
+        ...(source.metadata ?? {}),
+        adapter: "github_pr_ci",
+        repo: repo.fullName,
+        readOnly: true,
+        actionPolicy: "observe_only",
+        watcherId: watcher.id,
+        lastWatcherRunId: run.id,
+        pullsSeen: pulls.length,
+        checksSeen,
+        failingChecksSeen,
+      },
+      updatedAt: finishedAt,
+    };
+    db.update(cbSources)
+      .set({
+        lastSyncAt: updatedSource.lastSyncAt,
+        healthStatus: updatedSource.healthStatus,
+        syncError: updatedSource.syncError,
+        metadata: updatedSource.metadata,
+        updatedAt: updatedSource.updatedAt,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        status: "active",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, watcher.id))
+      .run();
+
+    return c.json(
+      {
+        data: {
+          source: updatedSource,
+          watcherRun: run,
+          artifactsCreated,
+          signalsCreated,
+          pullRequestsSeen: pulls.length,
+          checksSeen,
+          failingChecksSeen,
+        },
+      },
+      201
+    );
+  } catch (err) {
+    const finishedAt = now();
+    const message = err instanceof Error ? err.message : "Unknown error";
+    db.insert(cbWatcherRuns)
+      .values({
+        id: runId,
+        watcherId: GITHUB_PR_CI_WATCHER_ID,
+        startedAt: timestamp,
+        finishedAt,
+        status: "failed",
+        triggerRef: null,
+        sourceIds: [],
+        artifactsCreated: [],
+        signalsCreated: [],
+        alignmentFindingsCreated: [],
+        workItemsCreated: [],
+        guidanceCreated: [],
+        workflowRunsLinked: [],
+        errorSummary: message,
+        actionPolicy: "observe_only",
+        riskClass: "B",
+        provenance: {
+          createdFrom: "watcher:github_pr_ci:run",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending",
+          visibility: "internal",
+        },
+        createdAt: timestamp,
+        updatedAt: finishedAt,
+      })
+      .run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        status: "error",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
+      .run();
     return c.json({ error: "sync_failed", message }, 400);
   }
 });

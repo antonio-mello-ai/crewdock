@@ -610,6 +610,28 @@ export interface SyncGitHubIssuesResponse {
   issuesSeen: number;
 }
 
+export interface SyncGitHubPrCiRequest {
+  repo: string;
+  state?: "open" | "closed" | "all";
+  limit?: number;
+  sourceId?: string | null;
+  sourceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+  createSignals?: boolean;
+}
+
+export interface SyncGitHubPrCiResponse {
+  source: Source;
+  watcherRun: WatcherRun;
+  artifactsCreated: Artifact[];
+  signalsCreated: Signal[];
+  pullRequestsSeen: number;
+  checksSeen: number;
+  failingChecksSeen: number;
+}
+
 export interface StrategicPriority {
   id: string;
   title: string;

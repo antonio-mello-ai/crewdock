@@ -687,6 +687,52 @@ server.registerTool(
 );
 
 server.registerTool(
+  "sync_company_brain_github_pr_ci",
+  {
+    title: "Sync GitHub PR/CI into Company Brain",
+    description:
+      "Read GitHub pull requests plus commit statuses/check-runs into Company Brain as observe-only watcher artifacts and optional AutoImprove signals. Does not write back to GitHub.",
+    inputSchema: {
+      repo: z.string().min(1).describe("GitHub repository as owner/name or github.com URL"),
+      state: z.enum(["open", "closed", "all"]).default("open"),
+      limit: z.number().int().positive().max(100).default(25),
+      sourceId: z.string().optional(),
+      sourceName: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("development"),
+      owner: z.string().optional(),
+      createSignals: z.boolean().default(true),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/adapters/github/pr-ci/sync",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_decision",
   {
     title: "Register Company Brain decision",

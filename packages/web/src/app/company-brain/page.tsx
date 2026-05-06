@@ -35,6 +35,7 @@ import {
   useRunCompanyBrainWatcher,
   useRunFelhenDemo,
   useSyncCompanyBrainGitHubIssues,
+  useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainGuidanceItem,
@@ -242,6 +243,7 @@ export default function CompanyBrainPage() {
   const runWatcher = useRunCompanyBrainWatcher();
   const runFelhenDemo = useRunFelhenDemo();
   const syncGitHubIssues = useSyncCompanyBrainGitHubIssues();
+  const syncGitHubPrCi = useSyncCompanyBrainGitHubPrCi();
   const importSlackMessages = useImportCompanyBrainSlackMessages();
   const syncSlackChannel = useSyncCompanyBrainSlackChannel();
   const updateGuidance = useUpdateCompanyBrainGuidanceItem();
@@ -447,6 +449,15 @@ export default function CompanyBrainPage() {
     priorityId: "",
     goalId: "",
     createWorkItems: true,
+  });
+
+  const [githubPrCiForm, setGithubPrCiForm] = useState({
+    repo: "antonio-mello-ai/crewdock",
+    state: "open" as GitHubIssueState,
+    limit: "5",
+    sourceName: "CrewDock GitHub PR/CI read-only watcher",
+    owner: "Felhen",
+    createSignals: true,
   });
 
   const [slackImportForm, setSlackImportForm] = useState({
@@ -716,6 +727,20 @@ export default function CompanyBrainPage() {
       createWorkItems: githubSyncForm.createWorkItems,
       priorityId: githubSyncForm.priorityId || null,
       goalId: githubSyncForm.goalId || null,
+      visibility: "internal",
+    });
+  };
+
+  const handleSyncGitHubPrCi = (event: FormEvent) => {
+    event.preventDefault();
+    syncGitHubPrCi.mutate({
+      repo: githubPrCiForm.repo,
+      state: githubPrCiForm.state,
+      limit: Number(githubPrCiForm.limit) || 5,
+      sourceName: githubPrCiForm.sourceName || undefined,
+      area: "development",
+      owner: githubPrCiForm.owner || undefined,
+      createSignals: githubPrCiForm.createSignals,
       visibility: "internal",
     });
   };
@@ -1876,6 +1901,80 @@ export default function CompanyBrainPage() {
                 Create internal WorkItems
               </label>
               <SubmitButton pending={syncGitHubIssues.isPending} />
+            </KernelForm>
+
+            <KernelForm
+              title="GitHub PR/CI"
+              icon={GitPullRequest}
+              onSubmit={handleSyncGitHubPrCi}
+            >
+              <FieldLabel>Repository</FieldLabel>
+              <Input
+                value={githubPrCiForm.repo}
+                onChange={(event) =>
+                  setGithubPrCiForm({
+                    ...githubPrCiForm,
+                    repo: event.target.value,
+                  })
+                }
+              />
+              <FieldLabel>Source name</FieldLabel>
+              <Input
+                value={githubPrCiForm.sourceName}
+                onChange={(event) =>
+                  setGithubPrCiForm({
+                    ...githubPrCiForm,
+                    sourceName: event.target.value,
+                  })
+                }
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <FieldLabel>State</FieldLabel>
+                  <Select
+                    value={githubPrCiForm.state}
+                    onChange={(event) =>
+                      setGithubPrCiForm({
+                        ...githubPrCiForm,
+                        state: event.target.value as GitHubIssueState,
+                      })
+                    }
+                  >
+                    {githubIssueStates.map((state) => (
+                      <option key={state} value={state}>
+                        {state}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <FieldLabel>Limit</FieldLabel>
+                  <Input
+                    value={githubPrCiForm.limit}
+                    onChange={(event) =>
+                      setGithubPrCiForm({
+                        ...githubPrCiForm,
+                        limit: event.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-neutral-400">
+                <input
+                  type="checkbox"
+                  checked={githubPrCiForm.createSignals}
+                  onChange={(event) =>
+                    setGithubPrCiForm({
+                      ...githubPrCiForm,
+                      createSignals: event.target.checked,
+                    })
+                  }
+                  className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                />
+                Create CI Signals
+              </label>
+              <SubmitButton pending={syncGitHubPrCi.isPending} />
             </KernelForm>
 
             <KernelForm

@@ -50,6 +50,8 @@ import type {
   RunWatcherResponse,
   SyncGitHubIssuesRequest,
   SyncGitHubIssuesResponse,
+  SyncGitHubPrCiRequest,
+  SyncGitHubPrCiResponse,
   SyncSlackChannelRequest,
   SyncSlackChannelResponse,
   UpdateDecisionRequest,
@@ -494,6 +496,22 @@ export function useSyncCompanyBrainGitHubIssues() {
   >({
     mutationFn: (body) =>
       api("/api/company-brain/adapters/github/issues/sync", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useSyncCompanyBrainGitHubPrCi() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<SyncGitHubPrCiResponse>,
+    Error,
+    SyncGitHubPrCiRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/adapters/github/pr-ci/sync", {
         method: "POST",
         body: JSON.stringify(body),
       }),
