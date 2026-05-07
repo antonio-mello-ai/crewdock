@@ -1104,6 +1104,150 @@ export interface CreateGuidanceItemRequest {
   provenance?: Provenance | null;
 }
 
+export type AgentRunStatus =
+  | "queued"
+  | "claimed"
+  | "running"
+  | "retrying"
+  | "blocked"
+  | "pr_opened"
+  | "needs_review"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type AgentRunClaimState =
+  | "unclaimed"
+  | "claimed"
+  | "running"
+  | "retry_queued"
+  | "released";
+
+export type AgentRunRunnerType =
+  | "claude_code"
+  | "codex"
+  | "symphony"
+  | "manual"
+  | "other";
+
+export interface AgentRun {
+  id: string;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  agentContextId: string | null;
+  sourceId: string | null;
+  repo: string | null;
+  branch: string | null;
+  workspaceRef: string | null;
+  runnerType: AgentRunRunnerType;
+  status: AgentRunStatus;
+  claimState: AgentRunClaimState;
+  attempt: number;
+  startedAt: number | null;
+  finishedAt: number | null;
+  errorSummary: string | null;
+  prUrl: string | null;
+  externalRunRef: string | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  tokensTotal: number | null;
+  costUsd: number | null;
+  agentSessionId: string | null;
+  agentThreadId: string | null;
+  area: CompanyBrainArea;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  visibility: Visibility;
+  metadata: Record<string, unknown> | null;
+  auditTrail: Array<{
+    at: number;
+    actor: string | null;
+    event: string;
+    note: string | null;
+    metadata?: Record<string, unknown> | null;
+  }>;
+  provenance: Provenance | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateAgentRunRequest {
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  agentContextId?: string | null;
+  sourceId?: string | null;
+  repo?: string | null;
+  branch?: string | null;
+  workspaceRef?: string | null;
+  runnerType?: AgentRunRunnerType;
+  status?: AgentRunStatus;
+  claimState?: AgentRunClaimState;
+  attempt?: number;
+  prUrl?: string | null;
+  externalRunRef?: string | null;
+  agentSessionId?: string | null;
+  agentThreadId?: string | null;
+  area?: CompanyBrainArea;
+  riskClass?: RiskClass;
+  actionPolicy?: ActionPolicy;
+  visibility?: Visibility;
+  metadata?: Record<string, unknown> | null;
+  actor?: string | null;
+  rationale?: string | null;
+}
+
+export interface UpdateAgentRunRequest {
+  status?: AgentRunStatus;
+  claimState?: AgentRunClaimState;
+  attempt?: number;
+  startedAt?: number | null;
+  finishedAt?: number | null;
+  errorSummary?: string | null;
+  prUrl?: string | null;
+  externalRunRef?: string | null;
+  branch?: string | null;
+  workspaceRef?: string | null;
+  tokensInput?: number | null;
+  tokensOutput?: number | null;
+  tokensTotal?: number | null;
+  costUsd?: number | null;
+  agentSessionId?: string | null;
+  agentThreadId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  actor?: string | null;
+  rationale?: string | null;
+  event?: string;
+}
+
+export interface AgentRunListResponse {
+  generatedAt: number;
+  total: number;
+  filters: {
+    status?: AgentRunStatus | null;
+    workItemId?: string | null;
+    runnerType?: AgentRunRunnerType | null;
+    repo?: string | null;
+    limit: number;
+  };
+  items: AgentRun[];
+}
+
+export interface AgentRunSummary {
+  generatedAt: number;
+  totalCount: number;
+  byStatus: Record<AgentRunStatus, number>;
+  byClaimState: Record<AgentRunClaimState, number>;
+  byRunnerType: Record<string, number>;
+  blockedCount: number;
+  failedCount: number;
+  prOpenedCount: number;
+  needsReviewCount: number;
+  retryingCount: number;
+  recentCompletedCount: number;
+  staleCount: number;
+  recentRuns: AgentRun[];
+}
+
 export type SessionResultRunnerType =
   | "claude_code"
   | "codex"

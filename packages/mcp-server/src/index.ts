@@ -2131,6 +2131,210 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_agent_runs",
+  {
+    title: "List Company Brain agent runs",
+    description:
+      "Read-only list of AgentRun records with optional filters (status, workItemId, runnerType, repo) and a limit (default 50, max 200). Returns canonical AgentRun shape including status, claimState, runner, attempt, branch, workspaceRef, prUrl and audit trail.",
+    inputSchema: {
+      status: z
+        .enum([
+          "queued",
+          "claimed",
+          "running",
+          "retrying",
+          "blocked",
+          "pr_opened",
+          "needs_review",
+          "completed",
+          "failed",
+          "cancelled",
+        ])
+        .optional(),
+      workItemId: z.string().optional(),
+      runnerType: z.enum(["claude_code", "codex", "symphony", "manual", "other"]).optional(),
+      repo: z.string().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+    },
+  },
+  async (params) => {
+    const search = new URLSearchParams();
+    if (params.status) search.set("status", params.status);
+    if (params.workItemId) search.set("workItemId", params.workItemId);
+    if (params.runnerType) search.set("runnerType", params.runnerType);
+    if (params.repo) search.set("repo", params.repo);
+    if (params.limit) search.set("limit", String(params.limit));
+    const query = search.toString();
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs${query ? `?${query}` : ""}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_agent_run",
+  {
+    title: "Get Company Brain agent run",
+    description:
+      "Read-only AgentRun detail by id, including audit trail, status, claimState, branch, workspaceRef, prUrl, tokens, cost and links to WorkItem/WorkflowRun/AgentContext.",
+    inputSchema: {
+      id: z.string().min(1),
+    },
+  },
+  async ({ id }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${id}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_agent_runs_summary",
+  {
+    title: "Get Company Brain agent run summary",
+    description:
+      "Read-only AgentRun rollup with totals by status, claim state and runner type, plus blocked/failed/pr_opened/needs_review/retrying counts, recent completed in 24h, stale-running count and the 10 most recent runs.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-runs/summary"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "create_company_brain_agent_run",
+  {
+    title: "Create a Company Brain agent run record",
+    description:
+      "Creates a durable AgentRun record without launching any agent process. Useful to seed the queue, mirror an external runner state or document a manual session. Defaults: status=queued, claimState=unclaimed, runnerType=manual, area=development. Provenance company_brain:agent_run_create. Does not run code; does not call external APIs.",
+    inputSchema: {
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      agentContextId: z.string().optional(),
+      sourceId: z.string().optional(),
+      repo: z.string().optional(),
+      branch: z.string().optional(),
+      workspaceRef: z.string().optional(),
+      runnerType: z.enum(["claude_code", "codex", "symphony", "manual", "other"]).optional(),
+      status: z
+        .enum([
+          "queued",
+          "claimed",
+          "running",
+          "retrying",
+          "blocked",
+          "pr_opened",
+          "needs_review",
+          "completed",
+          "failed",
+          "cancelled",
+        ])
+        .optional(),
+      claimState: z
+        .enum(["unclaimed", "claimed", "running", "retry_queued", "released"])
+        .optional(),
+      attempt: z.number().int().min(0).optional(),
+      prUrl: z.string().optional(),
+      externalRunRef: z.string().optional(),
+      agentSessionId: z.string().optional(),
+      agentThreadId: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+      actionPolicy: z
+        .enum([
+          "observe_only",
+          "create_artifacts",
+          "create_work_items",
+          "request_human",
+          "writeback_allowed",
+        ])
+        .optional(),
+      visibility: z.enum(["public", "internal", "restricted"]).optional(),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-runs",
+      { method: "POST", body: JSON.stringify(params) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "update_company_brain_agent_run",
+  {
+    title: "Update a Company Brain agent run",
+    description:
+      "Update AgentRun fields with state machine validation. Allowed transitions: queued -> claimed/cancelled; claimed -> running/blocked/cancelled; running -> pr_opened/needs_review/completed/failed/retrying/blocked/cancelled; retrying/blocked -> running/cancelled/failed; pr_opened/needs_review -> completed/failed/cancelled. Terminal states (completed/failed/cancelled) cannot be left. claimState defaults from status when not provided. Adds an audit trail entry with the supplied actor/rationale/event.",
+    inputSchema: {
+      id: z.string().min(1),
+      status: z
+        .enum([
+          "queued",
+          "claimed",
+          "running",
+          "retrying",
+          "blocked",
+          "pr_opened",
+          "needs_review",
+          "completed",
+          "failed",
+          "cancelled",
+        ])
+        .optional(),
+      claimState: z
+        .enum(["unclaimed", "claimed", "running", "retry_queued", "released"])
+        .optional(),
+      attempt: z.number().int().min(0).optional(),
+      errorSummary: z.string().optional(),
+      prUrl: z.string().optional(),
+      externalRunRef: z.string().optional(),
+      branch: z.string().optional(),
+      workspaceRef: z.string().optional(),
+      tokensInput: z.number().int().optional(),
+      tokensOutput: z.number().int().optional(),
+      tokensTotal: z.number().int().optional(),
+      costUsd: z.number().optional(),
+      agentSessionId: z.string().optional(),
+      agentThreadId: z.string().optional(),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+      event: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const { id, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${id}`,
+      { method: "PATCH", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "evaluate_company_brain_agent_run",
   {
     title: "Evaluate a Company Brain agent/session run",

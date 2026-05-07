@@ -32,8 +32,16 @@ import type {
   AreaBlueprintEntry,
   AreaBlueprintReadinessStatus,
   AreaBlueprintRegistry,
+  AgentRun,
+  AgentRunClaimState,
   AgentRunEvaluation,
   AgentRunEvaluationKind,
+  AgentRunListResponse,
+  AgentRunRunnerType,
+  AgentRunStatus,
+  AgentRunSummary,
+  CreateAgentRunRequest,
+  UpdateAgentRunRequest,
   DecomposeOperatingGoalRequest,
   EvaluateAgentRunRequest,
   OperatingGoalAreaPlan,
@@ -155,6 +163,7 @@ import {
   cbImprovementProposals,
   cbMilestones,
   cbSignals,
+  cbAgentRuns,
   cbSources,
   cbStrategicPriorities,
   cbStrategyTradeoffs,
@@ -3241,6 +3250,12 @@ function listAll() {
     .orderBy(desc(cbExternalActionProposals.updatedAt))
     .limit(100)
     .all();
+  const agentRuns = db
+    .select()
+    .from(cbAgentRuns)
+    .orderBy(desc(cbAgentRuns.updatedAt))
+    .limit(200)
+    .all();
 
   return {
     sources,
@@ -3263,6 +3278,7 @@ function listAll() {
     agentContexts,
     improvementProposals,
     externalActionProposals,
+    agentRuns,
   };
 }
 
@@ -11467,6 +11483,443 @@ function buildAreaBlueprintRegistry(
 app.get("/area-blueprints", (c) => {
   const data = buildAreaBlueprintRegistry(listAll());
   return c.json({ data });
+});
+
+const AGENT_RUN_STATUS_VALUES: AgentRunStatus[] = [
+  "queued",
+  "claimed",
+  "running",
+  "retrying",
+  "blocked",
+  "pr_opened",
+  "needs_review",
+  "completed",
+  "failed",
+  "cancelled",
+];
+
+const AGENT_RUN_CLAIM_STATE_VALUES: AgentRunClaimState[] = [
+  "unclaimed",
+  "claimed",
+  "running",
+  "retry_queued",
+  "released",
+];
+
+const AGENT_RUN_RUNNER_TYPE_VALUES: AgentRunRunnerType[] = [
+  "claude_code",
+  "codex",
+  "symphony",
+  "manual",
+  "other",
+];
+
+const AGENT_RUN_TERMINAL_STATUSES: AgentRunStatus[] = [
+  "completed",
+  "failed",
+  "cancelled",
+];
+
+const AGENT_RUN_STATUS_TRANSITIONS: Record<AgentRunStatus, AgentRunStatus[]> = {
+  queued: ["claimed", "cancelled"],
+  claimed: ["running", "blocked", "cancelled"],
+  running: [
+    "pr_opened",
+    "needs_review",
+    "completed",
+    "failed",
+    "retrying",
+    "blocked",
+    "cancelled",
+  ],
+  retrying: ["running", "cancelled", "failed"],
+  blocked: ["running", "cancelled", "failed"],
+  pr_opened: ["needs_review", "completed", "failed", "cancelled"],
+  needs_review: ["completed", "failed", "cancelled"],
+  completed: [],
+  failed: [],
+  cancelled: [],
+};
+
+const AGENT_RUN_STATUS_TO_CLAIM: Record<AgentRunStatus, AgentRunClaimState> = {
+  queued: "unclaimed",
+  claimed: "claimed",
+  running: "running",
+  retrying: "retry_queued",
+  blocked: "claimed",
+  pr_opened: "running",
+  needs_review: "running",
+  completed: "released",
+  failed: "released",
+  cancelled: "released",
+};
+
+function isValidAgentRunStatus(value: unknown): value is AgentRunStatus {
+  return typeof value === "string" && (AGENT_RUN_STATUS_VALUES as string[]).includes(value);
+}
+
+function isValidAgentRunClaimState(value: unknown): value is AgentRunClaimState {
+  return (
+    typeof value === "string" &&
+    (AGENT_RUN_CLAIM_STATE_VALUES as string[]).includes(value)
+  );
+}
+
+function isValidAgentRunRunnerType(value: unknown): value is AgentRunRunnerType {
+  return (
+    typeof value === "string" &&
+    (AGENT_RUN_RUNNER_TYPE_VALUES as string[]).includes(value)
+  );
+}
+
+function validateAgentRunStatusTransition(
+  from: AgentRunStatus,
+  to: AgentRunStatus
+): { allowed: boolean; reason: string | null } {
+  if (from === to) return { allowed: true, reason: null };
+  const allowedNext = AGENT_RUN_STATUS_TRANSITIONS[from] ?? [];
+  if (!allowedNext.includes(to)) {
+    return {
+      allowed: false,
+      reason: `transition ${from} -> ${to} not allowed; valid next states: ${allowedNext.join(", ") || "(terminal)"}`,
+    };
+  }
+  return { allowed: true, reason: null };
+}
+
+function appendAgentRunAuditEntry(
+  trail: AgentRun["auditTrail"],
+  entry: { actor?: string | null; event: string; note?: string | null; metadata?: Record<string, unknown> | null; at?: number }
+): AgentRun["auditTrail"] {
+  const at = entry.at ?? now();
+  return [
+    ...(trail ?? []),
+    {
+      at,
+      actor: entry.actor ?? null,
+      event: entry.event,
+      note: entry.note ?? null,
+      metadata: entry.metadata ?? null,
+    },
+  ];
+}
+
+function rowToAgentRun(row: typeof cbAgentRuns.$inferSelect): AgentRun {
+  return {
+    id: row.id,
+    workItemId: row.workItemId ?? null,
+    workflowRunId: row.workflowRunId ?? null,
+    agentContextId: row.agentContextId ?? null,
+    sourceId: row.sourceId ?? null,
+    repo: row.repo ?? null,
+    branch: row.branch ?? null,
+    workspaceRef: row.workspaceRef ?? null,
+    runnerType: row.runnerType,
+    status: row.status,
+    claimState: row.claimState,
+    attempt: row.attempt ?? 0,
+    startedAt: row.startedAt ?? null,
+    finishedAt: row.finishedAt ?? null,
+    errorSummary: row.errorSummary ?? null,
+    prUrl: row.prUrl ?? null,
+    externalRunRef: row.externalRunRef ?? null,
+    tokensInput: row.tokensInput ?? null,
+    tokensOutput: row.tokensOutput ?? null,
+    tokensTotal: row.tokensTotal ?? null,
+    costUsd: row.costUsd ?? null,
+    agentSessionId: row.agentSessionId ?? null,
+    agentThreadId: row.agentThreadId ?? null,
+    area: row.area,
+    riskClass: row.riskClass,
+    actionPolicy: row.actionPolicy,
+    visibility: row.visibility,
+    metadata: (row.metadata as Record<string, unknown> | null) ?? null,
+    auditTrail: row.auditTrail ?? [],
+    provenance: (row.provenance as Provenance | null) ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function buildAgentRunSummary(
+  data: ReturnType<typeof listAll>
+): AgentRunSummary {
+  const generatedAt = now();
+  const runs = (data.agentRuns as Array<typeof cbAgentRuns.$inferSelect>).map(
+    rowToAgentRun
+  );
+  const byStatus: Record<AgentRunStatus, number> = {
+    queued: 0,
+    claimed: 0,
+    running: 0,
+    retrying: 0,
+    blocked: 0,
+    pr_opened: 0,
+    needs_review: 0,
+    completed: 0,
+    failed: 0,
+    cancelled: 0,
+  };
+  const byClaimState: Record<AgentRunClaimState, number> = {
+    unclaimed: 0,
+    claimed: 0,
+    running: 0,
+    retry_queued: 0,
+    released: 0,
+  };
+  const byRunnerType: Record<string, number> = {};
+  for (const run of runs) {
+    byStatus[run.status] = (byStatus[run.status] ?? 0) + 1;
+    byClaimState[run.claimState] = (byClaimState[run.claimState] ?? 0) + 1;
+    byRunnerType[run.runnerType] = (byRunnerType[run.runnerType] ?? 0) + 1;
+  }
+  const horizonDay = generatedAt - 24 * 60 * 60 * 1000;
+  const recentCompletedCount = runs.filter(
+    (run) => run.status === "completed" && (run.finishedAt ?? run.updatedAt) >= horizonDay
+  ).length;
+  const staleHorizon = generatedAt - 60 * 60 * 1000;
+  const staleCount = runs.filter(
+    (run) => run.status === "running" && run.updatedAt < staleHorizon
+  ).length;
+  return {
+    generatedAt,
+    totalCount: runs.length,
+    byStatus,
+    byClaimState,
+    byRunnerType,
+    blockedCount: byStatus.blocked,
+    failedCount: byStatus.failed,
+    prOpenedCount: byStatus.pr_opened,
+    needsReviewCount: byStatus.needs_review,
+    retryingCount: byStatus.retrying,
+    recentCompletedCount,
+    staleCount,
+    recentRuns: runs.slice(0, 10),
+  };
+}
+
+app.get("/agent-runs", (c) => {
+  const url = new URL(c.req.url);
+  const limitRaw = Number(url.searchParams.get("limit") ?? "50");
+  const limit = Math.max(1, Math.min(200, Number.isFinite(limitRaw) ? limitRaw : 50));
+  const statusParam = url.searchParams.get("status");
+  const workItemId = url.searchParams.get("workItemId");
+  const runnerTypeParam = url.searchParams.get("runnerType");
+  const repo = url.searchParams.get("repo");
+  const status = isValidAgentRunStatus(statusParam) ? statusParam : null;
+  const runnerType = isValidAgentRunRunnerType(runnerTypeParam)
+    ? (runnerTypeParam as AgentRunRunnerType)
+    : null;
+  const data = listAll();
+  let runs = (data.agentRuns as Array<typeof cbAgentRuns.$inferSelect>).map(
+    rowToAgentRun
+  );
+  if (status) runs = runs.filter((run) => run.status === status);
+  if (workItemId) runs = runs.filter((run) => run.workItemId === workItemId);
+  if (runnerType) runs = runs.filter((run) => run.runnerType === runnerType);
+  if (repo) runs = runs.filter((run) => run.repo === repo);
+  const total = runs.length;
+  const items = runs.slice(0, limit);
+  const response: AgentRunListResponse = {
+    generatedAt: now(),
+    total,
+    filters: {
+      status,
+      workItemId: workItemId ?? null,
+      runnerType,
+      repo: repo ?? null,
+      limit,
+    },
+    items,
+  };
+  return c.json({ data: response });
+});
+
+app.get("/agent-runs/summary", (c) => {
+  const data = buildAgentRunSummary(listAll());
+  return c.json({ data });
+});
+
+app.get("/agent-runs/:id", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const row = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!row) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  return c.json({ data: rowToAgentRun(row) });
+});
+
+app.post("/agent-runs", async (c) => {
+  try {
+    const db = getDb();
+    const body = (await c.req
+      .json<CreateAgentRunRequest>()
+      .catch(() => ({}))) as CreateAgentRunRequest;
+    const status: AgentRunStatus = body.status ?? "queued";
+    if (!isValidAgentRunStatus(status)) {
+      return c.json({ error: "validation", message: "invalid status" }, 400);
+    }
+    const claimState: AgentRunClaimState =
+      body.claimState ?? AGENT_RUN_STATUS_TO_CLAIM[status];
+    if (!isValidAgentRunClaimState(claimState)) {
+      return c.json({ error: "validation", message: "invalid claimState" }, 400);
+    }
+    const runnerType: AgentRunRunnerType = body.runnerType ?? "manual";
+    if (!isValidAgentRunRunnerType(runnerType)) {
+      return c.json({ error: "validation", message: "invalid runnerType" }, 400);
+    }
+    const timestamp = now();
+    const id = nanoid(12);
+    const auditTrail = appendAgentRunAuditEntry([], {
+      actor: body.actor ?? null,
+      event: "agent_run_created",
+      note: body.rationale ?? null,
+      metadata: { status, claimState, runnerType },
+      at: timestamp,
+    });
+    const row = {
+      id,
+      workItemId: body.workItemId ?? null,
+      workflowRunId: body.workflowRunId ?? null,
+      agentContextId: body.agentContextId ?? null,
+      sourceId: body.sourceId ?? null,
+      repo: body.repo ?? null,
+      branch: body.branch ?? null,
+      workspaceRef: body.workspaceRef ?? null,
+      runnerType,
+      status,
+      claimState,
+      attempt: body.attempt ?? 0,
+      startedAt: status === "queued" ? null : timestamp,
+      finishedAt: AGENT_RUN_TERMINAL_STATUSES.includes(status) ? timestamp : null,
+      errorSummary: null,
+      prUrl: body.prUrl ?? null,
+      externalRunRef: body.externalRunRef ?? null,
+      tokensInput: null,
+      tokensOutput: null,
+      tokensTotal: null,
+      costUsd: null,
+      agentSessionId: body.agentSessionId ?? null,
+      agentThreadId: body.agentThreadId ?? null,
+      area: (body.area ?? "development") as CompanyBrainArea,
+      riskClass: (body.riskClass ?? "B") as RiskClass,
+      actionPolicy: (body.actionPolicy ?? "observe_only") as ActionPolicy,
+      visibility: (body.visibility ?? "internal") as Visibility,
+      metadata: body.metadata ?? null,
+      auditTrail,
+      provenance: {
+        createdFrom: "company_brain:agent_run_create",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending" as const,
+        visibility: (body.visibility ?? "internal") as Visibility,
+        notes: `runnerType=${runnerType}; status=${status}; claim=${claimState}`,
+      } as Provenance,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbAgentRuns).values(row as never).run();
+    return c.json({ data: rowToAgentRun(row as typeof cbAgentRuns.$inferSelect) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_create_failed", message }, 400);
+  }
+});
+
+app.patch("/agent-runs/:id", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<UpdateAgentRunRequest>()
+      .catch(() => ({}))) as UpdateAgentRunRequest;
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    const timestamp = now();
+    const updates: Record<string, unknown> = { updatedAt: timestamp };
+    let nextStatus: AgentRunStatus = existing.status;
+    if (body.status !== undefined) {
+      if (!isValidAgentRunStatus(body.status)) {
+        return c.json({ error: "validation", message: "invalid status" }, 400);
+      }
+      const transition = validateAgentRunStatusTransition(existing.status, body.status);
+      if (!transition.allowed) {
+        return c.json({ error: "invalid_transition", message: transition.reason }, 400);
+      }
+      nextStatus = body.status;
+      updates.status = nextStatus;
+      if (existing.startedAt === null && nextStatus !== "queued") {
+        updates.startedAt = timestamp;
+      }
+      if (AGENT_RUN_TERMINAL_STATUSES.includes(nextStatus) && !existing.finishedAt) {
+        updates.finishedAt = timestamp;
+      }
+    }
+    if (body.claimState !== undefined) {
+      if (!isValidAgentRunClaimState(body.claimState)) {
+        return c.json({ error: "validation", message: "invalid claimState" }, 400);
+      }
+      updates.claimState = body.claimState;
+    } else if (body.status !== undefined) {
+      updates.claimState = AGENT_RUN_STATUS_TO_CLAIM[nextStatus];
+    }
+    if (body.attempt !== undefined) updates.attempt = body.attempt;
+    if (body.startedAt !== undefined) updates.startedAt = body.startedAt;
+    if (body.finishedAt !== undefined) updates.finishedAt = body.finishedAt;
+    if (body.errorSummary !== undefined) updates.errorSummary = body.errorSummary;
+    if (body.prUrl !== undefined) updates.prUrl = body.prUrl;
+    if (body.externalRunRef !== undefined) updates.externalRunRef = body.externalRunRef;
+    if (body.branch !== undefined) updates.branch = body.branch;
+    if (body.workspaceRef !== undefined) updates.workspaceRef = body.workspaceRef;
+    if (body.tokensInput !== undefined) updates.tokensInput = body.tokensInput;
+    if (body.tokensOutput !== undefined) updates.tokensOutput = body.tokensOutput;
+    if (body.tokensTotal !== undefined) updates.tokensTotal = body.tokensTotal;
+    if (body.costUsd !== undefined) updates.costUsd = body.costUsd;
+    if (body.agentSessionId !== undefined) updates.agentSessionId = body.agentSessionId;
+    if (body.agentThreadId !== undefined) updates.agentThreadId = body.agentThreadId;
+    if (body.metadata !== undefined) updates.metadata = body.metadata;
+    const event =
+      body.event ??
+      (body.status !== undefined
+        ? `agent_run_${body.status}`
+        : "agent_run_updated");
+    const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+      actor: body.actor ?? null,
+      event,
+      note: body.rationale ?? null,
+      metadata: {
+        status: updates.status ?? existing.status,
+        claimState: updates.claimState ?? existing.claimState,
+        attempt: updates.attempt ?? existing.attempt,
+      },
+      at: timestamp,
+    });
+    updates.auditTrail = auditTrail;
+    db.update(cbAgentRuns)
+      .set(updates as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+    const refreshed = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect;
+    return c.json({ data: rowToAgentRun(refreshed) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_update_failed", message }, 400);
+  }
 });
 
 const GOAL_DIRECTION_PATTERNS: Array<{ direction: OperatingGoalDirection; pattern: RegExp }> = [
