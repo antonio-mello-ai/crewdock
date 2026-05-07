@@ -103,12 +103,16 @@ Adapter:
 
 Modo: read-only. Nao escreve em GitHub.
 
-Limites:
+Comportamento:
 
-- Sync v0 cria/deduplica `Artifact` e `WorkItem`; ele nao apaga `WorkItem`
-  quando a issue some do filtro e ainda nao atualiza labels/state de issues ja
-  espelhadas. Mudancas posteriores de label/state devem ser tratadas como gap
-  conhecido ate existir refresh/update explicito do adapter.
+- Sync cria/deduplica e atualiza `Artifact`/`WorkItem` quando a issue aparece no
+  resultado do adapter.
+- Quando rodado com `state=open`, o Source registra `lastIssueExternalIds`; o
+  `Next Work` usa essa lista para nao recomendar issues que sairam da fila ativa
+  desde o ultimo sync aberto.
+- Sync nao apaga `WorkItem` quando a issue some do filtro. Items historicos
+  seguem pesquisaveis, mas ficam fora da recomendacao de proximo trabalho quando
+  nao aparecem no ultimo sync `open`.
 - Issues com prefixo `AIOS-` viram WorkItems sob prioridade do roadmap quando
   associacao manual existe; demais ficam visiveis em Adoption Dashboard com gap
   `no_priority_or_goal`.
@@ -116,11 +120,16 @@ Limites:
 ## Como consumir a fila como agente
 
 1. Ler estado do Company Brain antes de tudo:
-   - `mcp__aios__get_company_brain_operating_snapshot`
-   - `mcp__aios__get_company_brain_summary`
+   - `mcp__aios__get_company_brain_operating_snapshot` ja inclui o card
+     `Next Work` derivado.
+   - `mcp__aios__get_company_brain_next_work` se quiser apenas o
+     recommendation (com agentPromptMarkdown pronto para colar).
+   - `mcp__aios__get_company_brain_summary` para inspecionar kernel completo.
    - `mcp__aios__generate_company_brain_daily_agent_handoff` se a sessao for
      "diaria/contextual" e nao houver handoff fresco.
 2. Identificar a proxima issue:
+   - Preferencialmente, usar o `Next Work` recommendation (ranking determinismo:
+     priority > goal > prefixo `AIOS-` > `dueAt` > issue number ascendente).
    - Listar issues abertas da milestone ativa via `gh issue list --milestone
      "AIOS Execution Loop v0" --state open` ordenadas por numero.
    - Ou ler WorkItems com `externalProvider=github` no Company Brain summary.

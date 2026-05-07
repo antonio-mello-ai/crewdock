@@ -2466,6 +2466,50 @@ export interface CompanyBrainOperatingSnapshotCard {
     | "generate_daily_handoff";
 }
 
+export interface CompanyBrainNextWorkRecommendation {
+  workItem: {
+    id: string;
+    title: string;
+    description: string | null;
+    status: WorkItemStatus;
+    area: CompanyBrainArea;
+    owner: string | null;
+    riskClass: RiskClass;
+    dueAt: number | null;
+    labels: string[];
+    externalProvider: string | null;
+    externalId: string | null;
+    externalUrl: string | null;
+    sourceId: string | null;
+    artifactId: string | null;
+    updatedAt: number;
+  };
+  rationale: string[];
+  priority: { id: string; title: string; status: string } | null;
+  goal: { id: string; title: string; status: string; dueAt: number | null } | null;
+  acceptanceCriteria: string[];
+  linkedEvidence: {
+    sourceIds: string[];
+    artifactIds: string[];
+    signalIds: string[];
+    guidanceIds: string[];
+  };
+  agentPromptMarkdown: string;
+  branchSuggestion: string;
+}
+
+export interface CompanyBrainNextWork {
+  generatedAt: number;
+  recommended: CompanyBrainNextWorkRecommendation | null;
+  emptyState: { reason: string; nextSteps: string[] } | null;
+  candidatesConsidered: number;
+  totals: {
+    activeWorkItemCount: number;
+    blockedWorkItemCount: number;
+    doneWorkItemCount: number;
+  };
+}
+
 export interface CompanyBrainOperatingSnapshot {
   generatedAt: number;
   overallStatus: "healthy" | "attention" | "critical" | "error";
@@ -2479,6 +2523,7 @@ export interface CompanyBrainOperatingSnapshot {
     missingCount: number;
   };
   cards: CompanyBrainOperatingSnapshotCard[];
+  nextWork: CompanyBrainNextWork;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   latestAgentContext: AgentContext | null;
   operatingCadence: CompanyBrainOperatingCadence;
