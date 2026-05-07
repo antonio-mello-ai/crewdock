@@ -4055,9 +4055,6 @@ function buildCoreReadiness(args: {
     data.guidanceItems.length > 0;
   const hasStrategyRuntime = data.priorities.length > 0 && data.goals.length > 0;
   const hasWorkRuntime = data.workItems.length > 0 && data.workflowRuns.length > 0;
-  const hasWritebackDogfood =
-    writebackSafetyDashboard.stats.completedExternalWriteCount > 0 ||
-    writebackSafetyDashboard.stats.completedNoopCount > 0;
   const hasDesignPartnerOperatingPack =
     existsSync(resolve(process.cwd(), "docs/company-brain-design-partner-operating-pack.md")) ||
     data.artifacts.some((artifact) => {
@@ -4431,9 +4428,9 @@ function buildCoreReadiness(args: {
     data.sources.length > 0 &&
     data.artifacts.length > 0 &&
     data.watcherRuns.length > 0 &&
-    adoptionDashboard.stats.closedLoopProjectCount > 0 &&
-    evidencePacketCount > 0 &&
-    hasWritebackDogfood;
+    automatedWatcherCount > 0 &&
+    operatingLoop.enabled &&
+    adoptionDashboard.stats.closedLoopProjectCount > 0;
   const dailyUseBlockingGapCount = gaps.filter((gap) => gap.impact === "daily_use")
     .length;
   const demoGapCount = gaps.filter((gap) => gap.impact === "demo").length;
