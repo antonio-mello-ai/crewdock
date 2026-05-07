@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 import type {
   ActionPolicy,
   AlignmentClassification,
+  Artifact,
   CompanyBrainArea,
   CompanyBrainAdoptionDashboard,
   CompanyBrainBriefingSection,
@@ -17,6 +18,8 @@ import type {
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainGateClosureRitual,
   CompanyBrainNextWork,
+  GuidanceItem,
+  Signal,
   CompanyBrainOperatingCadence,
   CompanyBrainOperatingLoopState,
   CompanyBrainOperatingSnapshot,
@@ -86,6 +89,10 @@ import type {
   SignalSource,
   SignalSeverity,
   RunWatcherRequest,
+  SessionResultOutcome,
+  SessionResultValidation,
+  SubmitSessionResultRequest,
+  SubmitSessionResultResponse,
   SyncGitHubIssuesRequest,
   SyncGitHubNotificationsRequest,
   SyncGitHubPrCiRequest,
@@ -10741,6 +10748,393 @@ app.get("/operating-snapshot", (c) => {
 app.get("/next-work", (c) => {
   const data = buildNextWork(listAll());
   return c.json({ data });
+});
+
+const SESSION_RESULT_DEFAULT_SOURCE_REF = "aios:session-results";
+const SESSION_RESULT_DEFAULT_SOURCE_NAME = "AIOS Session Results";
+
+function ensureSessionResultsSource(
+  area: CompanyBrainArea,
+  visibility: Visibility,
+  timestamp: number
+): string {
+  const db = getDb();
+  const existing = db
+    .select()
+    .from(cbSources)
+    .where(eq(cbSources.externalRef, SESSION_RESULT_DEFAULT_SOURCE_REF))
+    .get();
+  if (existing) return existing.id;
+  const id = nanoid(12);
+  db.insert(cbSources)
+    .values({
+      id,
+      name: SESSION_RESULT_DEFAULT_SOURCE_NAME,
+      sourceType: "runtime",
+      area,
+      externalRef: SESSION_RESULT_DEFAULT_SOURCE_REF,
+      status: "active",
+      healthStatus: "healthy",
+      owner: "Felhen",
+      ownerType: "team",
+      visibility,
+      lastSyncAt: timestamp,
+      syncError: null,
+      metadata: { runtime: SESSION_RESULT_DEFAULT_SOURCE_REF },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+  return id;
+}
+
+function findWorkItemForSessionResult(
+  workItemId: string | null | undefined,
+  externalIssueRef: string | null | undefined
+): WorkItem | null {
+  const db = getDb();
+  if (workItemId) {
+    const row = db
+      .select()
+      .from(cbWorkItems)
+      .where(eq(cbWorkItems.id, workItemId))
+      .get();
+    if (row) return row as unknown as WorkItem;
+  }
+  if (externalIssueRef) {
+    const all = db.select().from(cbWorkItems).all() as unknown as WorkItem[];
+    const found = all.find((item) => item.externalId === externalIssueRef);
+    if (found) return found;
+  }
+  return null;
+}
+
+function sessionResultSignalSource(
+  outcome: SessionResultOutcome,
+  validationStatus?: SessionResultValidation["status"]
+): SignalSource {
+  if (validationStatus === "failed") return "qa";
+  if (outcome === "failed") return "error";
+  if (outcome === "blocked") return "feedback";
+  return "feedback";
+}
+
+app.post("/session-results", async (c) => {
+  try {
+    const db = getDb();
+    const body = (await c.req
+      .json<SubmitSessionResultRequest>()
+      .catch(() => ({}))) as SubmitSessionResultRequest;
+    if (!body.summary || !body.summary.trim()) {
+      return c.json({ error: "validation", message: "summary is required" }, 400);
+    }
+    if (!body.runnerType) {
+      return c.json({ error: "validation", message: "runnerType is required" }, 400);
+    }
+    if (!body.outcome) {
+      return c.json({ error: "validation", message: "outcome is required" }, 400);
+    }
+
+    const timestamp = now();
+    const visibility = body.visibility ?? "internal";
+
+    const workItemRow = findWorkItemForSessionResult(
+      body.workItemId ?? null,
+      body.externalIssueRef ?? null
+    );
+    const area: CompanyBrainArea =
+      body.area ?? workItemRow?.area ?? "platform";
+    const sourceId = workItemRow?.sourceId
+      ? workItemRow.sourceId
+      : ensureSessionResultsSource(area, visibility, timestamp);
+
+    const rawRef = `aios://session-result/${nanoid(8)}-${timestamp}`;
+    const hashPayload = JSON.stringify({
+      runnerType: body.runnerType,
+      outcome: body.outcome,
+      summary: body.summary,
+      workItemId: workItemRow?.id ?? null,
+      prUrl: body.prUrl ?? null,
+      timestamp,
+    });
+    const hash = createHash("sha256").update(hashPayload).digest("hex");
+
+    const metadata: Record<string, unknown> = {
+      runnerType: body.runnerType,
+      outcome: body.outcome,
+    };
+    if (body.workItemId) metadata.workItemId = body.workItemId;
+    if (body.workflowRunId) metadata.workflowRunId = body.workflowRunId;
+    if (body.externalIssueRef) metadata.externalIssueRef = body.externalIssueRef;
+    if (body.branch) metadata.branch = body.branch;
+    if (body.prUrl) metadata.prUrl = body.prUrl;
+    if (body.workspaceRef) metadata.workspaceRef = body.workspaceRef;
+    if (body.commits?.length) metadata.commits = body.commits;
+    if (body.changedFiles?.length) metadata.changedFiles = body.changedFiles;
+    if (body.validations?.length) metadata.validations = body.validations;
+    if (body.blockers?.length) metadata.blockers = body.blockers;
+    if (body.nextSteps?.length) metadata.nextSteps = body.nextSteps;
+    if (body.startedAt) metadata.startedAt = body.startedAt;
+    if (body.finishedAt) metadata.finishedAt = body.finishedAt;
+    if (body.tokensInput !== undefined && body.tokensInput !== null) {
+      metadata.tokensInput = body.tokensInput;
+    }
+    if (body.tokensOutput !== undefined && body.tokensOutput !== null) {
+      metadata.tokensOutput = body.tokensOutput;
+    }
+    if (body.tokensTotal !== undefined && body.tokensTotal !== null) {
+      metadata.tokensTotal = body.tokensTotal;
+    }
+    if (body.costUsd !== undefined && body.costUsd !== null) {
+      metadata.costUsd = body.costUsd;
+    }
+    if (body.agentSessionId) metadata.agentSessionId = body.agentSessionId;
+    if (body.agentThreadId) metadata.agentThreadId = body.agentThreadId;
+    if (body.detail) metadata.detail = body.detail;
+
+    const titleParts: string[] = [];
+    if (workItemRow) titleParts.push(workItemRow.title);
+    else if (body.externalIssueRef) titleParts.push(body.externalIssueRef);
+    titleParts.push(`(${body.runnerType}/${body.outcome})`);
+    const artifactTitle = `Session result: ${titleParts.join(" ")}`.slice(0, 240);
+
+    const artifactId = nanoid(12);
+    const artifactRow: Artifact = {
+      id: artifactId,
+      sourceId,
+      artifactType: "session_result",
+      area,
+      title: artifactTitle,
+      summary: body.summary,
+      contentRef: body.detail ?? null,
+      rawRef,
+      author: body.actor ?? null,
+      occurredAt: body.finishedAt ?? timestamp,
+      ingestedAt: timestamp,
+      hash,
+      visibility,
+      provenance: {
+        sourceId,
+        rawRef,
+        artifactId,
+        createdFrom: "company_brain:session_result_intake",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending",
+        visibility,
+        notes: `runner=${body.runnerType}; outcome=${body.outcome}`,
+      },
+      humanReviewStatus: "pending",
+      confidence: 1,
+      metadata,
+    };
+    db.insert(cbArtifacts).values(artifactRow as never).run();
+
+    let workItemUpdated = false;
+    let prLinkRecorded = false;
+    if (workItemRow) {
+      const updates: Record<string, unknown> = { updatedAt: timestamp };
+      let dirty = false;
+      if (body.prUrl) {
+        prLinkRecorded = true;
+      }
+      if (
+        body.outcome === "pr_opened" &&
+        ["new", "triage", "planned", "in_progress"].includes(workItemRow.status)
+      ) {
+        updates.status = "review";
+        dirty = true;
+      } else if (
+        body.outcome === "awaiting_review" &&
+        ["new", "triage", "planned", "in_progress"].includes(workItemRow.status)
+      ) {
+        updates.status = "review";
+        dirty = true;
+      } else if (body.outcome === "blocked") {
+        updates.blockedReason = body.summary.slice(0, 500);
+        updates.status = "blocked";
+        dirty = true;
+      } else if (body.outcome === "failed") {
+        updates.blockedReason = body.summary.slice(0, 500);
+        updates.status = "needs_human";
+        dirty = true;
+      }
+      if (!workItemRow.artifactId) {
+        updates.artifactId = artifactId;
+        dirty = true;
+      }
+      if (dirty) {
+        db.update(cbWorkItems)
+          .set(updates)
+          .where(eq(cbWorkItems.id, workItemRow.id))
+          .run();
+        workItemUpdated = true;
+      }
+    }
+
+    const signalsCreated: Signal[] = [];
+    const insertSignal = (input: {
+      summary: string;
+      severity: SignalSeverity;
+      source: SignalSource;
+      tags: string[];
+      metadataExtra: Record<string, unknown>;
+      noteSuffix: string;
+    }) => {
+      const signalId = nanoid(12);
+      const signalRow = {
+        id: signalId,
+        source: input.source,
+        scope: "core" as const,
+        entityType: "job" as const,
+        entityId: workItemRow?.id ?? artifactId,
+        timestamp,
+        summary: input.summary,
+        rawRef,
+        severity: input.severity,
+        confidence: 0.9,
+        tags: input.tags,
+        area,
+        sourceId,
+        artifactId,
+        workItemId: workItemRow?.id ?? null,
+        workflowRunId: body.workflowRunId ?? null,
+        watcherId: null,
+        watcherRunId: null,
+        visibility,
+        provenance: {
+          sourceId,
+          rawRef,
+          artifactId,
+          createdFrom: `company_brain:session_result_intake:${input.noteSuffix}`,
+          confidence: 0.9,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility,
+          notes: `runner=${body.runnerType}; outcome=${body.outcome}; ${input.noteSuffix}`,
+        },
+        metadata: input.metadataExtra,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSignals).values(signalRow as never).run();
+      signalsCreated.push(signalRow as unknown as Signal);
+    };
+
+    if (body.blockers?.length) {
+      for (const blocker of body.blockers) {
+        insertSignal({
+          summary: blocker.description,
+          severity: blocker.severity ?? "warn",
+          source: "feedback",
+          tags: ["session_result", "blocker", body.runnerType, blocker.kind],
+          metadataExtra: { blocker },
+          noteSuffix: `blocker:${blocker.kind}`,
+        });
+      }
+    }
+    if (body.validations?.length) {
+      for (const validation of body.validations) {
+        if (validation.status !== "failed") continue;
+        insertSignal({
+          summary: `Validation failed: ${validation.kind}${
+            validation.notes ? ` - ${validation.notes}` : ""
+          }`,
+          severity: "critical",
+          source: sessionResultSignalSource(body.outcome, validation.status),
+          tags: [
+            "session_result",
+            "validation_failed",
+            body.runnerType,
+            validation.kind,
+          ],
+          metadataExtra: { validation },
+          noteSuffix: `validation_failed:${validation.kind}`,
+        });
+      }
+    }
+    if (body.outcome === "failed" && !body.validations?.some((v) => v.status === "failed")) {
+      insertSignal({
+        summary: `Session reported outcome=failed: ${body.summary.slice(0, 200)}`,
+        severity: "critical",
+        source: "error",
+        tags: ["session_result", "outcome_failed", body.runnerType],
+        metadataExtra: {},
+        noteSuffix: "outcome_failed",
+      });
+    }
+
+    const guidanceCreated: GuidanceItem[] = [];
+    if (body.nextSteps?.length) {
+      for (const next of body.nextSteps) {
+        const guidanceId = nanoid(12);
+        const guidanceRow = {
+          id: guidanceId,
+          audience: next.audience ?? "human",
+          priorityId: workItemRow?.priorityId ?? null,
+          goalId: workItemRow?.goalId ?? null,
+          findingId: null,
+          signalId: null,
+          workItemId: workItemRow?.id ?? null,
+          workflowRunId: body.workflowRunId ?? null,
+          area,
+          title: next.action.slice(0, 120),
+          action: next.action,
+          dueAt: null,
+          severity: next.severity ?? "info",
+          status: "new" as const,
+          feedbackStatus: "pending" as const,
+          feedbackNote: null,
+          feedbackAt: null,
+          generatedFrom: {
+            sessionResultArtifactId: artifactId,
+            runnerType: body.runnerType,
+            outcome: body.outcome,
+          },
+          visibility,
+          provenance: {
+            sourceId,
+            rawRef,
+            artifactId,
+            createdFrom: "company_brain:session_result_intake:next_step",
+            confidence: 0.9,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility,
+            notes: `runner=${body.runnerType}; outcome=${body.outcome}`,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        db.insert(cbGuidanceItems).values(guidanceRow as never).run();
+        guidanceCreated.push(guidanceRow as unknown as GuidanceItem);
+      }
+    }
+
+    let updatedWorkItem: WorkItem | null = null;
+    if (workItemRow) {
+      const refreshed = db
+        .select()
+        .from(cbWorkItems)
+        .where(eq(cbWorkItems.id, workItemRow.id))
+        .get();
+      if (refreshed) updatedWorkItem = refreshed as unknown as WorkItem;
+    }
+
+    const response: SubmitSessionResultResponse = {
+      artifact: artifactRow,
+      workItem: updatedWorkItem,
+      signalsCreated,
+      guidanceItemsCreated: guidanceCreated,
+      workItemUpdated,
+      prLinkRecorded,
+      metadataMerged: metadata,
+    };
+    return c.json({ data: response });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "session_result_failed", message }, 400);
+  }
 });
 
 app.get("/operating-cadence", (c) => {
