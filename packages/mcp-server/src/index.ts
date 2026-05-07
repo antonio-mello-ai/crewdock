@@ -383,6 +383,49 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_operating_cadence",
+  {
+    title: "Get Company Brain operating cadence",
+    description:
+      "Read-only AIOS operating cadence report with scheduled watchers, last scheduled run, next expected run, stale/due cadence gaps and manual vs automatic run counts.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-cadence"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "run_company_brain_operating_cadence",
+  {
+    title: "Run Company Brain operating cadence",
+    description:
+      "Trigger the observe-only Operating Cadence v0 runner. It runs the AIOS briefing watcher and GitHub PR/CI watcher with schedule provenance, creating internal WatcherRuns/Artifacts/Signals only.",
+    inputSchema: {
+      scheduleId: z.string().optional(),
+      repo: z.string().optional(),
+      limit: z.number().int().min(1).max(25).optional(),
+    },
+  },
+  async ({ scheduleId, repo, limit }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-cadence/run",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          scheduleId,
+          githubPrCi: repo || limit ? { repo, limit } : undefined,
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_source_health",
   {
     title: "Get Company Brain source health",

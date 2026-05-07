@@ -15,6 +15,7 @@ import type {
   CompanyBrainCoreReadiness,
   CompanyBrainEvidenceGraph,
   CompanyBrainEvidenceGraphNodeKind,
+  CompanyBrainOperatingCadence,
   CompanyBrainReviewCohesion,
   CompanyBrainSavedAuditViews,
   CompanyBrainTimeline,
@@ -71,12 +72,15 @@ import type {
   ImportSlackMessagesRequest,
   Provenance,
   RunFelhenDemoRequest,
+  RunOperatingCadenceRequest,
+  RunOperatingCadenceResponse,
   SignalSource,
   SignalSeverity,
   RunWatcherRequest,
   SyncGitHubIssuesRequest,
   SyncGitHubNotificationsRequest,
   SyncGitHubPrCiRequest,
+  SyncGitHubPrCiResponse,
   SyncSlackChannelRequest,
   RiskClass,
   UpdateDecisionRequest,
@@ -84,6 +88,7 @@ import type {
   UpdateGuidanceItemRequest,
   UpdateImprovementProposalRequest,
   Visibility,
+  WatcherRunTriggerSource,
   WritebackAdapterKey,
   WritebackEvidencePacket,
   WritebackPreviewReplaySimulator,
@@ -153,6 +158,128 @@ const AIOS_BRIEFING_WATCHER_ID = "watcher-aios-briefing-v0";
 const GITHUB_PR_CI_WATCHER_ID = "watcher-github-pr-ci-v0";
 const GITHUB_NOTIFICATIONS_WATCHER_ID = "watcher-github-notifications-v0";
 const WRITEBACK_PREVIEW_STALE_MS = 24 * 60 * 60 * 1000;
+const OPERATING_CADENCE_DEFAULT_REPO =
+  process.env.AIOS_OPERATING_CADENCE_GITHUB_REPO ?? "antonio-mello-ai/crewdock";
+const OPERATING_CADENCE_WATCHER_IDS = [
+  AIOS_BRIEFING_WATCHER_ID,
+  GITHUB_PR_CI_WATCHER_ID,
+];
+
+interface WatcherTriggerContext {
+  triggerSource: WatcherRunTriggerSource;
+  scheduleId: string | null;
+  scheduledAt: number | null;
+}
+
+function watcherScheduleId(watcherId: string) {
+  return `company-brain:${watcherId}`;
+}
+
+function normalizeTriggerContext(args: {
+  watcherId: string;
+  triggerSource?: WatcherRunTriggerSource | null;
+  scheduleId?: string | null;
+  scheduledAt?: number | null;
+}): WatcherTriggerContext {
+  const triggerSource = args.triggerSource === "schedule" ? "schedule" : "manual";
+  return {
+    triggerSource,
+    scheduleId:
+      triggerSource === "schedule"
+        ? args.scheduleId ?? watcherScheduleId(args.watcherId)
+        : null,
+    scheduledAt: triggerSource === "schedule" ? args.scheduledAt ?? now() : null,
+  };
+}
+
+function scheduleTriggerRef(context: WatcherTriggerContext, runId: string) {
+  if (context.triggerSource !== "schedule" || !context.scheduleId) return null;
+  return `schedule://${encodeURIComponent(context.scheduleId)}/${runId}`;
+}
+
+function triggerNotes(context: WatcherTriggerContext) {
+  return [
+    `trigger_source=${context.triggerSource}`,
+    context.scheduleId ? `schedule_id=${context.scheduleId}` : null,
+    context.scheduledAt ? `scheduled_at=${context.scheduledAt}` : null,
+  ]
+    .filter((value): value is string => !!value)
+    .join("; ");
+}
+
+function provenanceCreatedFrom(base: string, context: WatcherTriggerContext) {
+  if (context.triggerSource !== "schedule") return base;
+  if (base.endsWith(":run")) return base.replace(/:run$/, ":scheduled_run");
+  if (base.endsWith(":briefing")) {
+    return base.replace(/:briefing$/, ":scheduled_briefing");
+  }
+  if (base.endsWith(":artifact")) {
+    return base.replace(/:artifact$/, ":scheduled_artifact");
+  }
+  if (base.endsWith(":signal")) return base.replace(/:signal$/, ":scheduled_signal");
+  return `${base}:scheduled`;
+}
+
+function watcherCadenceIntervalMs(watcher: { schedule: string | null }) {
+  const schedule = watcher.schedule?.toLowerCase() ?? "";
+  if (!schedule) return null;
+  const hourMatch = schedule.match(/every\s+(\d+)\s*h/);
+  if (hourMatch) return Number(hourMatch[1]) * 60 * 60 * 1000;
+  if (schedule.includes("hourly")) return 60 * 60 * 1000;
+  if (schedule.includes("every 2 hours")) return 2 * 60 * 60 * 1000;
+  if (schedule.includes("every 4 hours")) return 4 * 60 * 60 * 1000;
+  if (schedule.includes("daily")) return 24 * 60 * 60 * 1000;
+  if (schedule.includes("poll")) return 4 * 60 * 60 * 1000;
+  return 24 * 60 * 60 * 1000;
+}
+
+function nextCadenceRunAt(
+  watcher: { schedule: string | null },
+  finishedAt: number
+) {
+  const interval = watcherCadenceIntervalMs(watcher);
+  return interval ? finishedAt + interval : null;
+}
+
+function isCadenceWatcher(watcher: {
+  id: string;
+  triggerType: string;
+  schedule: string | null;
+}) {
+  return (
+    OPERATING_CADENCE_WATCHER_IDS.includes(watcher.id) ||
+    ["schedule", "polling"].includes(watcher.triggerType) ||
+    !!watcher.schedule?.toLowerCase().includes("daily") ||
+    !!watcher.schedule?.toLowerCase().includes("every")
+  );
+}
+
+function isScheduledWatcherRun(run: {
+  triggerRef: string | null;
+  provenance: Provenance | null;
+}) {
+  const createdFrom = run.provenance?.createdFrom ?? "";
+  const notes = run.provenance?.notes ?? "";
+  return (
+    run.triggerRef?.startsWith("schedule://") ||
+    createdFrom.includes(":scheduled_") ||
+    notes.includes("trigger_source=schedule")
+  );
+}
+
+function lastRunForWatcher(
+  runs: Array<typeof cbWatcherRuns.$inferSelect>,
+  watcherId: string,
+  onlyScheduled = false
+) {
+  return runs
+    .filter(
+      (run) =>
+        run.watcherId === watcherId &&
+        (!onlyScheduled || isScheduledWatcherRun(run))
+    )
+    .sort((a, b) => b.startedAt - a.startedAt)[0];
+}
 
 function allowedLocalDocRoots() {
   const envRoots = process.env.AIOS_LOCAL_DOC_IMPORT_ROOTS?.split(",") ?? [];
@@ -1839,6 +1966,497 @@ function requireText(value: unknown, field: string) {
   return value.trim();
 }
 
+async function runGitHubPrCiWatcherSync(
+  body: SyncGitHubPrCiRequest
+): Promise<SyncGitHubPrCiResponse> {
+  const db = getDb();
+  const timestamp = now();
+  const runId = nanoid(12);
+  const triggerContext = normalizeTriggerContext({
+    watcherId: GITHUB_PR_CI_WATCHER_ID,
+    triggerSource: body.triggerSource,
+    scheduleId: body.scheduleId,
+    scheduledAt: body.scheduledAt,
+  });
+
+  try {
+    const watcher = db
+      .select()
+      .from(cbWatchers)
+      .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
+      .get();
+    if (!watcher) throw new Error("GitHub PR/CI watcher seed not found");
+    if (watcher.status !== "active") throw new Error("GitHub PR/CI watcher is not active");
+
+    const { repo, pulls } = await fetchGitHubPullRequestsWithCi(
+      requireText(body.repo, "repo"),
+      body.state ?? "open",
+      body.limit ?? 25
+    );
+    let source = body.sourceId
+      ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+      : null;
+    if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source =
+        db
+          .select()
+          .from(cbSources)
+          .all()
+          .find(
+            (item) =>
+              item.sourceType === "github_repo" &&
+              item.externalRef === `https://github.com/${repo.fullName}/pulls`
+          ) ?? null;
+    }
+    if (!source) {
+      source = {
+        id: nanoid(12),
+        name: body.sourceName ?? `${repo.fullName} GitHub PR/CI`,
+        sourceType: "github_repo" as const,
+        area: body.area ?? "development",
+        externalRef: `https://github.com/${repo.fullName}/pulls`,
+        status: "active" as const,
+        healthStatus: "unknown" as const,
+        owner: body.owner ?? null,
+        ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+        visibility: body.visibility ?? "internal",
+        lastSyncAt: null,
+        syncError: null,
+        metadata: {
+          adapter: "github_pr_ci",
+          repo: repo.fullName,
+          readOnly: true,
+          actionPolicy: "observe_only",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSources).values(source).run();
+    }
+
+    const existingArtifacts = db.select().from(cbArtifacts).all();
+    const existingSignals = db.select().from(cbSignals).all();
+    const artifactsCreated = [];
+    const signalsCreated = [];
+    let checksSeen = 0;
+    let failingChecksSeen = 0;
+
+    for (const item of pulls) {
+      const pull = item.pull;
+      const statusState = item.combinedStatus?.state ?? "pending";
+      const failingChecks = item.checkRuns.filter((check) =>
+        ["failure", "timed_out", "cancelled", "action_required"].includes(
+          check.conclusion ?? ""
+        )
+      );
+      const pendingChecks = item.checkRuns.filter(
+        (check) => check.status !== "completed" || check.conclusion === null
+      );
+      checksSeen += item.checkRuns.length + (item.combinedStatus?.statuses.length ?? 0);
+      failingChecksSeen += failingChecks.length;
+
+      const rawRef = `${pull.html_url}@${pull.head.sha}`;
+      let artifact = existingArtifacts.find((candidate) => candidate.rawRef === rawRef);
+      if (!artifact) {
+        const payload = JSON.stringify({
+          id: pull.id,
+          number: pull.number,
+          title: pull.title,
+          state: pull.state,
+          draft: pull.draft ?? false,
+          mergedAt: pull.merged_at,
+          headSha: pull.head.sha,
+          statusState,
+          checkRuns: item.checkRuns.map((check) => ({
+            id: check.id,
+            name: check.name,
+            status: check.status,
+            conclusion: check.conclusion,
+          })),
+        });
+        artifact = {
+          id: nanoid(12),
+          sourceId: source.id,
+          artifactType: "github_pr_ci",
+          area: body.area ?? source.area,
+          title: `PR #${pull.number} ${pull.title}`,
+          summary:
+            pull.body?.trim().slice(0, 500) ??
+            `GitHub PR ${pull.number} CI status is ${statusState}.`,
+          contentRef: pull.url,
+          rawRef,
+          author: pull.user?.login ?? null,
+          occurredAt: Date.parse(pull.updated_at || pull.created_at),
+          ingestedAt: timestamp,
+          hash: stableHash(payload),
+          visibility: body.visibility ?? source.visibility,
+          provenance: {
+            sourceId: source.id,
+            rawRef,
+            createdFrom:
+              triggerContext.triggerSource === "schedule"
+                ? "watcher:github_pr_ci:scheduled_artifact"
+                : "watcher:github_pr_ci:artifact",
+            confidence: 1,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: body.visibility ?? source.visibility,
+            notes: `read_only=true; action_policy=observe_only; ${triggerNotes(triggerContext)}`,
+          },
+          humanReviewStatus: "pending" as const,
+          confidence: 1,
+          metadata: {
+            adapter: "github_pr_ci",
+            watcherId: watcher.id,
+            watcherRunId: runId,
+            triggerSource: triggerContext.triggerSource,
+            scheduleId: triggerContext.scheduleId,
+            scheduledAt: triggerContext.scheduledAt,
+            readOnly: true,
+            actionPolicy: "observe_only",
+            repo: repo.fullName,
+            pullRequestId: pull.id,
+            number: pull.number,
+            state: pull.state,
+            draft: pull.draft ?? false,
+            mergedAt: pull.merged_at,
+            headSha: pull.head.sha,
+            headRef: pull.head.ref,
+            baseRef: pull.base.ref,
+            statusState,
+            checkRuns: item.checkRuns.map((check) => ({
+              id: check.id,
+              name: check.name,
+              status: check.status,
+              conclusion: check.conclusion,
+              htmlUrl: check.html_url,
+              detailsUrl: check.details_url,
+              startedAt: check.started_at,
+              completedAt: check.completed_at,
+            })),
+          },
+        };
+        db.insert(cbArtifacts).values(artifact).run();
+        existingArtifacts.push(artifact);
+        artifactsCreated.push(artifact);
+      }
+
+      const needsSignal =
+        body.createSignals !== false &&
+        (["error", "failure", "pending"].includes(statusState) ||
+          failingChecks.length > 0 ||
+          pendingChecks.length > 0);
+      if (!needsSignal) continue;
+
+      const signalRawRef = `${rawRef}#ci`;
+      if (
+        existingSignals.some(
+          (signal) =>
+            signal.rawRef === signalRawRef &&
+            signal.metadata?.headSha === pull.head.sha &&
+            signal.metadata?.statusState === statusState
+        )
+      ) {
+        continue;
+      }
+      const severity: SignalSeverity =
+        statusState === "error" || statusState === "failure" || failingChecks.length
+          ? "critical"
+          : "warn";
+      const summary = `GitHub PR #${pull.number} CI is ${statusState}; ${failingChecks.length} failing checks, ${pendingChecks.length} pending checks.`;
+      const signalId = nanoid(12);
+      const tags = [
+        "github_pr_ci",
+        repo.fullName,
+        `pr:${pull.number}`,
+        `status:${statusState}`,
+      ];
+      const envelope = {
+        source: "qa" as const,
+        scope: "core" as const,
+        entity_type: "job" as const,
+        entity_id: `${repo.fullName}#${pull.number}:${pull.head.sha}`,
+        timestamp,
+        summary,
+        raw_ref: signalRawRef,
+        severity,
+        confidence: 0.95,
+        tags,
+      };
+      const signal = {
+        id: signalId,
+        source: "qa" as const,
+        scope: "core" as const,
+        entityType: "job" as const,
+        entityId: `${repo.fullName}#${pull.number}:${pull.head.sha}`,
+        timestamp,
+        summary,
+        rawRef: signalRawRef,
+        severity,
+        confidence: 0.95,
+        tags,
+        area: body.area ?? source.area,
+        sourceId: source.id,
+        artifactId: artifact.id,
+        workItemId: null,
+        workflowRunId: null,
+        watcherId: watcher.id,
+        watcherRunId: runId,
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: signalRawRef,
+          artifactId: artifact.id,
+          createdFrom:
+            triggerContext.triggerSource === "schedule"
+              ? "watcher:github_pr_ci:scheduled_signal"
+              : "watcher:github_pr_ci:signal",
+          confidence: 0.95,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: `read_only=true; action_policy=observe_only; ${triggerNotes(triggerContext)}`,
+        },
+        metadata: {
+          autoImproveEnvelope: envelope,
+          triggerSource: triggerContext.triggerSource,
+          scheduleId: triggerContext.scheduleId,
+          scheduledAt: triggerContext.scheduledAt,
+          repo: repo.fullName,
+          pullRequestNumber: pull.number,
+          headSha: pull.head.sha,
+          statusState,
+          failingChecks: failingChecks.map((check) => check.name),
+          pendingChecks: pendingChecks.map((check) => check.name),
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSignals).values(signal).run();
+      db.insert(cbArtifactLinks)
+        .values({
+          id: nanoid(12),
+          artifactId: artifact.id,
+          targetType: "signal",
+          targetId: signal.id,
+          relationship: "generated_signal",
+          confidence: signal.confidence,
+          rationale: "GitHub PR/CI watcher normalized CI state into an internal signal.",
+          createdAt: timestamp,
+        })
+        .run();
+      existingSignals.push(signal);
+      signalsCreated.push(signal);
+    }
+
+    if (!artifactsCreated.length) {
+      const rawRef = `https://github.com/${repo.fullName}/pulls#poll:${runId}`;
+      const payload = JSON.stringify({
+        repo: repo.fullName,
+        state: body.state ?? "open",
+        pullsSeen: pulls.length,
+        checksSeen,
+        failingChecksSeen,
+        runId,
+      });
+      const artifact = {
+        id: nanoid(12),
+        sourceId: source.id,
+        artifactType: "github_pr_ci_poll",
+        area: body.area ?? source.area,
+        title: `${repo.fullName} PR/CI scheduled poll`,
+        summary: `Scheduled GitHub PR/CI poll observed ${pulls.length} pull requests, ${checksSeen} checks and ${failingChecksSeen} failing checks.`,
+        contentRef: `https://github.com/${repo.fullName}/pulls`,
+        rawRef,
+        author: "github",
+        occurredAt: timestamp,
+        ingestedAt: timestamp,
+        hash: stableHash(payload),
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef,
+          createdFrom:
+            triggerContext.triggerSource === "schedule"
+              ? "watcher:github_pr_ci:scheduled_poll_artifact"
+              : "watcher:github_pr_ci:poll_artifact",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility: body.visibility ?? source.visibility,
+          notes: `read_only=true; action_policy=observe_only; ${triggerNotes(triggerContext)}`,
+        },
+        humanReviewStatus: "pending" as const,
+        confidence: 1,
+        metadata: {
+          adapter: "github_pr_ci",
+          watcherId: watcher.id,
+          watcherRunId: runId,
+          triggerSource: triggerContext.triggerSource,
+          scheduleId: triggerContext.scheduleId,
+          scheduledAt: triggerContext.scheduledAt,
+          readOnly: true,
+          actionPolicy: "observe_only",
+          repo: repo.fullName,
+          state: body.state ?? "open",
+          pullsSeen: pulls.length,
+          checksSeen,
+          failingChecksSeen,
+        },
+      };
+      db.insert(cbArtifacts).values(artifact).run();
+      artifactsCreated.push(artifact);
+    }
+
+    const finishedAt = now();
+    const rawRef = `https://github.com/${repo.fullName}/pulls`;
+    const triggerRef = scheduleTriggerRef(triggerContext, runId) ?? rawRef;
+    const run = {
+      id: runId,
+      watcherId: watcher.id,
+      startedAt: timestamp,
+      finishedAt,
+      status: "completed" as const,
+      triggerRef,
+      sourceIds: [source.id],
+      artifactsCreated: artifactsCreated.map((artifact) => artifact.id),
+      signalsCreated: signalsCreated.map((signal) => signal.id),
+      alignmentFindingsCreated: [],
+      workItemsCreated: [],
+      guidanceCreated: [],
+      workflowRunsLinked: [],
+      errorSummary: null,
+      actionPolicy: watcher.actionPolicy,
+      riskClass: watcher.riskClass,
+      provenance: {
+        sourceId: source.id,
+        rawRef: triggerRef,
+        createdFrom:
+          triggerContext.triggerSource === "schedule"
+            ? "watcher:github_pr_ci:scheduled_run"
+            : "watcher:github_pr_ci:run",
+        confidence: 1,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending" as const,
+        visibility: watcher.visibility,
+        notes: triggerNotes(triggerContext),
+      },
+      createdAt: timestamp,
+      updatedAt: finishedAt,
+    };
+    db.insert(cbWatcherRuns).values(run).run();
+
+    const watcherSourceIds = uniqueStrings([...watcher.sourceIds, source.id]);
+    const updatedSource = {
+      ...source,
+      lastSyncAt: finishedAt,
+      healthStatus: "healthy" as const,
+      syncError: null,
+      metadata: {
+        ...(source.metadata ?? {}),
+        adapter: "github_pr_ci",
+        repo: repo.fullName,
+        readOnly: true,
+        actionPolicy: "observe_only",
+        watcherId: watcher.id,
+        lastWatcherRunId: run.id,
+        lastTriggerSource: triggerContext.triggerSource,
+        lastScheduleId: triggerContext.scheduleId,
+        pullsSeen: pulls.length,
+        checksSeen,
+        failingChecksSeen,
+      },
+      updatedAt: finishedAt,
+    };
+    db.update(cbSources)
+      .set({
+        lastSyncAt: updatedSource.lastSyncAt,
+        healthStatus: updatedSource.healthStatus,
+        syncError: updatedSource.syncError,
+        metadata: updatedSource.metadata,
+        updatedAt: updatedSource.updatedAt,
+      })
+      .where(eq(cbSources.id, source.id))
+      .run();
+    db.update(cbWatchers)
+      .set({
+        sourceIds: watcherSourceIds,
+        lastRunAt: finishedAt,
+        nextRunAt:
+          triggerContext.triggerSource === "schedule"
+            ? nextCadenceRunAt(watcher, finishedAt)
+            : watcher.nextRunAt,
+        status: "active",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, watcher.id))
+      .run();
+
+    return {
+      source: updatedSource,
+      watcherRun: run,
+      artifactsCreated,
+      signalsCreated,
+      pullRequestsSeen: pulls.length,
+      checksSeen,
+      failingChecksSeen,
+    };
+  } catch (err) {
+    const finishedAt = now();
+    const message = err instanceof Error ? err.message : "Unknown error";
+    const triggerRef = scheduleTriggerRef(triggerContext, runId);
+    const provenance: Provenance = {
+      createdFrom:
+        triggerContext.triggerSource === "schedule"
+          ? "watcher:github_pr_ci:scheduled_run"
+          : "watcher:github_pr_ci:run",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "pending",
+      visibility: "internal",
+      notes: triggerNotes(triggerContext),
+    };
+    if (triggerRef) provenance.rawRef = triggerRef;
+    db.insert(cbWatcherRuns)
+      .values({
+        id: runId,
+        watcherId: GITHUB_PR_CI_WATCHER_ID,
+        startedAt: timestamp,
+        finishedAt,
+        status: "failed",
+        triggerRef,
+        sourceIds: [],
+        artifactsCreated: [],
+        signalsCreated: [],
+        alignmentFindingsCreated: [],
+        workItemsCreated: [],
+        guidanceCreated: [],
+        workflowRunsLinked: [],
+        errorSummary: message,
+        actionPolicy: "observe_only",
+        riskClass: "B",
+        provenance,
+        createdAt: timestamp,
+        updatedAt: finishedAt,
+      })
+      .run();
+    db.update(cbWatchers)
+      .set({
+        lastRunAt: finishedAt,
+        nextRunAt:
+          triggerContext.triggerSource === "schedule"
+            ? nextCadenceRunAt({ schedule: "every 2 hours" }, finishedAt)
+            : null,
+        status: "error",
+        updatedAt: finishedAt,
+      })
+      .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
+      .run();
+    throw err;
+  }
+}
+
 function severityFromRisk(riskClass: string): SignalSeverity {
   if (riskClass === "C") return "critical";
   if (riskClass === "B") return "warn";
@@ -2168,6 +2786,10 @@ function buildAdoptionDashboard(
     writebackReviews,
     generatedAt
   );
+  const operatingCadence = buildOperatingCadence(data);
+  const cadenceByWatcherId = new Map(
+    operatingCadence.watchers.map((watcher) => [watcher.watcherId, watcher])
+  );
   const writebackMaturityFor = (
     writebackProposals: ExternalActionProposal[]
   ): AdoptionProject["writebackMaturity"] => {
@@ -2351,6 +2973,20 @@ function buildAdoptionDashboard(
     const sourceIsStale =
       !source.lastSyncAt || generatedAt - source.lastSyncAt > staleAfterMs;
     const sourceHasHealthIssue = source.healthStatus !== "healthy" || sourceIsStale;
+    const sourceWatchers = data.watchers.filter((watcher) =>
+      watcher.sourceIds.includes(source.id)
+    );
+    const sourceCadenceWatchers = sourceWatchers
+      .map((watcher) => cadenceByWatcherId.get(watcher.id))
+      .filter(
+        (
+          watcher
+        ): watcher is CompanyBrainOperatingCadence["watchers"][number] =>
+          !!watcher && watcher.cadenceStatus !== "not_scheduled"
+      );
+    const sourceCadenceNeedsAttention = sourceCadenceWatchers.filter((watcher) =>
+      ["due", "stale", "error"].includes(watcher.cadenceStatus)
+    );
     const proposalReviewNeedsActionCount = projectProposalReviewItems.filter((item) =>
       [
         "ready_to_execute",
@@ -2449,6 +3085,39 @@ function buildAdoptionDashboard(
         rationale:
           source.syncError ??
           (source.lastSyncAt ? "Source freshness window exceeded." : "Source never synced."),
+      });
+    }
+
+    if (sourceWatchers.length && sourceCadenceWatchers.length === 0) {
+      gapKinds.add("watcher_cadence_gap");
+      addGap({
+        id: `watcher_cadence_missing:${source.id}`,
+        kind: "watcher_cadence_gap",
+        title: `${source.name} watcher cadence is not scheduled`,
+        severity: "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale:
+          "The source has watcher coverage, but no schedule/polling cadence is active.",
+      });
+    } else if (sourceCadenceNeedsAttention.length) {
+      gapKinds.add("watcher_cadence_gap");
+      addGap({
+        id: `watcher_cadence_stale:${source.id}`,
+        kind: "watcher_cadence_gap",
+        title: `${source.name} watcher cadence needs attention`,
+        severity: sourceCadenceNeedsAttention.some(
+          (watcher) => watcher.cadenceStatus === "error"
+        )
+          ? "critical"
+          : "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale: `${sourceCadenceNeedsAttention.length} scheduled watchers are due, stale or in error.`,
       });
     }
 
@@ -2727,6 +3396,147 @@ function buildAdoptionDashboard(
   };
 }
 
+function buildOperatingCadence(
+  data: ReturnType<typeof listAll>
+): CompanyBrainOperatingCadence {
+  const generatedAt = now();
+  const watchers = data.watchers.map((watcher) => {
+    const runs = data.watcherRuns
+      .filter((run) => run.watcherId === watcher.id)
+      .sort((a, b) => b.startedAt - a.startedAt);
+    const scheduledRuns = runs.filter(isScheduledWatcherRun);
+    const lastRun = runs[0] ?? null;
+    const lastScheduledRun = scheduledRuns[0] ?? null;
+    const isScheduled = isCadenceWatcher(watcher);
+    const scheduleId = isScheduled ? watcherScheduleId(watcher.id) : null;
+    const intervalMs = isScheduled ? watcherCadenceIntervalMs(watcher) : null;
+    const expectedNextRunAt =
+      watcher.nextRunAt ??
+      (lastScheduledRun && intervalMs
+        ? (lastScheduledRun.finishedAt ?? lastScheduledRun.startedAt) + intervalMs
+        : null);
+    const staleAfterMs = intervalMs ? Math.max(intervalMs * 1.5, intervalMs + 60_000) : null;
+    const lastScheduledAt = lastScheduledRun?.finishedAt ?? lastScheduledRun?.startedAt ?? null;
+    let cadenceStatus: CompanyBrainOperatingCadence["watchers"][number]["cadenceStatus"] =
+      "not_scheduled";
+    let nextAction = "No cadence configured.";
+
+    if (["paused", "archived"].includes(watcher.status)) {
+      cadenceStatus = "disabled";
+      nextAction = "Enable watcher before scheduling it.";
+    } else if (watcher.status === "error") {
+      cadenceStatus = "error";
+      nextAction = "Review last watcher error before the next scheduled run.";
+    } else if (!isScheduled) {
+      cadenceStatus = "not_scheduled";
+      nextAction = "Add schedule/polling cadence only if this watcher becomes daily-critical.";
+    } else if (!lastScheduledRun) {
+      cadenceStatus = "due";
+      nextAction = "Run scheduled cadence once to establish provenance and freshness.";
+    } else if (
+      staleAfterMs &&
+      lastScheduledAt &&
+      generatedAt - lastScheduledAt > staleAfterMs
+    ) {
+      cadenceStatus = "stale";
+      nextAction = "Run scheduled cadence now and inspect Source Health.";
+    } else if (expectedNextRunAt && expectedNextRunAt <= generatedAt) {
+      cadenceStatus = "due";
+      nextAction = "Run scheduled cadence; expected next run is due.";
+    } else {
+      cadenceStatus = "active";
+      nextAction = "Cadence is current; keep observing freshness.";
+    }
+
+    const lastTriggerSource: WatcherRunTriggerSource | null = lastRun
+      ? isScheduledWatcherRun(lastRun)
+        ? "schedule"
+        : "manual"
+      : null;
+
+    return {
+      watcherId: watcher.id,
+      title: watcher.title,
+      status: watcher.status,
+      actionPolicy: watcher.actionPolicy,
+      riskClass: watcher.riskClass,
+      triggerType: watcher.triggerType,
+      schedule: watcher.schedule,
+      scheduleId,
+      sourceIds: watcher.sourceIds,
+      runCount: runs.length,
+      scheduledRunCount: scheduledRuns.length,
+      lastRunAt: lastRun?.finishedAt ?? lastRun?.startedAt ?? watcher.lastRunAt,
+      lastScheduledRunAt: lastScheduledAt,
+      nextRunAt: watcher.nextRunAt,
+      expectedNextRunAt,
+      staleAfterMs,
+      cadenceStatus,
+      lastRunStatus: lastRun?.status ?? null,
+      lastTriggerSource,
+      lastTriggerRef: lastRun?.triggerRef ?? null,
+      nextAction,
+    };
+  });
+
+  const scheduledWatchers = watchers.filter(
+    (watcher) => watcher.cadenceStatus !== "not_scheduled"
+  );
+  const lastScheduledRunAt = latestTimestamp(
+    scheduledWatchers.map((watcher) => watcher.lastScheduledRunAt)
+  );
+  const nextScheduledRunAt = scheduledWatchers
+    .map((watcher) => watcher.expectedNextRunAt)
+    .filter((value): value is number => typeof value === "number")
+    .sort((a, b) => a - b)[0] ?? null;
+
+  watchers.sort((a, b) => {
+    const priority = {
+      stale: 5,
+      due: 4,
+      error: 3,
+      disabled: 2,
+      active: 1,
+      not_scheduled: 0,
+    } satisfies Record<
+      CompanyBrainOperatingCadence["watchers"][number]["cadenceStatus"],
+      number
+    >;
+    const delta = priority[b.cadenceStatus] - priority[a.cadenceStatus];
+    if (delta !== 0) return delta;
+    return (b.lastScheduledRunAt ?? b.lastRunAt ?? 0) - (a.lastScheduledRunAt ?? a.lastRunAt ?? 0);
+  });
+
+  return {
+    generatedAt,
+    watchers,
+    stats: {
+      watcherCount: watchers.length,
+      scheduledWatcherCount: scheduledWatchers.length,
+      activeScheduledWatcherCount: scheduledWatchers.filter(
+        (watcher) => watcher.cadenceStatus === "active"
+      ).length,
+      staleCadenceCount: scheduledWatchers.filter(
+        (watcher) => watcher.cadenceStatus === "stale"
+      ).length,
+      dueCadenceCount: scheduledWatchers.filter(
+        (watcher) => watcher.cadenceStatus === "due"
+      ).length,
+      disabledCadenceCount: scheduledWatchers.filter(
+        (watcher) => watcher.cadenceStatus === "disabled"
+      ).length,
+      errorCadenceCount: scheduledWatchers.filter(
+        (watcher) => watcher.cadenceStatus === "error"
+      ).length,
+      scheduledRunCount: data.watcherRuns.filter(isScheduledWatcherRun).length,
+      manualRunCount: data.watcherRuns.filter((run) => !isScheduledWatcherRun(run))
+        .length,
+      lastScheduledRunAt,
+      nextScheduledRunAt,
+    },
+  };
+}
+
 function buildSourceHealthReport(
   data: ReturnType<typeof listAll>
 ): CompanyBrainSourceHealthReport {
@@ -2737,6 +3547,10 @@ function buildSourceHealthReport(
 
   const generatedAt = now();
   const staleAfterMs = 7 * 24 * 60 * 60 * 1000;
+  const operatingCadence = buildOperatingCadence(data);
+  const cadenceByWatcherId = new Map(
+    operatingCadence.watchers.map((watcher) => [watcher.watcherId, watcher])
+  );
 
   const sources = data.sources.map((source) => {
     const artifacts = data.artifacts.filter((artifact) => artifact.sourceId === source.id);
@@ -2757,6 +3571,17 @@ function buildSourceHealthReport(
     const watcherIds = new Set(watchers.map((watcher) => watcher.id));
     const watcherRuns = data.watcherRuns.filter((run) =>
       watcherIds.has(run.watcherId)
+    );
+    const scheduledWatchers = watchers
+      .map((watcher) => cadenceByWatcherId.get(watcher.id))
+      .filter(
+        (
+          watcher
+        ): watcher is CompanyBrainOperatingCadence["watchers"][number] =>
+          !!watcher && watcher.cadenceStatus !== "not_scheduled"
+      );
+    const staleWatchers = scheduledWatchers.filter((watcher) =>
+      ["stale", "due", "error"].includes(watcher.cadenceStatus)
     );
     const signals = data.signals.filter(
       (signal) =>
@@ -2794,6 +3619,12 @@ function buildSourceHealthReport(
     if (!artifacts.length) issueKinds.add("no_artifacts");
     if (!workItems.length) issueKinds.add("no_work_items");
     if (!signals.length) issueKinds.add("no_signals");
+    if (watchers.length > 0 && scheduledWatchers.length === 0) {
+      issueKinds.add("watcher_cadence_missing");
+    }
+    if (staleWatchers.length > 0) {
+      issueKinds.add("watcher_cadence_stale");
+    }
 
     return {
       sourceId: source.id,
@@ -2810,6 +3641,14 @@ function buildSourceHealthReport(
       lastWatcherRunAt: latestTimestamp(
         watcherRuns.map((run) => run.finishedAt ?? run.startedAt)
       ),
+      lastScheduledWatcherRunAt: latestTimestamp(
+        scheduledWatchers.map((watcher) => watcher.lastScheduledRunAt)
+      ),
+      nextWatcherRunAt:
+        scheduledWatchers
+          .map((watcher) => watcher.expectedNextRunAt)
+          .filter((value): value is number => typeof value === "number")
+          .sort((a, b) => a - b)[0] ?? null,
       lastActivityAt: latestTimestamp([
         source.lastSyncAt,
         source.updatedAt,
@@ -2825,6 +3664,8 @@ function buildSourceHealthReport(
       workflowRunCount: workflowRuns.length,
       signalCount: signals.length,
       watcherCount: watchers.length,
+      automatedWatcherCount: scheduledWatchers.length,
+      staleWatcherCount: staleWatchers.length,
       watcherRunCount: watcherRuns.length,
       openGuidanceCount: openGuidance.length,
       issueKinds: [...issueKinds],
@@ -2857,8 +3698,14 @@ function buildSourceHealthReport(
       sourceWithoutWorkItemsCount: sources.filter((source) =>
         source.issueKinds.includes("no_work_items")
       ).length,
-          sourceWithoutSignalsCount: sources.filter((source) =>
+      sourceWithoutSignalsCount: sources.filter((source) =>
         source.issueKinds.includes("no_signals")
+      ).length,
+      watcherCadenceStaleCount: sources.filter((source) =>
+        source.issueKinds.includes("watcher_cadence_stale")
+      ).length,
+      sourceWithoutCadenceCount: sources.filter((source) =>
+        source.issueKinds.includes("watcher_cadence_missing")
       ).length,
     },
   };
@@ -2868,6 +3715,7 @@ function buildCoreReadiness(args: {
   data: ReturnType<typeof listAll>;
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
+  operatingCadence: CompanyBrainOperatingCadence;
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
   evidenceGraph: CompanyBrainEvidenceGraph;
   timeline: CompanyBrainTimeline;
@@ -2880,6 +3728,7 @@ function buildCoreReadiness(args: {
     data,
     adoptionDashboard,
     sourceHealthReport,
+    operatingCadence,
     writebackSafetyDashboard,
     evidenceGraph,
     timeline,
@@ -2898,9 +3747,8 @@ function buildCoreReadiness(args: {
     statuses: uniqueStrings(item.statuses) as ModuleStatus[],
   });
   const evidencePacketCount = writebackSafetyDashboard.evidencePacketIndex.length;
-  const automatedWatcherCount = data.watchers.filter((watcher) =>
-    ["schedule", "polling", "webhook", "event"].includes(watcher.triggerType)
-  ).length;
+  const automatedWatcherCount =
+    operatingCadence.stats.scheduledWatcherCount;
   const hasClosedLoop =
     data.signals.length > 0 &&
     data.alignmentFindings.length > 0 &&
@@ -2936,6 +3784,7 @@ function buildCoreReadiness(args: {
         `${data.sources.length} registered sources`,
         `${sourceHealthReport.stats.healthyCount} healthy/fresh sources`,
         `${sourceHealthReport.stats.staleCount} stale sources`,
+        `${sourceHealthReport.stats.watcherCadenceStaleCount} sources with stale watcher cadence`,
       ],
       gaps: automatedWatcherCount ? [] : ["No automated watcher cadence is configured in this dogfood DB."],
       nextAction: automatedWatcherCount
@@ -2997,9 +3846,29 @@ function buildCoreReadiness(args: {
         `${data.watchers.length} watchers`,
         `${data.watcherRuns.length} watcher runs`,
         `${automatedWatcherCount} automated cadence watchers`,
+        `${operatingCadence.stats.scheduledRunCount} scheduled runs`,
+        operatingCadence.stats.lastScheduledRunAt
+          ? `last scheduled ${new Date(operatingCadence.stats.lastScheduledRunAt).toISOString()}`
+          : "no scheduled run yet",
+        operatingCadence.stats.nextScheduledRunAt
+          ? `next expected ${new Date(operatingCadence.stats.nextScheduledRunAt).toISOString()}`
+          : "next expected run unknown",
       ],
-      gaps: automatedWatcherCount ? [] : ["Current readiness still relies on manual watcher runs for dogfood cadence."],
-      nextAction: "Add schedule/polling cadence for briefing and key source watchers.",
+      gaps: [
+        ...(automatedWatcherCount
+          ? []
+          : ["Current readiness still relies on manual watcher runs for dogfood cadence."]),
+        ...(operatingCadence.stats.staleCadenceCount ||
+        operatingCadence.stats.dueCadenceCount
+          ? [
+              `${operatingCadence.stats.staleCadenceCount} stale and ${operatingCadence.stats.dueCadenceCount} due cadence watchers.`,
+            ]
+          : []),
+      ],
+      nextAction:
+        operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount
+          ? "Run scheduled cadence and inspect Source Health freshness."
+          : "Keep briefing and key source watchers on their daily/polling cadence.",
     }),
     module({
       key: "closed_loop",
@@ -3150,6 +4019,17 @@ function buildCoreReadiness(args: {
       requiresExternalMutation: false,
     });
   }
+  if (operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount) {
+    addGap({
+      id: "stale_or_due_watcher_cadence",
+      impact: "daily_use",
+      severity: operatingCadence.stats.staleCadenceCount ? "warn" : "info",
+      title: "Scheduled watcher cadence needs a run",
+      rationale: `${operatingCadence.stats.staleCadenceCount} cadence watchers are stale and ${operatingCadence.stats.dueCadenceCount} are due.`,
+      nextAction: "Run Operating Cadence locally or through the approved schedule target.",
+      requiresExternalMutation: false,
+    });
+  }
   if (adoptionDashboard.stats.pendingGateCount > 0) {
     addGap({
       id: "pending_workflow_gates",
@@ -3255,6 +4135,11 @@ function buildCoreReadiness(args: {
       externalMutationGapCount: gaps.filter(
         (gap) => gap.impact === "requires_external_mutation"
       ).length,
+      automatedWatcherCount,
+      staleCadenceCount: operatingCadence.stats.staleCadenceCount,
+      dueCadenceCount: operatingCadence.stats.dueCadenceCount,
+      lastScheduledRunAt: operatingCadence.stats.lastScheduledRunAt,
+      nextScheduledRunAt: operatingCadence.stats.nextScheduledRunAt,
     },
   };
 }
@@ -3265,6 +4150,7 @@ const briefingSectionKeys: CompanyBrainBriefingSection["key"][] = [
   "open_guidance",
   "findings",
   "source_health",
+  "operating_cadence",
   "adoption_dashboard",
   "unlinked_work",
   "gates_sla",
@@ -3384,6 +4270,7 @@ function buildBriefingSections(args: {
 }): { sections: CompanyBrainBriefingSection[]; nextSteps: string[] } {
   const { data, adoptionDashboard, sourceHealthReport, generatedAt } = args;
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
+  const operatingCadence = buildOperatingCadence(data);
   const weekAgo = generatedAt - 7 * 24 * 60 * 60 * 1000;
   const relevantHealthSources = sourceHealthReport.sources.filter(
     (source) => source.sourceId !== AIOS_BRIEFING_SOURCE_ID
@@ -3408,6 +4295,13 @@ function buildBriefingSections(args: {
   const unhealthySources = relevantHealthSources.filter(
     (source) => source.issueKinds.length > 0
   );
+  const cadenceWatchersNeedingAttention = operatingCadence.watchers.filter((watcher) =>
+    ["due", "stale", "error"].includes(watcher.cadenceStatus)
+  );
+  const recentScheduledRuns = data.watcherRuns
+    .filter(isScheduledWatcherRun)
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, 5);
   const unlinkedWorkItems = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   );
@@ -3569,6 +4463,30 @@ function buildBriefingSections(args: {
           })
         )
       ),
+    },
+    {
+      key: "operating_cadence",
+      title: "Operating Cadence",
+      items: limitOrNone([
+        `${operatingCadence.stats.activeScheduledWatcherCount}/${operatingCadence.stats.scheduledWatcherCount} scheduled watchers active; ${operatingCadence.stats.scheduledRunCount} scheduled runs; ${operatingCadence.stats.manualRunCount} manual runs.`,
+        `${operatingCadence.stats.staleCadenceCount} stale cadence watchers; ${operatingCadence.stats.dueCadenceCount} due; next=${operatingCadence.stats.nextScheduledRunAt ? new Date(operatingCadence.stats.nextScheduledRunAt).toISOString() : "unknown"}.`,
+        ...cadenceWatchersNeedingAttention.slice(0, 4).map((watcher) =>
+          formatEntityLine({
+            prefix: "cadence",
+            title: watcher.title,
+            status: watcher.cadenceStatus,
+            detail: watcher.nextAction,
+          })
+        ),
+        ...recentScheduledRuns.map((run) =>
+          formatEntityLine({
+            prefix: "scheduled_run",
+            title: run.watcherId,
+            status: run.status,
+            detail: run.triggerRef,
+          })
+        ),
+      ]),
     },
     {
       key: "adoption_dashboard",
@@ -3760,6 +4678,9 @@ function buildBriefingSections(args: {
       : "",
     unhealthySources.length
       ? `Refresh or repair ${unhealthySources.length} source health gaps.`
+      : "",
+    cadenceWatchersNeedingAttention.length
+      ? `Run ${cadenceWatchersNeedingAttention.length} due/stale scheduled watchers.`
       : "",
     unlinkedWorkItems.length
       ? `Link ${unlinkedWorkItems.length} work items to priority or goal.`
@@ -3984,9 +4905,18 @@ function runAiosBriefingWatcher(args: {
   watcher: typeof cbWatchers.$inferSelect;
   startedAt: number;
   runId: string;
+  triggerSource?: WatcherRunTriggerSource | null;
+  scheduleId?: string | null;
+  scheduledAt?: number | null;
 }) {
   const db = getDb();
   const { watcher, startedAt, runId } = args;
+  const triggerContext = normalizeTriggerContext({
+    watcherId: watcher.id,
+    triggerSource: args.triggerSource,
+    scheduleId: args.scheduleId,
+    scheduledAt: args.scheduledAt,
+  });
   const source = db
     .select()
     .from(cbSources)
@@ -4011,15 +4941,19 @@ function runAiosBriefingWatcher(args: {
   });
   const artifactId = nanoid(12);
   const rawRef = `aios://company-brain/briefing/${runId}`;
+  const runTriggerRef = scheduleTriggerRef(triggerContext, runId) ?? rawRef;
   const provenance = {
     sourceId: source.id,
     rawRef,
-    createdFrom: `watcher:${watcher.id}:briefing`,
+    createdFrom: provenanceCreatedFrom(
+      `watcher:${watcher.id}:briefing`,
+      triggerContext
+    ),
     confidence: 1,
     extractedAt: startedAt,
     humanReviewStatus: "approved" as const,
     visibility: watcher.visibility,
-    notes: `action_policy=${watcher.actionPolicy}; risk_class=${watcher.riskClass}`,
+    notes: `action_policy=${watcher.actionPolicy}; risk_class=${watcher.riskClass}; ${triggerNotes(triggerContext)}`,
   };
   const signalsCreated = candidates.map((candidate) => {
     const signalId = nanoid(12);
@@ -4065,7 +4999,10 @@ function runAiosBriefingWatcher(args: {
         ...provenance,
         artifactId,
         rawRef: candidate.rawRef,
-        createdFrom: `watcher:${watcher.id}:briefing_signal`,
+        createdFrom:
+          triggerContext.triggerSource === "schedule"
+            ? `watcher:${watcher.id}:scheduled_briefing_signal`
+            : `watcher:${watcher.id}:briefing_signal`,
       },
       metadata: {
         ...candidate.metadata,
@@ -4100,6 +5037,9 @@ function runAiosBriefingWatcher(args: {
     metadata: {
       watcherId: watcher.id,
       watcherRunId: runId,
+      triggerSource: triggerContext.triggerSource,
+      scheduleId: triggerContext.scheduleId,
+      scheduledAt: triggerContext.scheduledAt,
       actionPolicy: watcher.actionPolicy,
       riskClass: watcher.riskClass,
       sections,
@@ -4150,8 +5090,8 @@ function runAiosBriefingWatcher(args: {
     watcherId: watcher.id,
     startedAt,
     finishedAt,
-    status: "completed" as const,
-    triggerRef: rawRef,
+      status: "completed" as const,
+    triggerRef: runTriggerRef,
     sourceIds,
     artifactsCreated: [artifactId],
     signalsCreated: gapSignalIds,
@@ -4165,7 +5105,11 @@ function runAiosBriefingWatcher(args: {
     provenance: {
       ...provenance,
       artifactId,
-      createdFrom: `watcher:${watcher.id}:run`,
+      rawRef: runTriggerRef,
+      createdFrom: provenanceCreatedFrom(
+        `watcher:${watcher.id}:run`,
+        triggerContext
+      ),
     },
     createdAt: startedAt,
     updatedAt: finishedAt,
@@ -4175,6 +5119,10 @@ function runAiosBriefingWatcher(args: {
   db.update(cbWatchers)
     .set({
       lastRunAt: finishedAt,
+      nextRunAt:
+        triggerContext.triggerSource === "schedule"
+          ? nextCadenceRunAt(watcher, finishedAt)
+          : watcher.nextRunAt,
       status: "active",
       updatedAt: finishedAt,
     })
@@ -8300,6 +9248,7 @@ app.get("/summary", (c) => {
   const data = listAll();
   const adoptionDashboard = buildAdoptionDashboard(data);
   const sourceHealthReport = buildSourceHealthReport(data);
+  const operatingCadence = buildOperatingCadence(data);
   const lastBriefing = buildLastBriefing(data);
   const reviewCohesion = buildReviewCohesion(data);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
@@ -8313,6 +9262,7 @@ app.get("/summary", (c) => {
     data,
     adoptionDashboard,
     sourceHealthReport,
+    operatingCadence,
     writebackSafetyDashboard,
     evidenceGraph,
     timeline,
@@ -8351,6 +9301,7 @@ app.get("/summary", (c) => {
       ...data,
       adoptionDashboard,
       sourceHealthReport,
+      operatingCadence,
       lastBriefing,
       reviewCohesion,
       writebackSafetyDashboard,
@@ -8423,6 +9374,7 @@ app.get("/core-readiness", (c) => {
   const data = listAll();
   const adoptionDashboard = buildAdoptionDashboard(data);
   const sourceHealthReport = buildSourceHealthReport(data);
+  const operatingCadence = buildOperatingCadence(data);
   const lastBriefing = buildLastBriefing(data);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
@@ -8434,6 +9386,7 @@ app.get("/core-readiness", (c) => {
     data,
     adoptionDashboard,
     sourceHealthReport,
+    operatingCadence,
     writebackSafetyDashboard,
     evidenceGraph,
     timeline,
@@ -8443,6 +9396,135 @@ app.get("/core-readiness", (c) => {
     lastBriefing,
   });
   return c.json({ data: coreReadiness });
+});
+
+app.get("/operating-cadence", (c) => {
+  const data = buildOperatingCadence(listAll());
+  return c.json({ data });
+});
+
+app.post("/operating-cadence/run", async (c) => {
+  const startedAt = now();
+  const body = (await c.req
+    .json<RunOperatingCadenceRequest>()
+    .catch(() => ({}))) as RunOperatingCadenceRequest;
+  const requestedWatcherIds = body.watcherIds?.length
+    ? body.watcherIds
+    : OPERATING_CADENCE_WATCHER_IDS;
+  const scheduleId = body.scheduleId ?? "company-brain:operating-cadence-v0";
+  const scheduledAt = body.scheduledAt ?? startedAt;
+  const runs: RunOperatingCadenceResponse["runs"] = [];
+
+  const runBriefing = requestedWatcherIds.includes(AIOS_BRIEFING_WATCHER_ID);
+  if (runBriefing) {
+    const watcher = getDb()
+      .select()
+      .from(cbWatchers)
+      .where(eq(cbWatchers.id, AIOS_BRIEFING_WATCHER_ID))
+      .get();
+    if (watcher) {
+      try {
+        const result = runAiosBriefingWatcher({
+          watcher,
+          startedAt: now(),
+          runId: nanoid(12),
+          triggerSource: "schedule",
+          scheduleId,
+          scheduledAt,
+        });
+        runs.push({
+          watcherId: AIOS_BRIEFING_WATCHER_ID,
+          status: result.run.status,
+          watcherRunId: result.run.id,
+          triggerRef: result.run.triggerRef,
+          artifactsCreated: result.run.artifactsCreated.length,
+          signalsCreated: result.run.signalsCreated.length,
+          errorSummary: result.run.errorSummary,
+        });
+      } catch (err) {
+        runs.push({
+          watcherId: AIOS_BRIEFING_WATCHER_ID,
+          status: "failed",
+          watcherRunId: null,
+          triggerRef: null,
+          artifactsCreated: 0,
+          signalsCreated: 0,
+          errorSummary: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+  }
+
+  const runPrCi = requestedWatcherIds.includes(GITHUB_PR_CI_WATCHER_ID);
+  if (runPrCi) {
+    try {
+      const result = await runGitHubPrCiWatcherSync({
+        repo: body.githubPrCi?.repo ?? OPERATING_CADENCE_DEFAULT_REPO,
+        state: body.githubPrCi?.state ?? "open",
+        limit: body.githubPrCi?.limit ?? 5,
+        sourceId: body.githubPrCi?.sourceId ?? null,
+        sourceName:
+          body.githubPrCi?.sourceName ??
+          "Felhen GitHub PR/CI scheduled cadence watcher",
+        area: body.githubPrCi?.area ?? "development",
+        owner: body.githubPrCi?.owner ?? "Felhen",
+        visibility: body.githubPrCi?.visibility ?? "internal",
+        createSignals: body.githubPrCi?.createSignals ?? true,
+        triggerSource: "schedule",
+        scheduleId,
+        scheduledAt,
+      });
+      runs.push({
+        watcherId: GITHUB_PR_CI_WATCHER_ID,
+        status: result.watcherRun.status,
+        watcherRunId: result.watcherRun.id,
+        triggerRef: result.watcherRun.triggerRef,
+        artifactsCreated: result.artifactsCreated.length,
+        signalsCreated: result.signalsCreated.length,
+        errorSummary: result.watcherRun.errorSummary,
+      });
+    } catch (err) {
+      const lastFailedRun = lastRunForWatcher(
+        getDb().select().from(cbWatcherRuns).all(),
+        GITHUB_PR_CI_WATCHER_ID
+      );
+      runs.push({
+        watcherId: GITHUB_PR_CI_WATCHER_ID,
+        status: "failed",
+        watcherRunId: lastFailedRun?.id ?? null,
+        triggerRef: lastFailedRun?.triggerRef ?? null,
+        artifactsCreated: 0,
+        signalsCreated: 0,
+        errorSummary: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }
+
+  for (const watcherId of requestedWatcherIds) {
+    if (!runs.some((run) => run.watcherId === watcherId)) {
+      runs.push({
+        watcherId,
+        status: "skipped",
+        watcherRunId: null,
+        triggerRef: null,
+        artifactsCreated: 0,
+        signalsCreated: 0,
+        errorSummary: "Watcher is not part of Operating Cadence v0.",
+      });
+    }
+  }
+
+  const operatingCadence = buildOperatingCadence(listAll());
+  const response: RunOperatingCadenceResponse = {
+    scheduleId,
+    scheduledAt,
+    runs,
+    artifactsCreated: runs.reduce((sum, run) => sum + run.artifactsCreated, 0),
+    signalsCreated: runs.reduce((sum, run) => sum + run.signalsCreated, 0),
+    watcherRunsCreated: runs.filter((run) => run.watcherRunId).length,
+    operatingCadence,
+  };
+  return c.json({ data: response }, 201);
 });
 
 app.get("/writeback-safety-dashboard", (c) => {
@@ -13839,8 +14921,21 @@ app.post("/watchers/:id/run", async (c) => {
     const watcher = db.select().from(cbWatchers).where(eq(cbWatchers.id, watcherId)).get();
     if (!watcher) throw new Error("watcher not found");
     if (watcher.status !== "active") throw new Error("watcher is not active");
+    const triggerContext = normalizeTriggerContext({
+      watcherId: watcher.id,
+      triggerSource: body.triggerSource,
+      scheduleId: body.scheduleId,
+      scheduledAt: body.scheduledAt,
+    });
     if (watcher.id === AIOS_BRIEFING_WATCHER_ID) {
-      const data = runAiosBriefingWatcher({ watcher, startedAt, runId });
+      const data = runAiosBriefingWatcher({
+        watcher,
+        startedAt,
+        runId,
+        triggerSource: triggerContext.triggerSource,
+        scheduleId: triggerContext.scheduleId,
+        scheduledAt: triggerContext.scheduledAt,
+      });
       return c.json({ data }, 201);
     }
 
@@ -13863,17 +14958,21 @@ app.post("/watchers/:id/run", async (c) => {
     const title = body.title ?? `${watcher.title}: ${source.name}`;
     const summary =
       body.summary ??
-      `Manual watcher run for ${watcher.title}. Policy: ${watcher.actionPolicy}.`;
+      `${triggerContext.triggerSource === "schedule" ? "Scheduled" : "Manual"} watcher run for ${watcher.title}. Policy: ${watcher.actionPolicy}.`;
     const artifactId = nanoid(12);
+    const runTriggerRef = scheduleTriggerRef(triggerContext, runId) ?? rawRef;
     const provenance = {
       sourceId,
       rawRef,
-      createdFrom: `watcher:${watcher.id}`,
+      createdFrom:
+        triggerContext.triggerSource === "schedule"
+          ? `watcher:${watcher.id}:scheduled`
+          : `watcher:${watcher.id}`,
       confidence: 1,
       extractedAt: startedAt,
       humanReviewStatus: "approved" as const,
       visibility: watcher.visibility,
-      notes: `action_policy=${watcher.actionPolicy}; risk_class=${watcher.riskClass}`,
+      notes: `action_policy=${watcher.actionPolicy}; risk_class=${watcher.riskClass}; ${triggerNotes(triggerContext)}`,
     };
 
     const artifact = {
@@ -13897,6 +14996,9 @@ app.post("/watchers/:id/run", async (c) => {
         watcherId: watcher.id,
         watcherRunId: runId,
         triggerType: watcher.triggerType,
+        triggerSource: triggerContext.triggerSource,
+        scheduleId: triggerContext.scheduleId,
+        scheduledAt: triggerContext.scheduledAt,
         scopeQuery: watcher.scopeQuery,
         actionPolicy: watcher.actionPolicy,
         riskClass: watcher.riskClass,
@@ -14187,7 +15289,7 @@ app.post("/watchers/:id/run", async (c) => {
       startedAt,
       finishedAt,
       status: "completed" as const,
-      triggerRef: rawRef,
+      triggerRef: runTriggerRef,
       sourceIds,
       artifactsCreated: [artifactId],
       signalsCreated: [signalId],
@@ -14201,7 +15303,11 @@ app.post("/watchers/:id/run", async (c) => {
       provenance: {
         ...provenance,
         artifactId,
-        createdFrom: `watcher:${watcher.id}:run`,
+        rawRef: runTriggerRef,
+        createdFrom:
+          triggerContext.triggerSource === "schedule"
+            ? `watcher:${watcher.id}:scheduled_run`
+            : `watcher:${watcher.id}:run`,
       },
       createdAt: startedAt,
       updatedAt: finishedAt,
@@ -14210,6 +15316,10 @@ app.post("/watchers/:id/run", async (c) => {
     db.update(cbWatchers)
       .set({
         lastRunAt: finishedAt,
+        nextRunAt:
+          triggerContext.triggerSource === "schedule"
+            ? nextCadenceRunAt(watcher, finishedAt)
+            : watcher.nextRunAt,
         status: "active",
         updatedAt: finishedAt,
       })

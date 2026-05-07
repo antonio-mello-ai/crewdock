@@ -306,7 +306,12 @@ function StatusBadge({ value }: { value: string }) {
     value === "unknown_health" ||
     value === "no_artifacts" ||
     value === "no_work_items" ||
-    value === "no_signals"
+    value === "no_signals" ||
+    value === "watcher_cadence_gap" ||
+    value === "watcher_cadence_stale" ||
+    value === "watcher_cadence_missing" ||
+    value === "due" ||
+    value === "stale"
       ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
       : value === "done" ||
           value === "completed" ||
@@ -409,6 +414,7 @@ export default function CompanyBrainPage() {
   const writebackPolicySimulator = summary?.writebackPolicySimulator;
   const previewReplaySimulator = summary?.previewReplaySimulator;
   const coreReadiness = summary?.coreReadiness;
+  const operatingCadence = summary?.operatingCadence;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -1492,7 +1498,7 @@ export default function CompanyBrainPage() {
               </div>
               <div className="grid gap-0 lg:grid-cols-[1.35fr_0.65fr]">
                 <div className="border-neutral-800/50 px-5 py-4 lg:border-r">
-                  <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-8">
                     <MiniMetric label="modules" value={coreReadiness.stats.moduleCount} />
                     <MiniMetric
                       label="operational"
@@ -1507,6 +1513,18 @@ export default function CompanyBrainPage() {
                       value={coreReadiness.stats.dailyUseBlockingGapCount}
                     />
                     <MiniMetric
+                      label="watchers"
+                      value={coreReadiness.stats.automatedWatcherCount}
+                    />
+                    <MiniMetric
+                      label="due"
+                      value={coreReadiness.stats.dueCadenceCount}
+                    />
+                    <MiniMetric
+                      label="stale"
+                      value={coreReadiness.stats.staleCadenceCount}
+                    />
+                    <MiniMetric
                       label="partner gaps"
                       value={coreReadiness.stats.designPartnerGapCount}
                     />
@@ -1515,6 +1533,48 @@ export default function CompanyBrainPage() {
                       value={coreReadiness.stats.blockedByPolicyCount}
                     />
                   </div>
+                  <div className="mt-3 grid gap-2 text-xs text-neutral-500 sm:grid-cols-2">
+                    <div>
+                      Last scheduled run:{" "}
+                      {coreReadiness.stats.lastScheduledRunAt
+                        ? formatTimeAgo(coreReadiness.stats.lastScheduledRunAt)
+                        : "none"}
+                    </div>
+                    <div>
+                      Next expected run:{" "}
+                      {coreReadiness.stats.nextScheduledRunAt
+                        ? formatTimeAgo(coreReadiness.stats.nextScheduledRunAt)
+                        : "unknown"}
+                    </div>
+                  </div>
+                  {operatingCadence ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {operatingCadence.watchers
+                        .filter(
+                          (watcher) => watcher.cadenceStatus !== "not_scheduled"
+                        )
+                        .slice(0, 4)
+                        .map((watcher) => (
+                          <div
+                            key={watcher.watcherId}
+                            className="rounded border border-neutral-800/50 px-3 py-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-xs font-medium text-neutral-200">
+                                {watcher.title}
+                              </p>
+                              <StatusBadge value={watcher.cadenceStatus} />
+                              <StatusBadge
+                                value={watcher.lastTriggerSource ?? "no_runs"}
+                              />
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-neutral-500">
+                              {watcher.nextAction}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  ) : null}
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {coreReadiness.modules.slice(0, 6).map((module) => (
                       <div

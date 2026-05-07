@@ -650,6 +650,9 @@ export interface SyncGitHubPrCiRequest {
   owner?: string | null;
   visibility?: Visibility;
   createSignals?: boolean;
+  triggerSource?: WatcherRunTriggerSource;
+  scheduleId?: string | null;
+  scheduledAt?: number | null;
 }
 
 export interface SyncGitHubPrCiResponse {
@@ -672,6 +675,9 @@ export interface SyncGitHubNotificationsRequest {
   owner?: string | null;
   visibility?: Visibility;
   createSignals?: boolean;
+  triggerSource?: WatcherRunTriggerSource;
+  scheduleId?: string | null;
+  scheduledAt?: number | null;
 }
 
 export interface SyncGitHubNotificationsResponse {
@@ -1569,6 +1575,8 @@ export interface WatcherRun {
   updatedAt: number;
 }
 
+export type WatcherRunTriggerSource = "manual" | "schedule";
+
 export interface RunWatcherRequest {
   sourceId?: string;
   rawRef?: string;
@@ -1590,6 +1598,9 @@ export interface RunWatcherRequest {
   guidanceAudience?: GuidanceAudience;
   guidanceAction?: string | null;
   guidanceDueAt?: number | null;
+  triggerSource?: WatcherRunTriggerSource;
+  scheduleId?: string | null;
+  scheduledAt?: number | null;
 }
 
 export interface RunWatcherResponse {
@@ -1621,7 +1632,8 @@ export type AdoptionGapKind =
   | "missing_signal"
   | "open_guidance"
   | "writeback_needs_review"
-  | "audit_readiness_gap";
+  | "audit_readiness_gap"
+  | "watcher_cadence_gap";
 
 export type WritebackMaturityStage =
   | "none"
@@ -1746,7 +1758,9 @@ export type SourceHealthIssueKind =
   | "unknown_health"
   | "no_artifacts"
   | "no_work_items"
-  | "no_signals";
+  | "no_signals"
+  | "watcher_cadence_stale"
+  | "watcher_cadence_missing";
 
 export interface SourceHealthSnapshot {
   sourceId: string;
@@ -1761,6 +1775,8 @@ export interface SourceHealthSnapshot {
   lastArtifactAt: number | null;
   lastSignalAt: number | null;
   lastWatcherRunAt: number | null;
+  lastScheduledWatcherRunAt: number | null;
+  nextWatcherRunAt: number | null;
   lastActivityAt: number | null;
   syncError: string | null;
   artifactCount: number;
@@ -1768,6 +1784,8 @@ export interface SourceHealthSnapshot {
   workflowRunCount: number;
   signalCount: number;
   watcherCount: number;
+  automatedWatcherCount: number;
+  staleWatcherCount: number;
   watcherRunCount: number;
   openGuidanceCount: number;
   issueKinds: SourceHealthIssueKind[];
@@ -1787,7 +1805,88 @@ export interface CompanyBrainSourceHealthReport {
     sourceWithoutArtifactsCount: number;
     sourceWithoutWorkItemsCount: number;
     sourceWithoutSignalsCount: number;
+    watcherCadenceStaleCount: number;
+    sourceWithoutCadenceCount: number;
   };
+}
+
+export type CompanyBrainOperatingCadenceStatus =
+  | "active"
+  | "due"
+  | "stale"
+  | "not_scheduled"
+  | "disabled"
+  | "error";
+
+export interface CompanyBrainOperatingCadenceWatcher {
+  watcherId: string;
+  title: string;
+  status: WatcherStatus;
+  actionPolicy: ActionPolicy;
+  riskClass: RiskClass;
+  triggerType: WatcherTriggerType;
+  schedule: string | null;
+  scheduleId: string | null;
+  sourceIds: string[];
+  runCount: number;
+  scheduledRunCount: number;
+  lastRunAt: number | null;
+  lastScheduledRunAt: number | null;
+  nextRunAt: number | null;
+  expectedNextRunAt: number | null;
+  staleAfterMs: number | null;
+  cadenceStatus: CompanyBrainOperatingCadenceStatus;
+  lastRunStatus: WatcherRunStatus | null;
+  lastTriggerSource: WatcherRunTriggerSource | null;
+  lastTriggerRef: string | null;
+  nextAction: string;
+}
+
+export interface CompanyBrainOperatingCadence {
+  generatedAt: number;
+  watchers: CompanyBrainOperatingCadenceWatcher[];
+  stats: {
+    watcherCount: number;
+    scheduledWatcherCount: number;
+    activeScheduledWatcherCount: number;
+    staleCadenceCount: number;
+    dueCadenceCount: number;
+    disabledCadenceCount: number;
+    errorCadenceCount: number;
+    scheduledRunCount: number;
+    manualRunCount: number;
+    lastScheduledRunAt: number | null;
+    nextScheduledRunAt: number | null;
+  };
+}
+
+export interface RunOperatingCadenceRequest {
+  mode?: "due" | "all";
+  watcherIds?: string[];
+  scheduleId?: string | null;
+  scheduledAt?: number | null;
+  githubPrCi?: Omit<
+    SyncGitHubPrCiRequest,
+    "triggerSource" | "scheduleId" | "scheduledAt"
+  >;
+}
+
+export interface RunOperatingCadenceResponse {
+  scheduleId: string;
+  scheduledAt: number;
+  runs: Array<{
+    watcherId: string;
+    status: WatcherRunStatus | "skipped";
+    watcherRunId: string | null;
+    triggerRef: string | null;
+    artifactsCreated: number;
+    signalsCreated: number;
+    errorSummary: string | null;
+  }>;
+  artifactsCreated: number;
+  signalsCreated: number;
+  watcherRunsCreated: number;
+  operatingCadence: CompanyBrainOperatingCadence;
 }
 
 export interface CompanyBrainBriefingSection {
@@ -1797,6 +1896,7 @@ export interface CompanyBrainBriefingSection {
     | "open_guidance"
     | "findings"
     | "source_health"
+    | "operating_cadence"
     | "adoption_dashboard"
     | "unlinked_work"
     | "gates_sla"
@@ -2743,6 +2843,11 @@ export interface CompanyBrainCoreReadiness {
     designPartnerGapCount: number;
     polishGapCount: number;
     externalMutationGapCount: number;
+    automatedWatcherCount: number;
+    staleCadenceCount: number;
+    dueCadenceCount: number;
+    lastScheduledRunAt: number | null;
+    nextScheduledRunAt: number | null;
   };
 }
 
@@ -2769,6 +2874,7 @@ export interface CompanyBrainSummary {
   externalActionProposals: ExternalActionProposal[];
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
+  operatingCadence: CompanyBrainOperatingCadence;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   reviewCohesion: CompanyBrainReviewCohesion;
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;

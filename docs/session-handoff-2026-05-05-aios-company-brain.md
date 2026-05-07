@@ -2106,3 +2106,39 @@ Nao mover logica de verticais para o core. ERP e Juntos em Sala entram como font
 
 Validar com build/testes relevantes e documentar qualquer residual em docs/backlog.md ou nova nota de handoff.
 ```
+
+## Operating Cadence v0 - 2026-05-06
+
+Status: implementado e dogfooded em DB temporario. O corte fecha o pulso operacional read-only sem instalar scheduler externo e sem writeback novo.
+
+Arquivos principais:
+
+- `packages/shared/src/types.ts`: adiciona `WatcherRunTriggerSource`, `CompanyBrainOperatingCadence`, request/response de cadence runner, campos de cadencia em Source Health e Core Readiness.
+- `packages/daemon/src/routes/company-brain.ts`: adiciona helpers de schedule provenance, `buildOperatingCadence`, GET/POST `/api/company-brain/operating-cadence`, Source Health com `watcher_cadence_*`, Core Readiness com stats de cadencia e AIOS Briefing com secao `operating_cadence`.
+- `packages/daemon/src/db/client.ts`: seed de `watcher-aios-briefing-v0` como `schedule` e `watcher-github-pr-ci-v0` como `polling` a cada 2h; notifications permanece manual/poll-on-demand.
+- `packages/web/src/app/company-brain/page.tsx`: Core Readiness mostra watchers automatizados, due/stale, ultimo run agendado e proximo run esperado.
+- `packages/mcp-server/src/index.ts`: MCP `get_company_brain_operating_cadence` e `run_company_brain_operating_cadence`.
+- `docs/company-brain-operating-cadence-runbook.md`: runbook de operacao local e fronteiras.
+
+Dogfood validado:
+
+- DB: `/tmp/aios-runtime-operating-cadence-dogfood-5.sqlite`.
+- Daemon: `127.0.0.1:43166`.
+- Trigger: `POST /api/company-brain/operating-cadence/run`.
+- Repo read-only: `antonio-mello-ai/crewdock`, `state=open`, `limit=1`.
+- `watcher-aios-briefing-v0`: run `fRDMbe2w5B9U`, `triggerRef=schedule://dogfood%3Aoperating-cadence-v0/fRDMbe2w5B9U`, 1 artifact.
+- `watcher-github-pr-ci-v0`: run `4nI5KofGWHCP`, `triggerRef=schedule://dogfood%3Aoperating-cadence-v0/4nI5KofGWHCP`, 1 artifact `github_pr_ci_poll`.
+- Operating cadence stats: `scheduledWatcherCount=2`, `activeScheduledWatcherCount=2`, `staleCadenceCount=0`, `dueCadenceCount=0`, `scheduledRunCount=2`, `manualRunCount=0`.
+- Core Readiness stats: `automatedWatcherCount=2`, `dailyUseBlockingGapCount=0`, `staleCadenceCount=0`, `dueCadenceCount=0`.
+- Source Health stats: `watcherCadenceStaleCount=0`, `sourceWithoutCadenceCount=0`.
+- AIOS Briefing inclui as secoes: `decisions`, `tradeoffs`, `open_guidance`, `findings`, `source_health`, `operating_cadence`, `adoption_dashboard`, `unlinked_work`, `gates_sla`, `writeback_safety`, `audit_readiness`, `execution_readiness`, `next_steps`.
+
+Observacao:
+
+- Tentativa inicial de dogfood em `antonio-mello-ai/felhen` retornou GitHub 404 no processo local, indicando ausencia/escopo insuficiente de token para leitura do repo privado. Para nao adicionar credencial nova neste corte, o fallback default passou a ser `AIOS_OPERATING_CADENCE_GITHUB_REPO` ou `antonio-mello-ai/crewdock`. Repo privado pode ser usado quando `GITHUB_TOKEN`/`GH_TOKEN` tiver leitura.
+
+Proximo corte recomendado:
+
+1. **Gate Closure Ritual v0**: visao/ritual diario para gates pendentes, SLA em risco e workflow runs parados, refletido no briefing/core readiness, sem writeback externo.
+2. **AgentContext Daily Handoff v0**: gerar contexto diario para agentes iniciarem alinhados ao Company Brain.
+3. **Design Partner Operating Pack v0**: runbook, fronteiras de dados, narrativa reproduzivel e demo seed.

@@ -859,8 +859,8 @@ function seedCompanyBrain(sqlite: Database.Database) {
       description:
         "Read-only watcher for GitHub pull requests and CI/check-run state. It records Company Brain artifacts and internal signals without GitHub writeback.",
       sourceIds: JSON.stringify([]),
-      triggerType: "manual",
-      schedule: "poll on demand",
+      triggerType: "polling",
+      schedule: "every 2 hours",
       eventFilter: "github.pull_request|github.status|github.check_run",
       scopeQuery: "repo:* pulls state:open",
       owner: "Felhen",
@@ -896,9 +896,9 @@ function seedCompanyBrain(sqlite: Database.Database) {
       id: "watcher-aios-briefing-v0",
       title: "AIOS Briefing watcher v0",
       description:
-        "Manual observe-only watcher that produces an internal Company Brain briefing artifact and optional gap signals.",
+        "Scheduled observe-only watcher that produces an internal Company Brain briefing artifact and optional gap signals.",
       sourceIds: JSON.stringify(["source-aios-briefing-v0"]),
-      triggerType: "manual",
+      triggerType: "schedule",
       schedule: "daily 09:00 BRT",
       eventFilter: "company_brain.summary|company_brain.gap",
       scopeQuery: "aios://company-brain/summary",
@@ -916,6 +916,28 @@ function seedCompanyBrain(sqlite: Database.Database) {
       createdAt: now,
       updatedAt: now,
     });
+
+  sqlite
+    .prepare(
+      `UPDATE cb_watchers
+       SET trigger_type = 'schedule',
+           schedule = 'daily 09:00 BRT',
+           updated_at = @updatedAt
+       WHERE id = 'watcher-aios-briefing-v0'
+         AND action_policy = 'observe_only'`
+    )
+    .run({ updatedAt: now });
+
+  sqlite
+    .prepare(
+      `UPDATE cb_watchers
+       SET trigger_type = 'polling',
+           schedule = 'every 2 hours',
+           updated_at = @updatedAt
+       WHERE id = 'watcher-github-pr-ci-v0'
+         AND action_policy = 'observe_only'`
+    )
+    .run({ updatedAt: now });
 }
 
 export function getDb() {
