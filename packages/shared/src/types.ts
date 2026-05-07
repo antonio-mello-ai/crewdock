@@ -1858,8 +1858,45 @@ export interface CompanyBrainOperatingCadenceWatcher {
   nextAction: string;
 }
 
+export type CompanyBrainOperatingLoopStatus =
+  | "disabled"
+  | "idle"
+  | "running"
+  | "error";
+
+export interface CompanyBrainOperatingLoopState {
+  enabled: boolean;
+  status: CompanyBrainOperatingLoopStatus;
+  startedAt: number | null;
+  lastTickAt: number | null;
+  nextTickAt: number | null;
+  lastRunAt: number | null;
+  lastErrorAt: number | null;
+  lastErrorSummary: string | null;
+  checkIntervalMs: number;
+  initialDelayMs: number;
+  scheduleId: string;
+  allowedWatcherIds: string[];
+  allowedActionPolicy: "observe_only";
+  defaultRepo: string;
+  lockActive: boolean;
+  tickCount: number;
+  runCount: number;
+  skippedTickCount: number;
+  lastDueWatcherIds: string[];
+  lastRun: {
+    scheduleId: string;
+    scheduledAt: number;
+    watcherRunsCreated: number;
+    artifactsCreated: number;
+    signalsCreated: number;
+    runs: RunOperatingCadenceResponse["runs"];
+  } | null;
+}
+
 export interface CompanyBrainOperatingCadence {
   generatedAt: number;
+  operatingLoop: CompanyBrainOperatingLoopState;
   watchers: CompanyBrainOperatingCadenceWatcher[];
   stats: {
     watcherCount: number;
@@ -2955,6 +2992,7 @@ export interface CompanyBrainCoreReadiness {
     | "needs_foundation_work";
   modules: CoreReadinessModule[];
   gaps: CoreReadinessGap[];
+  operatingLoop: CompanyBrainOperatingLoopState;
   stats: {
     moduleCount: number;
     operationalCount: number;
@@ -2974,6 +3012,12 @@ export interface CompanyBrainCoreReadiness {
     dueCadenceCount: number;
     lastScheduledRunAt: number | null;
     nextScheduledRunAt: number | null;
+    operatingLoopEnabled: boolean;
+    operatingLoopStatus: CompanyBrainOperatingLoopStatus;
+    operatingLoopLastTickAt: number | null;
+    operatingLoopLastRunAt: number | null;
+    operatingLoopNextTickAt: number | null;
+    operatingLoopLastErrorAt: number | null;
   };
 }
 

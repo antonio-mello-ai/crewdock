@@ -215,3 +215,21 @@ para `https://api.felhen.ai` por `~/.claude.json`):
 
 Sem mutacao em sistemas externos. Unico write interno: AgentContext
 `Ry3RMiKMNQ2q` no DB do CT165.
+
+## Follow-up: Production Operating Loop v0
+
+Implementado no corte `company-brain-production-operating-loop-2026-05-07`.
+
+O bloqueio A passa a ser tratado por um loop interno do daemon, configuravel por
+env, que checa watchers due/stale e roda somente `watcher-github-pr-ci-v0` e
+`watcher-aios-briefing-v0` quando ambos estiverem `observe_only`.
+
+Superficies novas/atualizadas:
+
+- `GET /api/company-brain/operating-loop`
+- `operatingCadence.operatingLoop`
+- `coreReadiness.operatingLoop`
+- MCP `get_company_brain_operating_loop`
+
+Aceite: loop ativo em producao, `staleCadenceCount=0`, `dueCadenceCount=0` e
+Core Readiness sem gap `stale_or_due_watcher_cadence`.

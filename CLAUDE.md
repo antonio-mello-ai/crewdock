@@ -107,6 +107,10 @@ Env vars obrigatórias em `.env.prod` (além de DB_PATH, LOG_DIR, etc.):
 | `CF_ACCESS_SOFT_MODE` | `true` para logar rejeições sem bloquear (usar em rollout inicial) |
 | `NODE_ENV` | `production` em CT165 (impede `AIOS_AUTH_DISABLED` de funcionar) |
 | `AIOS_CORS_ORIGINS` | Origins permitidas pelo CORS (ex: `https://ai.felhen.ai,https://crewdock.ai`) |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED` | `true` para ativar o runner recorrente observe-only do Company Brain em CT165 |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_CHECK_INTERVAL_MS` | intervalo de check do runner (`300000` recomendado no v0) |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_INITIAL_DELAY_MS` | delay inicial apos boot antes do primeiro tick |
+| `AIOS_OPERATING_CADENCE_GITHUB_REPO` | repo usado pelo watcher GitHub PR/CI read-only; fallback `antonio-mello-ai/crewdock` |
 
 Ver `docs/auth-rollout.md` para arquitetura auth, rollback e smoke test checklist.
 

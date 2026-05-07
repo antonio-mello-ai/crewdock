@@ -387,12 +387,28 @@ server.registerTool(
   {
     title: "Get Company Brain operating cadence",
     description:
-      "Read-only AIOS operating cadence report with scheduled watchers, last scheduled run, next expected run, stale/due cadence gaps and manual vs automatic run counts.",
+      "Read-only AIOS operating cadence report with Operating Loop state, scheduled watchers, last scheduled run, next expected run, stale/due cadence gaps and manual vs automatic run counts.",
     inputSchema: {},
   },
   async () => {
     const result = await daemonFetch<{ data: unknown }>(
       "/api/company-brain/operating-cadence"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_operating_loop",
+  {
+    title: "Get Company Brain Operating Loop state",
+    description:
+      "Read-only state for the production Company Brain Operating Loop runner, including enabled/status, last tick, last automatic run, next tick, lock status and runner error.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-loop"
     );
     return formatJsonResult(result.data);
   }

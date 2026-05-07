@@ -37,8 +37,12 @@ const cardIcons: Record<CompanyBrainOperatingSnapshotCardKey, typeof Brain> = {
 
 function stateVariant(state: string): "default" | "secondary" | "destructive" | "outline" {
   if (["critical", "error"].includes(state)) return "destructive";
-  if (["healthy", "ready", "clear"].includes(state)) return "default";
-  if (["needs_run", "attention", "missing"].includes(state)) return "secondary";
+  if (["healthy", "ready", "clear", "idle", "running"].includes(state)) {
+    return "default";
+  }
+  if (["needs_run", "attention", "missing", "disabled"].includes(state)) {
+    return "secondary";
+  }
   return "outline";
 }
 
@@ -54,6 +58,7 @@ export default function CompanyBrainOperatingPage() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   const snapshot = data?.data;
+  const operatingLoop = snapshot?.operatingCadence.operatingLoop;
   const handoffMarkdown = snapshot?.latestAgentContext?.content ?? "";
   const handoffFilename = useMemo(() => {
     const date = new Date(snapshot?.latestAgentContext?.createdAt ?? Date.now())
@@ -138,6 +143,22 @@ export default function CompanyBrainOperatingPage() {
               </Badge>
               <p className="text-sm text-muted-foreground">{snapshot.summary}</p>
             </div>
+            {operatingLoop ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant={stateVariant(operatingLoop.status)}>
+                  loop {operatingLoop.status}
+                </Badge>
+                <span>
+                  tick {formatTimestamp(operatingLoop.lastTickAt)}
+                </span>
+                <span>
+                  last run {formatTimestamp(operatingLoop.lastRunAt)}
+                </span>
+                <span>
+                  next {formatTimestamp(operatingLoop.nextTickAt)}
+                </span>
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button

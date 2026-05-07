@@ -105,6 +105,11 @@ Variáveis de ambiente (via `.env.prod`):
 | `CF_ACCESS_AUD` | AUD tag do CF Access application | — |
 | `CF_ACCESS_SOFT_MODE` | `true` loga rejeições sem bloquear (rollout inicial) | `false` |
 | `AIOS_CORS_ORIGINS` | Origins permitidas pelo CORS | — |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED` | Habilita o loop interno observe-only do Company Brain Operating Cadence | `false` |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_CHECK_INTERVAL_MS` | Intervalo entre checks de watchers due/stale | `300000` |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_INITIAL_DELAY_MS` | Delay inicial apos boot do daemon | `30000` |
+| `AIOS_COMPANY_BRAIN_OPERATING_LOOP_SCHEDULE_ID` | `scheduleId` usado nos `WatcherRun` automaticos | `production:company-brain-operating-loop` |
+| `AIOS_OPERATING_CADENCE_GITHUB_REPO` | Repo lido pelo watcher GitHub PR/CI observe-only | `antonio-mello-ai/crewdock` |
 
 ## Deploy em produção
 

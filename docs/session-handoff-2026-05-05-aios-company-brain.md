@@ -2388,3 +2388,64 @@ Residual objetivo:
 
 1. Gerar Daily Agent Handoff em producao antes da proxima sessao diaria.
 2. Revisar se o token GitHub usado pelo daemon deve ou nao ter leitura do repo privado `antonio-mello-ai/felhen`; hoje `crewdock` funciona para o watcher read-only, enquanto `felhen` retornou `404`.
+
+## Production Operating Loop v0 - 2026-05-07
+
+Status: implementado e dogfooded localmente. Deploy CT165 pendente neste ponto do handoff.
+
+Objetivo:
+
+- Fechar o bloqueio `stale_or_due_watcher_cadence` sem depender de run manual/one-off.
+- Manter o corte observe-only: sem Linear, sem writeback, sem executor externo novo, sem secrets novas.
+
+Arquivos principais:
+
+- `packages/daemon/src/config.ts`: adiciona `AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED`, `AIOS_COMPANY_BRAIN_OPERATING_LOOP_CHECK_INTERVAL_MS`, `AIOS_COMPANY_BRAIN_OPERATING_LOOP_INITIAL_DELAY_MS` e `AIOS_COMPANY_BRAIN_OPERATING_LOOP_SCHEDULE_ID`.
+- `packages/daemon/src/routes/company-brain.ts`: extrai `runCompanyBrainOperatingCadence`, adiciona estado/loop interno, endpoint `GET /operating-loop`, loop com lock em memoria e filtro `observe_only` para `watcher-aios-briefing-v0` + `watcher-github-pr-ci-v0`.
+- `packages/daemon/src/index.ts`: inicia/para o loop junto com o daemon.
+- `packages/shared/src/types.ts`: adiciona `CompanyBrainOperatingLoopState` e inclui loop em Operating Cadence/Core Readiness.
+- `packages/mcp-server/src/index.ts`: adiciona `get_company_brain_operating_loop` e atualiza descricao de cadence.
+- `packages/web/src/app/company-brain/operating/page.tsx`: mostra loop status, last tick, last run e next tick.
+- `.env.prod.example`, `README.md`, `CLAUDE.md`, runbook e docs/action atualizados.
+
+Dogfood local:
+
+- DB: `/tmp/aios-operating-loop-v0.sqlite`.
+- Daemon: `127.0.0.1:43184`.
+- Env: loop enabled, interval `1000ms`, initial delay `100ms`, scheduleId `dogfood:company-brain-operating-loop-v0`, repo `antonio-mello-ai/crewdock`.
+- Resultado automatico, sem POST manual:
+  - `operatingLoop.enabled=true`;
+  - `operatingLoop.status=idle`;
+  - `operatingLoop.runCount=1`;
+  - `watcherRunsCreated=2`;
+  - `artifactsCreated=2`;
+  - `watcher-github-pr-ci-v0` completed, `artifactId=HPRNv5pBRfAg`, `triggerRef=schedule://dogfood%3Acompany-brain-operating-loop-v0/NNic64E8ELko`;
+  - `watcher-aios-briefing-v0` completed, `artifactId=eiioweu-q587`, `triggerRef=schedule://dogfood%3Acompany-brain-operating-loop-v0/6MFy-2dI_b06`;
+  - `activeScheduledWatcherCount=2`;
+  - `staleCadenceCount=0`;
+  - `dueCadenceCount=0`;
+  - `errorCadenceCount=0`;
+  - `dailyUseBlockingGapCount=0`;
+  - Operating Snapshot cadence card `state=healthy`.
+
+Validacao local:
+
+- `git diff --check` passou.
+- `npx turbo build` passou.
+
+Proximo passo imediato:
+
+1. Commit/push do corte.
+2. Deploy CT165 daemon.
+3. Habilitar no CT165 `.env.prod`:
+   - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED=true`;
+   - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_CHECK_INTERVAL_MS=300000`;
+   - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_INITIAL_DELAY_MS=30000`;
+   - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_SCHEDULE_ID=production:company-brain-operating-loop`;
+   - `AIOS_OPERATING_CADENCE_GITHUB_REPO=antonio-mello-ai/crewdock`.
+4. Restart `aios-daemon`.
+5. Validar em producao:
+   - `GET https://api.felhen.ai/api/company-brain/operating-cadence`;
+   - `GET https://api.felhen.ai/api/company-brain/core-readiness`;
+   - `GET https://api.felhen.ai/api/company-brain/operating-snapshot`;
+   - `staleCadenceCount=0` e `dueCadenceCount=0` apos o loop executar.

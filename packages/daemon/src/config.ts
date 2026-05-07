@@ -28,6 +28,11 @@ function env(key: string, fallback: string): string {
   return process.env[key] ?? fallback;
 }
 
+function envNumber(key: string, fallback: string): number {
+  const parsed = Number(env(key, fallback));
+  return Number.isFinite(parsed) ? parsed : Number(fallback);
+}
+
 export const config = {
   port: Number(env("AIOS_PORT", "3101")),
   host: env("AIOS_HOST", "0.0.0.0"),
@@ -75,6 +80,22 @@ export const config = {
     .filter(Boolean),
 
   nodeEnv: env("NODE_ENV", "development"),
+
+  companyBrainOperatingLoop: {
+    enabled: env("AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED", "false") === "true",
+    checkIntervalMs: Math.max(
+      1_000,
+      envNumber("AIOS_COMPANY_BRAIN_OPERATING_LOOP_CHECK_INTERVAL_MS", "300000")
+    ),
+    initialDelayMs: Math.max(
+      0,
+      envNumber("AIOS_COMPANY_BRAIN_OPERATING_LOOP_INITIAL_DELAY_MS", "30000")
+    ),
+    scheduleId: env(
+      "AIOS_COMPANY_BRAIN_OPERATING_LOOP_SCHEDULE_ID",
+      "production:company-brain-operating-loop"
+    ),
+  },
 } as const;
 
 // Fail-fast validation: refuse to boot with unsafe config in production.

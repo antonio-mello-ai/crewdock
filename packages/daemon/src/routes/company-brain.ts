@@ -17,6 +17,7 @@ import type {
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainGateClosureRitual,
   CompanyBrainOperatingCadence,
+  CompanyBrainOperatingLoopState,
   CompanyBrainOperatingSnapshot,
   CompanyBrainReviewCohesion,
   CompanyBrainSavedAuditViews,
@@ -168,6 +169,30 @@ const OPERATING_CADENCE_WATCHER_IDS = [
   AIOS_BRIEFING_WATCHER_ID,
   GITHUB_PR_CI_WATCHER_ID,
 ];
+const operatingLoopState: CompanyBrainOperatingLoopState = {
+  enabled: config.companyBrainOperatingLoop.enabled,
+  status: config.companyBrainOperatingLoop.enabled ? "idle" : "disabled",
+  startedAt: null,
+  lastTickAt: null,
+  nextTickAt: null,
+  lastRunAt: null,
+  lastErrorAt: null,
+  lastErrorSummary: null,
+  checkIntervalMs: config.companyBrainOperatingLoop.checkIntervalMs,
+  initialDelayMs: config.companyBrainOperatingLoop.initialDelayMs,
+  scheduleId: config.companyBrainOperatingLoop.scheduleId,
+  allowedWatcherIds: [...OPERATING_CADENCE_WATCHER_IDS],
+  allowedActionPolicy: "observe_only",
+  defaultRepo: OPERATING_CADENCE_DEFAULT_REPO,
+  lockActive: false,
+  tickCount: 0,
+  runCount: 0,
+  skippedTickCount: 0,
+  lastDueWatcherIds: [],
+  lastRun: null,
+};
+let operatingLoopTimer: ReturnType<typeof setTimeout> | null = null;
+let operatingLoopTickInFlight = false;
 
 interface WatcherTriggerContext {
   triggerSource: WatcherRunTriggerSource;
@@ -283,6 +308,20 @@ function lastRunForWatcher(
         (!onlyScheduled || isScheduledWatcherRun(run))
     )
     .sort((a, b) => b.startedAt - a.startedAt)[0];
+}
+
+export function getCompanyBrainOperatingLoopState(): CompanyBrainOperatingLoopState {
+  return {
+    ...operatingLoopState,
+    allowedWatcherIds: [...operatingLoopState.allowedWatcherIds],
+    lastDueWatcherIds: [...operatingLoopState.lastDueWatcherIds],
+    lastRun: operatingLoopState.lastRun
+      ? {
+          ...operatingLoopState.lastRun,
+          runs: [...operatingLoopState.lastRun.runs],
+        }
+      : null,
+  };
 }
 
 function allowedLocalDocRoots() {
@@ -3603,6 +3642,7 @@ function buildOperatingCadence(
 
   return {
     generatedAt,
+    operatingLoop: getCompanyBrainOperatingLoopState(),
     watchers,
     stats: {
       watcherCount: watchers.length,
@@ -3996,6 +4036,7 @@ function buildCoreReadiness(args: {
     previewReplaySimulator,
     lastBriefing,
   } = args;
+  const operatingLoop = operatingCadence.operatingLoop;
   const generatedAt = now();
   type Module = CompanyBrainCoreReadiness["modules"][number];
   type ModuleStatus = Module["statuses"][number];
@@ -4118,6 +4159,13 @@ function buildCoreReadiness(args: {
         `${data.watchers.length} watchers`,
         `${data.watcherRuns.length} watcher runs`,
         `${automatedWatcherCount} automated cadence watchers`,
+        `operating loop ${operatingLoop.status}`,
+        operatingLoop.lastTickAt
+          ? `loop last tick ${new Date(operatingLoop.lastTickAt).toISOString()}`
+          : "loop has not ticked yet",
+        operatingLoop.lastRunAt
+          ? `loop last run ${new Date(operatingLoop.lastRunAt).toISOString()}`
+          : "loop has not run yet",
         `${operatingCadence.stats.scheduledRunCount} scheduled runs`,
         operatingCadence.stats.lastScheduledRunAt
           ? `last scheduled ${new Date(operatingCadence.stats.lastScheduledRunAt).toISOString()}`
@@ -4127,6 +4175,9 @@ function buildCoreReadiness(args: {
           : "next expected run unknown",
       ],
       gaps: [
+        ...(operatingLoop.enabled
+          ? []
+          : ["Production Operating Loop is disabled; cadence still depends on manual runs."]),
         ...(automatedWatcherCount
           ? []
           : ["Current readiness still relies on manual watcher runs for dogfood cadence."]),
@@ -4138,7 +4189,9 @@ function buildCoreReadiness(args: {
           : []),
       ],
       nextAction:
-        operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount
+        !operatingLoop.enabled
+          ? "Enable the internal Company Brain Operating Loop in the daemon config."
+          : operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount
           ? "Run scheduled cadence and inspect Source Health freshness."
           : "Keep briefing and key source watchers on their daily/polling cadence.",
     }),
@@ -4291,6 +4344,19 @@ function buildCoreReadiness(args: {
       requiresExternalMutation: false,
     });
   }
+  if (!operatingLoop.enabled) {
+    addGap({
+      id: "production_operating_loop_disabled",
+      impact: "daily_use",
+      severity: "warn",
+      title: "Production Operating Loop is disabled",
+      rationale:
+        "Scheduled watchers exist, but no recurring daemon loop is active to run due/stale observe-only cadence without an interactive session.",
+      nextAction:
+        "Enable AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED=true on the production daemon.",
+      requiresExternalMutation: false,
+    });
+  }
   if (operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount) {
     addGap({
       id: "stale_or_due_watcher_cadence",
@@ -4394,6 +4460,7 @@ function buildCoreReadiness(args: {
     overallStatus,
     modules,
     gaps,
+    operatingLoop,
     stats: {
       moduleCount: modules.length,
       operationalCount: modules.filter((item) => item.statuses.includes("operational"))
@@ -4425,6 +4492,12 @@ function buildCoreReadiness(args: {
       dueCadenceCount: operatingCadence.stats.dueCadenceCount,
       lastScheduledRunAt: operatingCadence.stats.lastScheduledRunAt,
       nextScheduledRunAt: operatingCadence.stats.nextScheduledRunAt,
+      operatingLoopEnabled: operatingLoop.enabled,
+      operatingLoopStatus: operatingLoop.status,
+      operatingLoopLastTickAt: operatingLoop.lastTickAt,
+      operatingLoopLastRunAt: operatingLoop.lastRunAt,
+      operatingLoopNextTickAt: operatingLoop.nextTickAt,
+      operatingLoopLastErrorAt: operatingLoop.lastErrorAt,
     },
   };
 }
@@ -4463,7 +4536,11 @@ function buildOperatingSnapshot(
     lastBriefing?.nextSteps[0] ??
     "Run watcher-aios-briefing-v0 to create the daily operating brief.";
   const cadenceAlert =
-    operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount
+    !operatingCadence.operatingLoop.enabled
+      ? "Production Operating Loop is disabled."
+      : operatingCadence.operatingLoop.status === "error"
+        ? `Operating Loop error: ${operatingCadence.operatingLoop.lastErrorSummary ?? "unknown error"}.`
+        : operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount
       ? `${operatingCadence.stats.staleCadenceCount} stale and ${operatingCadence.stats.dueCadenceCount} due watchers.`
       : `${operatingCadence.stats.activeScheduledWatcherCount} scheduled watchers active.`;
   const gateAlert = gateClosureRitual.stats.itemCount
@@ -4490,7 +4567,10 @@ function buildOperatingSnapshot(
       key: "operating_cadence",
       title: "Operating Cadence",
       state:
-        operatingCadence.stats.errorCadenceCount > 0
+        !operatingCadence.operatingLoop.enabled
+          ? "needs_run"
+          : operatingCadence.operatingLoop.status === "error" ||
+              operatingCadence.stats.errorCadenceCount > 0
           ? "error"
           : operatingCadence.stats.staleCadenceCount ||
               operatingCadence.stats.dueCadenceCount
@@ -9909,19 +9989,22 @@ app.get("/operating-cadence", (c) => {
   return c.json({ data });
 });
 
-app.get("/gate-closure-ritual", (c) => {
-  const data = buildGateClosureRitual(listAll());
-  return c.json({ data });
-});
-
-app.post("/operating-cadence/run", async (c) => {
+export async function runCompanyBrainOperatingCadence(
+  body: RunOperatingCadenceRequest = {}
+): Promise<RunOperatingCadenceResponse> {
   const startedAt = now();
-  const body = (await c.req
-    .json<RunOperatingCadenceRequest>()
-    .catch(() => ({}))) as RunOperatingCadenceRequest;
   const requestedWatcherIds = body.watcherIds?.length
     ? body.watcherIds
-    : OPERATING_CADENCE_WATCHER_IDS;
+    : body.mode === "due"
+      ? buildOperatingCadence(listAll()).watchers
+          .filter(
+            (watcher) =>
+              OPERATING_CADENCE_WATCHER_IDS.includes(watcher.watcherId) &&
+              watcher.actionPolicy === "observe_only" &&
+              ["due", "stale"].includes(watcher.cadenceStatus)
+          )
+          .map((watcher) => watcher.watcherId)
+      : OPERATING_CADENCE_WATCHER_IDS;
   const scheduleId = body.scheduleId ?? "company-brain:operating-cadence-v0";
   const scheduledAt = body.scheduledAt ?? startedAt;
   const runs: RunOperatingCadenceResponse["runs"] = [];
@@ -10040,8 +10123,150 @@ app.post("/operating-cadence/run", async (c) => {
     watcherRunsCreated: runs.filter((run) => run.watcherRunId).length,
     operatingCadence,
   };
+  return response;
+}
+
+app.get("/gate-closure-ritual", (c) => {
+  const data = buildGateClosureRitual(listAll());
+  return c.json({ data });
+});
+
+app.get("/operating-loop", (c) => {
+  return c.json({ data: getCompanyBrainOperatingLoopState() });
+});
+
+app.post("/operating-cadence/run", async (c) => {
+  const body = (await c.req
+    .json<RunOperatingCadenceRequest>()
+    .catch(() => ({}))) as RunOperatingCadenceRequest;
+  const response = await runCompanyBrainOperatingCadence(body);
   return c.json({ data: response }, 201);
 });
+
+function setOperatingLoopNextTick(delayMs: number) {
+  operatingLoopState.nextTickAt = now() + delayMs;
+}
+
+function summarizeOperatingLoopRun(response: RunOperatingCadenceResponse) {
+  return {
+    scheduleId: response.scheduleId,
+    scheduledAt: response.scheduledAt,
+    watcherRunsCreated: response.watcherRunsCreated,
+    artifactsCreated: response.artifactsCreated,
+    signalsCreated: response.signalsCreated,
+    runs: response.runs,
+  };
+}
+
+async function runCompanyBrainOperatingLoopTick() {
+  const tickAt = now();
+  operatingLoopState.tickCount += 1;
+  operatingLoopState.lastTickAt = tickAt;
+  setOperatingLoopNextTick(operatingLoopState.checkIntervalMs);
+
+  if (!operatingLoopState.enabled) {
+    operatingLoopState.status = "disabled";
+    operatingLoopState.skippedTickCount += 1;
+    return getCompanyBrainOperatingLoopState();
+  }
+
+  if (operatingLoopTickInFlight) {
+    operatingLoopState.skippedTickCount += 1;
+    operatingLoopState.lockActive = true;
+    return getCompanyBrainOperatingLoopState();
+  }
+
+  const cadence = buildOperatingCadence(listAll());
+  const dueWatcherIds = cadence.watchers
+    .filter(
+      (watcher) =>
+        operatingLoopState.allowedWatcherIds.includes(watcher.watcherId) &&
+        watcher.actionPolicy === operatingLoopState.allowedActionPolicy &&
+        ["due", "stale"].includes(watcher.cadenceStatus)
+    )
+    .map((watcher) => watcher.watcherId);
+  operatingLoopState.lastDueWatcherIds = dueWatcherIds;
+
+  if (!dueWatcherIds.length) {
+    operatingLoopState.status = "idle";
+    operatingLoopState.skippedTickCount += 1;
+    operatingLoopState.lockActive = false;
+    return getCompanyBrainOperatingLoopState();
+  }
+
+  operatingLoopTickInFlight = true;
+  operatingLoopState.lockActive = true;
+  operatingLoopState.status = "running";
+
+  try {
+    const response = await runCompanyBrainOperatingCadence({
+      mode: "due",
+      watcherIds: dueWatcherIds,
+      scheduleId: operatingLoopState.scheduleId,
+      scheduledAt: tickAt,
+      githubPrCi: {
+        repo: OPERATING_CADENCE_DEFAULT_REPO,
+        state: "open",
+        limit: 5,
+        createSignals: true,
+      },
+    });
+    const failedRun = response.runs.find((run) => run.status === "failed");
+    operatingLoopState.runCount += 1;
+    operatingLoopState.lastRunAt = now();
+    operatingLoopState.lastRun = summarizeOperatingLoopRun(response);
+    operatingLoopState.status = failedRun ? "error" : "idle";
+    operatingLoopState.lastErrorAt = failedRun ? now() : null;
+    operatingLoopState.lastErrorSummary = failedRun?.errorSummary ?? null;
+    return getCompanyBrainOperatingLoopState();
+  } catch (err) {
+    operatingLoopState.status = "error";
+    operatingLoopState.lastErrorAt = now();
+    operatingLoopState.lastErrorSummary =
+      err instanceof Error ? err.message : "Unknown operating loop error";
+    return getCompanyBrainOperatingLoopState();
+  } finally {
+    operatingLoopTickInFlight = false;
+    operatingLoopState.lockActive = false;
+  }
+}
+
+export function startCompanyBrainOperatingLoop() {
+  if (operatingLoopTimer) return () => stopCompanyBrainOperatingLoop();
+
+  operatingLoopState.enabled = config.companyBrainOperatingLoop.enabled;
+  operatingLoopState.status = operatingLoopState.enabled ? "idle" : "disabled";
+  operatingLoopState.startedAt = now();
+
+  if (!operatingLoopState.enabled) {
+    console.log("[company-brain] Operating Loop disabled");
+    return () => stopCompanyBrainOperatingLoop();
+  }
+
+  const scheduleNext = (delayMs: number) => {
+    setOperatingLoopNextTick(delayMs);
+    operatingLoopTimer = setTimeout(async () => {
+      await runCompanyBrainOperatingLoopTick();
+      scheduleNext(operatingLoopState.checkIntervalMs);
+    }, delayMs);
+    operatingLoopTimer.unref?.();
+  };
+
+  scheduleNext(operatingLoopState.initialDelayMs);
+  console.log(
+    `[company-brain] Operating Loop enabled interval=${operatingLoopState.checkIntervalMs}ms scheduleId=${operatingLoopState.scheduleId} repo=${OPERATING_CADENCE_DEFAULT_REPO}`
+  );
+  return () => stopCompanyBrainOperatingLoop();
+}
+
+export function stopCompanyBrainOperatingLoop() {
+  if (operatingLoopTimer) {
+    clearTimeout(operatingLoopTimer);
+    operatingLoopTimer = null;
+  }
+  operatingLoopState.nextTickAt = null;
+  operatingLoopState.lockActive = false;
+}
 
 app.get("/writeback-safety-dashboard", (c) => {
   const data = buildWritebackSafetyDashboard(listAll());

@@ -21,7 +21,10 @@ import terminalRoutes from "./routes/terminal.js";
 import schedulesRoutes from "./routes/schedules.js";
 import briefingRoutes from "./routes/briefing.js";
 import pushRoutes from "./routes/push.js";
-import companyBrainRoutes from "./routes/company-brain.js";
+import companyBrainRoutes, {
+  startCompanyBrainOperatingLoop,
+  stopCompanyBrainOperatingLoop,
+} from "./routes/company-brain.js";
 import { subscribeToSession } from "./sessions/session-manager.js";
 import {
   subscribeToTerminal,
@@ -181,10 +184,12 @@ async function start() {
   );
 
   injectWebSocket(server);
+  startCompanyBrainOperatingLoop();
 
   // Graceful shutdown
   const shutdown = () => {
     console.log("\n[aios] Shutting down...");
+    stopCompanyBrainOperatingLoop();
     for (const t of listTerminals()) {
       closeTerminal(t.id);
     }
