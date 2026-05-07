@@ -1999,6 +1999,104 @@ export interface WritebackTargetObservabilitySummary {
   latestTargetSummary: string | null;
 }
 
+export interface WritebackProposalTargetReviewItem {
+  proposalId: string;
+  title: string;
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  reviewStatus: WritebackExecutionReviewStatus;
+  reviewFlags: WritebackExecutionReviewFlag[];
+  blockReasons: string[];
+  target: {
+    targetKey: string;
+    targetType: WritebackTargetObservabilitySummary["targetType"];
+    targetLabel: string;
+    targetSummary: string | null;
+    repoPrivate: boolean | null;
+    targetProposalCount: number;
+    targetNeedsReviewCount: number;
+    targetMutationAttemptedCount: number;
+    latestExternalUrl: string | null;
+  };
+  evidence: {
+    integrityGapCount: number;
+    integrityGapSeverity: SignalSeverity | null;
+    integrityGapKinds: WritebackEvidenceIntegrityGapKind[];
+    remediationSuggestionCount: number;
+    hasGuidance: boolean;
+    hasSignal: boolean;
+    hasFinding: boolean;
+    hasWorkItem: boolean;
+    hasWorkflowRun: boolean;
+  };
+  hashes: {
+    approved: string | null;
+    preview: string | null;
+    current: string;
+    matchesApproval: boolean | null;
+    matchesPreview: boolean | null;
+  };
+  refs: {
+    destinationApproved: string | null;
+    destinationPreview: string | null;
+    destinationCurrent: string | null;
+    destinationMatchesApproval: boolean | null;
+    destinationMatchesPreview: boolean | null;
+    externalId: string | null;
+    externalUrl: string | null;
+    rollbackRef: string | null;
+  };
+  events: {
+    eventCount: number;
+    latestEvent: string | null;
+    latestAt: number | null;
+    approvalEvent: string | null;
+    approvalAt: number | null;
+    previewEvent: string | null;
+    previewAt: number | null;
+    executionEvent: string | null;
+    executionAt: number | null;
+    actor: string | null;
+  };
+  idempotencyKey: string;
+  githubStatus: GitHubStatusWritebackEvidence | null;
+  nextAction: string;
+  updatedAt: number;
+}
+
+export interface CompanyBrainWritebackProposalTargetReview {
+  generatedAt: number;
+  filters: {
+    proposalId: string | null;
+    targetKey: string | null;
+    destinationType: ExternalActionDestination | null;
+    actionType: ExternalActionKind | null;
+    riskClass: RiskClass | null;
+    reviewStatus: WritebackExecutionReviewStatus | null;
+    limit: number;
+  };
+  items: WritebackProposalTargetReviewItem[];
+  targetSummaries: WritebackTargetObservabilitySummary[];
+  total: number;
+  stats: {
+    proposalCount: number;
+    targetCount: number;
+    needsReviewCount: number;
+    blockedCount: number;
+    completedCount: number;
+    failedCount: number;
+    integrityGapCount: number;
+    staleApprovalCount: number;
+    stalePreviewCount: number;
+    mutationAttemptedCount: number;
+    duplicateAvoidedCount: number;
+  };
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2364,6 +2462,7 @@ export interface CompanyBrainSummary {
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   reviewCohesion: CompanyBrainReviewCohesion;
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
+  writebackProposalTargetReview: CompanyBrainWritebackProposalTargetReview;
   stats: {
     sourceCount: number;
     artifactCount: number;

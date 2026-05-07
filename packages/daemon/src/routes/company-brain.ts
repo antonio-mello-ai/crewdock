@@ -18,6 +18,7 @@ import type {
   CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainWritebackEvidenceIntegrityGapsResponse,
   CompanyBrainWritebackEvidenceRemediationSuggestionsResponse,
+  CompanyBrainWritebackProposalTargetReview,
   CompanyBrainWritebackSafetyDashboard,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -5484,6 +5485,232 @@ function buildWritebackEvidencePacketIndex(
     );
 }
 
+function matchSnapshot(value: string | null, current: string | null) {
+  return value === null ? null : value === current;
+}
+
+function buildWritebackProposalTargetReview(args: {
+  data: ReturnType<typeof listAll>;
+  reviews?: Map<
+    string,
+    CompanyBrainWritebackSafetyDashboard["items"][number]["executionReview"]
+  >;
+  generatedAt?: number;
+  proposalId?: string | null;
+  targetKey?: string | null;
+  destinationType?: ExternalActionDestination | null;
+  actionType?: ExternalActionKind | null;
+  riskClass?: RiskClass | null;
+  reviewStatus?: CompanyBrainWritebackProposalTargetReview["filters"]["reviewStatus"];
+  limit?: number;
+}): CompanyBrainWritebackProposalTargetReview {
+  const generatedAt = args.generatedAt ?? now();
+  const data = args.data;
+  const reviews =
+    args.reviews ??
+    new Map(
+      data.externalActionProposals.map((proposal) => [
+        proposal.id,
+        buildWritebackExecutionReview(proposal, generatedAt),
+      ])
+    );
+  const integrityGaps = buildWritebackEvidenceIntegrityGaps(
+    data,
+    reviews,
+    generatedAt
+  );
+  const remediationSuggestions = buildWritebackEvidenceRemediationSuggestions(
+    integrityGaps,
+    generatedAt
+  );
+  const evidencePacketIndex = buildWritebackEvidencePacketIndex(
+    data,
+    reviews,
+    integrityGaps
+  );
+  const targetSummaries = buildWritebackTargetObservabilitySummaries(
+    data.externalActionProposals,
+    reviews,
+    generatedAt
+  );
+  const evidenceByProposal = new Map(
+    evidencePacketIndex.map((item) => [item.proposalId, item])
+  );
+  const remediationCountByProposal = new Map<string, number>();
+  for (const suggestion of remediationSuggestions) {
+    remediationCountByProposal.set(
+      suggestion.proposalId,
+      (remediationCountByProposal.get(suggestion.proposalId) ?? 0) + 1
+    );
+  }
+  const targetByKey = new Map(targetSummaries.map((target) => [target.targetKey, target]));
+  const items = data.externalActionProposals
+    .map((proposal) => {
+      const review =
+        reviews.get(proposal.id) ?? buildWritebackExecutionReview(proposal, generatedAt);
+      const auditReview = buildWritebackAuditReview(proposal, review);
+      const targetBase = writebackTargetObservabilityBase(proposal);
+      const target = targetByKey.get(targetBase.targetKey);
+      const evidence = evidenceByProposal.get(proposal.id);
+      const latestAudit = latestExternalActionAudit(proposal);
+      const approvalEvent = latestAuditEvent(proposal, "approved");
+      const previewEvent = review.previewEvent
+        ? latestAuditEvent(proposal, review.previewEvent)
+        : null;
+      const executionEvent = latestWritebackExecutionAudit(proposal);
+      const kind = writebackSafetyItemKind(proposal);
+      return {
+        proposalId: proposal.id,
+        title: proposal.title,
+        destinationType: proposal.destinationType,
+        actionType: proposal.actionType,
+        riskClass: proposal.riskClass,
+        actionPolicy: proposal.actionPolicy,
+        approvalStatus: proposal.approvalStatus,
+        executionStatus: proposal.executionStatus,
+        reviewStatus: review.status,
+        reviewFlags: review.flags,
+        blockReasons: writebackBlockReasons(proposal, review),
+        target: {
+          targetKey: targetBase.targetKey,
+          targetType: target?.targetType ?? targetBase.targetType,
+          targetLabel: target?.targetLabel ?? targetBase.targetLabel,
+          targetSummary: auditReview.targetSummary,
+          repoPrivate: target?.repoPrivate ?? auditReview.githubStatus?.repoPrivate ?? null,
+          targetProposalCount: target?.proposalCount ?? 1,
+          targetNeedsReviewCount: target?.needsReviewCount ?? 0,
+          targetMutationAttemptedCount: target?.mutationAttemptedCount ?? 0,
+          latestExternalUrl: target?.latestExternalUrl ?? proposal.externalUrl,
+        },
+        evidence: {
+          integrityGapCount: evidence?.integrityGapCount ?? 0,
+          integrityGapSeverity: evidence?.integrityGapSeverity ?? null,
+          integrityGapKinds: evidence?.integrityGapKinds ?? [],
+          remediationSuggestionCount: remediationCountByProposal.get(proposal.id) ?? 0,
+          hasGuidance: evidence?.hasGuidance ?? false,
+          hasSignal: evidence?.hasSignal ?? false,
+          hasFinding: evidence?.hasFinding ?? false,
+          hasWorkItem: evidence?.hasWorkItem ?? false,
+          hasWorkflowRun: evidence?.hasWorkflowRun ?? false,
+        },
+        hashes: {
+          approved: review.payloadHashApproved,
+          preview: review.payloadHashPreview,
+          current: review.payloadHashCurrent,
+          matchesApproval: matchSnapshot(
+            review.payloadHashApproved,
+            review.payloadHashCurrent
+          ),
+          matchesPreview: matchSnapshot(
+            review.payloadHashPreview,
+            review.payloadHashCurrent
+          ),
+        },
+        refs: {
+          destinationApproved: review.destinationRefApproved,
+          destinationPreview: review.destinationRefPreview,
+          destinationCurrent: review.destinationRefCurrent,
+          destinationMatchesApproval: matchSnapshot(
+            review.destinationRefApproved,
+            review.destinationRefCurrent
+          ),
+          destinationMatchesPreview: matchSnapshot(
+            review.destinationRefPreview,
+            review.destinationRefCurrent
+          ),
+          externalId: proposal.externalId,
+          externalUrl: proposal.externalUrl,
+          rollbackRef: proposal.rollbackRef,
+        },
+        events: {
+          eventCount: proposal.auditTrail.length,
+          latestEvent: latestAudit?.event ?? null,
+          latestAt: latestAudit?.at ?? null,
+          approvalEvent: approvalEvent?.event ?? null,
+          approvalAt: approvalEvent?.at ?? null,
+          previewEvent: previewEvent?.event ?? null,
+          previewAt: previewEvent?.at ?? null,
+          executionEvent: executionEvent?.event ?? null,
+          executionAt: executionEvent?.at ?? null,
+          actor: latestAudit?.actor ?? review.actor,
+        },
+        idempotencyKey: proposal.idempotencyKey,
+        githubStatus: auditReview.githubStatus,
+        nextAction: kind
+          ? writebackSafetyNextAction(proposal, kind, review)
+          : "No immediate writeback safety action.",
+        updatedAt: proposal.updatedAt,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (b.events.latestAt ?? b.updatedAt) - (a.events.latestAt ?? a.updatedAt)
+    );
+  const filteredItems = items.filter((item) => {
+    if (args.proposalId && item.proposalId !== args.proposalId) return false;
+    if (args.targetKey && item.target.targetKey !== args.targetKey) return false;
+    if (args.destinationType && item.destinationType !== args.destinationType) {
+      return false;
+    }
+    if (args.actionType && item.actionType !== args.actionType) return false;
+    if (args.riskClass && item.riskClass !== args.riskClass) return false;
+    if (args.reviewStatus && item.reviewStatus !== args.reviewStatus) return false;
+    return true;
+  });
+  const limit = Math.max(1, Math.min(args.limit ?? 50, 250));
+  return {
+    generatedAt,
+    filters: {
+      proposalId: args.proposalId ?? null,
+      targetKey: args.targetKey ?? null,
+      destinationType: args.destinationType ?? null,
+      actionType: args.actionType ?? null,
+      riskClass: args.riskClass ?? null,
+      reviewStatus: args.reviewStatus ?? null,
+      limit,
+    },
+    items: filteredItems.slice(0, limit),
+    targetSummaries,
+    total: filteredItems.length,
+    stats: {
+      proposalCount: items.length,
+      targetCount: targetSummaries.length,
+      needsReviewCount: items.filter(
+        (item) =>
+          item.reviewStatus !== "completed" &&
+          item.reviewStatus !== "duplicate_prevented"
+      ).length,
+      blockedCount: items.filter((item) => item.reviewStatus === "blocked").length,
+      completedCount: items.filter((item) => item.reviewStatus === "completed").length,
+      failedCount: items.filter((item) => item.executionStatus === "failed").length,
+      integrityGapCount: items.reduce(
+        (total, item) => total + item.evidence.integrityGapCount,
+        0
+      ),
+      staleApprovalCount: targetSummaries.reduce(
+        (total, target) => total + target.staleApprovalCount,
+        0
+      ),
+      stalePreviewCount: targetSummaries.reduce(
+        (total, target) => total + target.stalePreviewCount,
+        0
+      ),
+      mutationAttemptedCount: items.filter((item) => {
+        const proposal = data.externalActionProposals.find(
+          (entry) => entry.id === item.proposalId
+        );
+        return proposal ? hasExternalMutationAttemptAudit(proposal) : false;
+      }).length,
+      duplicateAvoidedCount: items.filter((item) => {
+        const proposal = data.externalActionProposals.find(
+          (entry) => entry.id === item.proposalId
+        );
+        return proposal ? hasDuplicateAvoidanceAudit(proposal) : false;
+      }).length,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -5842,6 +6069,7 @@ app.get("/summary", (c) => {
   const lastBriefing = buildLastBriefing(data);
   const reviewCohesion = buildReviewCohesion(data);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
+  const writebackProposalTargetReview = buildWritebackProposalTargetReview({ data });
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -5875,6 +6103,7 @@ app.get("/summary", (c) => {
       lastBriefing,
       reviewCohesion,
       writebackSafetyDashboard,
+      writebackProposalTargetReview,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -9041,6 +9270,81 @@ app.get("/external-action-proposals", (c) => {
     data = data.filter((item) => item.approvalStatus === approvalStatus);
   }
   return c.json({ data, total: data.length });
+});
+
+app.get("/external-action-proposals/proposal-target-review", (c) => {
+  const proposalId = c.req.query("proposalId")?.trim() || null;
+  const targetKey = c.req.query("targetKey")?.trim() || null;
+  const destinationTypeParam = c.req.query("destinationType")?.trim() || null;
+  const actionTypeParam = c.req.query("actionType")?.trim() || null;
+  const riskClassParam = c.req.query("riskClass")?.trim() || null;
+  const reviewStatusParam = c.req.query("reviewStatus")?.trim() || null;
+  const limitParam = Number(c.req.query("limit") ?? "50");
+  const allowedDestinations: ExternalActionDestination[] = [
+    "github",
+    "slack",
+    "internal",
+    "unknown",
+  ];
+  const destinationType = allowedDestinations.includes(
+    destinationTypeParam as ExternalActionDestination
+  )
+    ? (destinationTypeParam as ExternalActionDestination)
+    : null;
+  const allowedActions: ExternalActionKind[] = [
+    "comment",
+    "github_comment",
+    "label",
+    "github_label",
+    "github_status",
+    "github_check",
+    "thread_reply",
+    "slack_thread_reply",
+    "draft",
+    "unknown",
+  ];
+  const actionType = allowedActions.includes(actionTypeParam as ExternalActionKind)
+    ? (actionTypeParam as ExternalActionKind)
+    : null;
+  const allowedRiskClasses: RiskClass[] = ["A", "B", "C", "unknown"];
+  const riskClass = allowedRiskClasses.includes(riskClassParam as RiskClass)
+    ? (riskClassParam as RiskClass)
+    : null;
+  const allowedReviewStatuses: CompanyBrainWritebackProposalTargetReview["filters"]["reviewStatus"][] =
+    [
+      "ready_to_execute",
+      "needs_preview",
+      "needs_reapproval",
+      "retryable_failed",
+      "unsafe_failed",
+      "payload_mismatch",
+      "destination_mismatch",
+      "duplicate_prevented",
+      "completed",
+      "blocked",
+    ];
+  const reviewStatus = allowedReviewStatuses.includes(
+    reviewStatusParam as NonNullable<
+      CompanyBrainWritebackProposalTargetReview["filters"]["reviewStatus"]
+    >
+  )
+    ? (reviewStatusParam as NonNullable<
+        CompanyBrainWritebackProposalTargetReview["filters"]["reviewStatus"]
+      >)
+    : null;
+  const data = listAll();
+  return c.json({
+    data: buildWritebackProposalTargetReview({
+      data,
+      proposalId,
+      targetKey,
+      destinationType,
+      actionType,
+      riskClass,
+      reviewStatus,
+      limit: Number.isFinite(limitParam) ? limitParam : 50,
+    }),
+  });
 });
 
 app.get("/external-action-proposals/audit-trail", (c) => {

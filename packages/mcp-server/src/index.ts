@@ -1503,6 +1503,73 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_writeback_proposal_target_review",
+  {
+    title: "List Company Brain writeback proposal target review",
+    description:
+      "Read-only proposal/target review for ExternalActionProposal items, including target rollup, safety review, hash/ref comparisons, audit events and evidence completeness. Does not execute or mutate external systems.",
+    inputSchema: {
+      proposalId: z.string().optional(),
+      targetKey: z.string().optional(),
+      destinationType: z.enum(["github", "slack", "internal", "unknown"]).optional(),
+      actionType: z
+        .enum([
+          "comment",
+          "github_comment",
+          "label",
+          "github_label",
+          "github_status",
+          "github_check",
+          "thread_reply",
+          "slack_thread_reply",
+          "draft",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+      reviewStatus: z
+        .enum([
+          "ready_to_execute",
+          "needs_preview",
+          "needs_reapproval",
+          "retryable_failed",
+          "unsafe_failed",
+          "payload_mismatch",
+          "destination_mismatch",
+          "duplicate_prevented",
+          "completed",
+          "blocked",
+        ])
+        .optional(),
+      limit: z.number().int().min(1).max(250).optional(),
+    },
+  },
+  async ({
+    proposalId,
+    targetKey,
+    destinationType,
+    actionType,
+    riskClass,
+    reviewStatus,
+    limit,
+  }) => {
+    const params = new URLSearchParams();
+    if (proposalId) params.set("proposalId", proposalId);
+    if (targetKey) params.set("targetKey", targetKey);
+    if (destinationType) params.set("destinationType", destinationType);
+    if (actionType) params.set("actionType", actionType);
+    if (riskClass) params.set("riskClass", riskClass);
+    if (reviewStatus) params.set("reviewStatus", reviewStatus);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/proposal-target-review${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "list_company_brain_writeback_evidence_integrity_gaps",
   {
     title: "List Company Brain writeback evidence integrity gaps",

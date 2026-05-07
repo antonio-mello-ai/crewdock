@@ -400,6 +400,7 @@ export default function CompanyBrainPage() {
   const lastBriefing = summary?.lastBriefing ?? null;
   const reviewCohesion = summary?.reviewCohesion;
   const writebackSafetyDashboard = summary?.writebackSafetyDashboard;
+  const writebackProposalTargetReview = summary?.writebackProposalTargetReview;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -2416,6 +2417,80 @@ export default function CompanyBrainPage() {
                             ) : null}
                           </div>
                         ))}
+                    </div>
+                  </div>
+                ) : null}
+                {writebackProposalTargetReview?.items.length ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-medium text-neutral-300">
+                        Proposal/target review
+                      </p>
+                      <p className="text-xs text-neutral-700">
+                        {writebackProposalTargetReview.stats.targetCount} targets ·{" "}
+                        {writebackProposalTargetReview.stats.needsReviewCount} need
+                        review · {writebackProposalTargetReview.stats.integrityGapCount}{" "}
+                        gaps
+                      </p>
+                    </div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {writebackProposalTargetReview.items.slice(0, 4).map((item) => (
+                        <div
+                          key={item.proposalId}
+                          className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-medium text-neutral-300">
+                              {item.title}
+                            </p>
+                            <StatusBadge value={item.reviewStatus} />
+                            <StatusBadge value={item.target.targetType} />
+                          </div>
+                          <p className="mt-1 truncate text-neutral-600">
+                            {item.destinationType}/{item.actionType} ·{" "}
+                            {item.target.targetLabel}
+                          </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            target {item.target.targetSummary ?? item.target.targetKey}
+                          </p>
+                          <p className="mt-1 text-neutral-600">
+                            hash approval{" "}
+                            {item.hashes.matchesApproval === null
+                              ? "missing"
+                              : item.hashes.matchesApproval
+                                ? "match"
+                                : "mismatch"}{" "}
+                            · preview{" "}
+                            {item.hashes.matchesPreview === null
+                              ? "missing"
+                              : item.hashes.matchesPreview
+                                ? "match"
+                                : "mismatch"}
+                          </p>
+                          <p className="mt-1 text-neutral-600">
+                            events {item.events.eventCount} · approval{" "}
+                            {item.events.approvalEvent ?? "none"} · preview{" "}
+                            {item.events.previewEvent ?? "none"} · execution{" "}
+                            {item.events.executionEvent ?? "none"}
+                          </p>
+                          <p className="mt-1 text-neutral-600">
+                            gaps {item.evidence.integrityGapCount} · remediation{" "}
+                            {item.evidence.remediationSuggestionCount} · linked{" "}
+                            {[
+                              item.evidence.hasGuidance ? "guidance" : null,
+                              item.evidence.hasSignal ? "signal" : null,
+                              item.evidence.hasFinding ? "finding" : null,
+                              item.evidence.hasWorkItem ? "work" : null,
+                              item.evidence.hasWorkflowRun ? "workflow" : null,
+                            ]
+                              .filter(Boolean)
+                              .join(", ") || "none"}
+                          </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            {item.nextAction}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : null}
