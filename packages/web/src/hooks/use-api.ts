@@ -76,6 +76,8 @@ import type {
   Decision,
   ExternalActionProposal,
   GitHubCommentWritebackResponse,
+  GitHubIssueCreateProposalPreviewResponse,
+  GitHubIssueCreateWritebackResponse,
   GitHubLabelProposalPreviewResponse,
   GitHubLabelWritebackResponse,
   GitHubStatusCheckProposalPreviewResponse,
@@ -1011,6 +1013,44 @@ export function usePreviewCompanyBrainGitHubLabelProposal() {
         method: "POST",
         body: JSON.stringify(body ?? {}),
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function usePreviewCompanyBrainGitHubIssueCreateProposal() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubIssueCreateProposalPreviewResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(
+        `/api/company-brain/external-action-proposals/${id}/github-issue-create/preview`,
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        }
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useExecuteCompanyBrainGitHubIssueCreateWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubIssueCreateWritebackResponse>,
+    Error,
+    { id: string; body?: ExecuteExternalActionProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(
+        `/api/company-brain/external-action-proposals/${id}/github-issue-create/execute`,
+        {
+          method: "POST",
+          body: JSON.stringify(body ?? {}),
+        }
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });
 }

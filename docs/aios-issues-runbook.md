@@ -171,7 +171,7 @@ Comportamento:
    - `mcp__aios__sync_company_brain_github_issues` ou
    - `POST /api/company-brain/adapters/github/issues/sync`.
 
-## WorkItem -> GitHub Issue (preview-only v0)
+## WorkItem -> GitHub Issue
 
 Um WorkItem do Company Brain pode virar draft de issue GitHub via
 `mcp__aios__create_company_brain_github_issue_create_proposal` (gera proposal
@@ -181,12 +181,19 @@ milestone, e grava `github_issue_create_previewed` no audit trail. Idempotency
 e por `repo + workItemId + title`: re-criar a mesma combinacao retorna
 `reused=true` com a proposal original.
 
-Em v0 o status e `preview_only` e `executionBlocked=true`. Executor real
-(criacao no GitHub) requer um cut separado com allowlist via
-`AIOS_GITHUB_ISSUE_CREATE_ALLOWLIST`, `GITHUB_TOKEN`, HITL approval,
-preview-after-approval, Retry Safety e dedupe por marker antes de qualquer
-write. Ate la a recomendacao continua: abrir issues manualmente via `gh issue
-create` ou GitHub UI, seguindo as convencoes deste runbook.
+Criacao real no GitHub existe apenas pelo executor governado
+`mcp__aios__execute_company_brain_github_issue_create_writeback`, com:
+
+- repo allowlisted em `AIOS_GITHUB_ISSUE_CREATE_ALLOWLIST`;
+- `GITHUB_TOKEN`/`GH_TOKEN`;
+- Risk B + `actionPolicy=writeback_allowed`;
+- HITL approval com actor/rationale;
+- preview posterior a aprovacao;
+- Retry Safety sem mismatch de payload/destination/idempotency;
+- dedupe por marker no body antes de chamar `POST /issues`.
+
+Ao completar, a proposal recebe `externalId/externalUrl` e o WorkItem passa a
+apontar para a issue criada em `externalProvider/externalId/externalUrl`.
 
 ## Mutation policy
 
@@ -196,8 +203,8 @@ create` ou GitHub UI, seguindo as convencoes deste runbook.
   preview registrado e executor real publicado. Hoje executor real existe
   apenas para `github_comment` (Risk B), `github_label` (Risk B,
   preview-required, allowlist) e `github_status` (Risk B, allowlist private
-  repo). `github_check` e `github_issue_create` ficam preview-only ate
-  executor proprio + allowlist + dogfood.
+  repo) e `github_issue_create` (Risk B, allowlisted internal repo).
+  `github_check` permanece preview-only ate executor proprio + dogfood.
 - Acoes bloqueadas por default no AIOS: close, reopen, merge, deploy, delete,
   permissions, secrets, customer repos. Ver `docs/writeback-policy-matrix.md`
   para a matriz canonica.

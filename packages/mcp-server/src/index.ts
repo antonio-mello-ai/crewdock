@@ -2064,7 +2064,7 @@ server.registerTool(
   {
     title: "Create GitHub issue create proposal from WorkItem",
     description:
-      "Generate a preview-only ExternalActionProposal that drafts a GitHub Issue from a Company Brain WorkItem. Returns the persisted proposal (Risk B, action_policy=request_human, executionStatus=blocked) ready for HITL review and preview. Does not call GitHub write APIs. v0 cut is preview-only; the real executor follows in a separate cut.",
+      "Generate an ExternalActionProposal that drafts a GitHub Issue from a Company Brain WorkItem. Returns the persisted proposal ready for HITL review, preview-after-approval and governed execution. Does not call GitHub write APIs.",
     inputSchema: {
       workItemId: z.string().min(1),
       repo: z.string().min(3),
@@ -2094,7 +2094,7 @@ server.registerTool(
   {
     title: "Preview GitHub issue create proposal",
     description:
-      "Dry-run a GitHub issue create ExternalActionProposal. Returns target repo, milestone, title, body with idempotency marker, labels, sourceWorkItemId, payload hash and execution-blocked state without calling GitHub write APIs. v0 cut is preview-only; real execution requires the executor cut, allowlist, HITL approval, retry safety and audit trail to be wired separately.",
+      "Dry-run a GitHub issue create ExternalActionProposal. Returns target repo, milestone, title, body with idempotency marker, labels, sourceWorkItemId, payload hash and execution-blocked state without calling GitHub write APIs.",
     inputSchema: {
       id: z.string().min(1),
       actor: z.string().optional(),
@@ -2106,6 +2106,30 @@ server.registerTool(
       {
         method: "POST",
         body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "execute_company_brain_github_issue_create_writeback",
+  {
+    title: "Execute GitHub issue create writeback",
+    description:
+      "Create one GitHub Issue for an approved Risk B Company Brain proposal with action_policy=writeback_allowed, allowlisted repo, prior preview after approval, idempotency marker dedupe and Retry Safety review. Existing marker match completes as noop. It does not close, reopen, assign, merge, deploy, or edit existing issues.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().min(1),
+      retryRationale: z.string().optional(),
+    },
+  },
+  async ({ id, actor, retryRationale }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-issue-create/execute`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor, retryRationale }),
       }
     );
     return formatJsonResult(result.data);

@@ -1286,7 +1286,13 @@ export interface GitHubIssueCreateProposalPreviewResponse {
   sourceWorkItemId: string | null;
   sourceGuidanceItemId: string | null;
   dryRun: boolean;
-  status: "preview_only" | "dry_run" | "completed" | "already_completed" | "failed";
+  status:
+    | "preview_only"
+    | "dry_run"
+    | "completed"
+    | "already_completed"
+    | "completed_noop"
+    | "failed";
   executionBlocked: boolean;
   executionBlockReason: string | null;
   mutationAttempted?: boolean;
@@ -1294,6 +1300,9 @@ export interface GitHubIssueCreateProposalPreviewResponse {
   externalUrl?: string | null;
   policySummary: string;
 }
+
+export type GitHubIssueCreateWritebackResponse =
+  GitHubIssueCreateProposalPreviewResponse;
 
 export interface GenerateGitHubIssueCreateProposalRequest {
   workItemId?: string | null;
@@ -2241,6 +2250,7 @@ export interface WritebackSafetyQueueItem {
 export type WritebackAdapterKey =
   | "github_comment"
   | "github_label"
+  | "github_issue_create"
   | "github_status_check"
   | "slack_thread_reply"
   | "other";
