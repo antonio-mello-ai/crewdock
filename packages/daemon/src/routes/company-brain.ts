@@ -12,6 +12,8 @@ import type {
   CompanyBrainAdoptionDashboard,
   CompanyBrainBriefingSection,
   CompanyBrainBriefingSnapshot,
+  CompanyBrainEvidenceGraph,
+  CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainReviewCohesion,
   CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
@@ -5711,6 +5713,588 @@ function buildWritebackProposalTargetReview(args: {
   };
 }
 
+function graphNodeId(kind: CompanyBrainEvidenceGraphNodeKind, entityId: string) {
+  return `${kind}:${entityId}`;
+}
+
+function artifactLinkTargetNodeId(targetType: string, targetId: string) {
+  const normalized = targetType.trim().toLowerCase();
+  const kindByTargetType: Record<string, CompanyBrainEvidenceGraphNodeKind> = {
+    source: "source",
+    artifact: "artifact",
+    priority: "priority",
+    strategic_priority: "priority",
+    goal: "goal",
+    work_item: "work_item",
+    workitem: "work_item",
+    workflow_run: "workflow_run",
+    workflowrun: "workflow_run",
+    signal: "signal",
+    alignment_finding: "alignment_finding",
+    finding: "alignment_finding",
+    guidance: "guidance_item",
+    guidance_item: "guidance_item",
+    external_action_proposal: "external_action_proposal",
+    proposal: "external_action_proposal",
+  };
+  const kind = kindByTargetType[normalized];
+  return kind ? graphNodeId(kind, targetId) : null;
+}
+
+function buildCompanyBrainEvidenceGraph(args: {
+  data: ReturnType<typeof listAll>;
+  rootKind?: CompanyBrainEvidenceGraphNodeKind | null;
+  rootId?: string | null;
+  limit?: number;
+}): CompanyBrainEvidenceGraph {
+  const generatedAt = now();
+  const limit = Math.max(1, Math.min(args.limit ?? 250, 500));
+  const data = args.data;
+  const nodes = new Map<string, CompanyBrainEvidenceGraph["nodes"][number]>();
+  const edges = new Map<string, CompanyBrainEvidenceGraph["edges"][number]>();
+  const addNode = (node: CompanyBrainEvidenceGraph["nodes"][number]) => {
+    if (!nodes.has(node.id)) nodes.set(node.id, node);
+  };
+  const addEdge = (edge: CompanyBrainEvidenceGraph["edges"][number]) => {
+    if (!nodes.has(edge.from) || !nodes.has(edge.to)) return;
+    if (!edges.has(edge.id)) edges.set(edge.id, edge);
+  };
+
+  for (const source of data.sources) {
+    addNode({
+      id: graphNodeId("source", source.id),
+      kind: "source",
+      entityId: source.id,
+      label: source.name,
+      status: source.healthStatus,
+      area: source.area,
+      visibility: source.visibility,
+      externalUrl: null,
+      rawRef: source.externalRef,
+      provenance: null,
+      updatedAt: source.updatedAt,
+    });
+  }
+  for (const artifact of data.artifacts) {
+    addNode({
+      id: graphNodeId("artifact", artifact.id),
+      kind: "artifact",
+      entityId: artifact.id,
+      label: artifact.title,
+      status: artifact.humanReviewStatus,
+      area: artifact.area,
+      visibility: artifact.visibility,
+      externalUrl: artifact.contentRef,
+      rawRef: artifact.rawRef,
+      provenance: artifact.provenance,
+      updatedAt: artifact.ingestedAt,
+    });
+  }
+  for (const priority of data.priorities) {
+    addNode({
+      id: graphNodeId("priority", priority.id),
+      kind: "priority",
+      entityId: priority.id,
+      label: priority.title,
+      status: priority.status,
+      area: priority.area,
+      visibility: priority.visibility,
+      externalUrl: null,
+      rawRef: null,
+      provenance: null,
+      updatedAt: priority.updatedAt,
+    });
+  }
+  for (const goal of data.goals) {
+    addNode({
+      id: graphNodeId("goal", goal.id),
+      kind: "goal",
+      entityId: goal.id,
+      label: goal.title,
+      status: goal.status,
+      area: goal.area,
+      visibility: goal.visibility,
+      externalUrl: null,
+      rawRef: null,
+      provenance: null,
+      updatedAt: goal.updatedAt,
+    });
+  }
+  for (const workItem of data.workItems) {
+    addNode({
+      id: graphNodeId("work_item", workItem.id),
+      kind: "work_item",
+      entityId: workItem.id,
+      label: workItem.title,
+      status: workItem.status,
+      area: workItem.area,
+      visibility: workItem.visibility,
+      externalUrl: workItem.externalUrl,
+      rawRef: workItem.externalId,
+      provenance: workItem.provenance,
+      updatedAt: workItem.updatedAt,
+    });
+  }
+  for (const workflowRun of data.workflowRuns) {
+    addNode({
+      id: graphNodeId("workflow_run", workflowRun.id),
+      kind: "workflow_run",
+      entityId: workflowRun.id,
+      label: workflowRun.title,
+      status: workflowRun.status,
+      area: workflowRun.workflowArea,
+      visibility: workflowRun.visibility,
+      externalUrl: null,
+      rawRef: workflowRun.currentStep,
+      provenance: workflowRun.provenance,
+      updatedAt: workflowRun.updatedAt,
+    });
+  }
+  for (const signal of data.signals) {
+    addNode({
+      id: graphNodeId("signal", signal.id),
+      kind: "signal",
+      entityId: signal.id,
+      label: signal.summary,
+      status: signal.severity,
+      area: signal.area,
+      visibility: signal.visibility,
+      externalUrl: null,
+      rawRef: signal.rawRef,
+      provenance: signal.provenance,
+      updatedAt: signal.updatedAt,
+    });
+  }
+  for (const finding of data.alignmentFindings) {
+    addNode({
+      id: graphNodeId("alignment_finding", finding.id),
+      kind: "alignment_finding",
+      entityId: finding.id,
+      label: finding.rationale,
+      status: finding.classification,
+      area: finding.area,
+      visibility: finding.visibility,
+      externalUrl: null,
+      rawRef: null,
+      provenance: finding.provenance,
+      updatedAt: finding.updatedAt,
+    });
+  }
+  for (const guidance of data.guidanceItems) {
+    addNode({
+      id: graphNodeId("guidance_item", guidance.id),
+      kind: "guidance_item",
+      entityId: guidance.id,
+      label: guidance.title,
+      status: guidance.status,
+      area: guidance.area,
+      visibility: guidance.visibility,
+      externalUrl: null,
+      rawRef: null,
+      provenance: guidance.provenance,
+      updatedAt: guidance.updatedAt,
+    });
+  }
+  const targetBasesByProposal = new Map<
+    string,
+    ReturnType<typeof writebackTargetObservabilityBase>
+  >();
+  for (const proposal of data.externalActionProposals) {
+    const target = writebackTargetObservabilityBase(proposal);
+    targetBasesByProposal.set(proposal.id, target);
+    addNode({
+      id: graphNodeId("writeback_target", target.targetKey),
+      kind: "writeback_target",
+      entityId: target.targetKey,
+      label: target.targetLabel,
+      status: target.targetType,
+      area: null,
+      visibility: null,
+      externalUrl: proposal.externalUrl,
+      rawRef: proposal.destinationRef,
+      provenance: null,
+      updatedAt: proposal.updatedAt,
+    });
+    addNode({
+      id: graphNodeId("external_action_proposal", proposal.id),
+      kind: "external_action_proposal",
+      entityId: proposal.id,
+      label: proposal.title,
+      status: proposal.executionStatus,
+      area: null,
+      visibility: null,
+      externalUrl: proposal.externalUrl,
+      rawRef: proposal.destinationRef,
+      provenance: null,
+      updatedAt: proposal.updatedAt,
+    });
+  }
+
+  for (const artifact of data.artifacts) {
+    addEdge({
+      id: `source_artifact:${artifact.sourceId}:${artifact.id}`,
+      from: graphNodeId("source", artifact.sourceId),
+      to: graphNodeId("artifact", artifact.id),
+      relationship: "source_artifact",
+      label: "produced artifact",
+      confidence: artifact.confidence,
+      provenance: artifact.provenance,
+      createdAt: artifact.ingestedAt,
+    });
+  }
+  for (const goal of data.goals) {
+    if (!goal.priorityId) continue;
+    addEdge({
+      id: `priority_goal:${goal.priorityId}:${goal.id}`,
+      from: graphNodeId("priority", goal.priorityId),
+      to: graphNodeId("goal", goal.id),
+      relationship: "priority_goal",
+      label: "owns goal",
+      confidence: goal.confidence,
+      provenance: null,
+      createdAt: goal.createdAt,
+    });
+  }
+  for (const workItem of data.workItems) {
+    if (workItem.priorityId) {
+      addEdge({
+        id: `priority_work:${workItem.priorityId}:${workItem.id}`,
+        from: graphNodeId("priority", workItem.priorityId),
+        to: graphNodeId("work_item", workItem.id),
+        relationship: "priority_work_item",
+        label: "scopes work",
+        confidence: null,
+        provenance: workItem.provenance,
+        createdAt: workItem.createdAt,
+      });
+    }
+    if (workItem.goalId) {
+      addEdge({
+        id: `goal_work:${workItem.goalId}:${workItem.id}`,
+        from: graphNodeId("goal", workItem.goalId),
+        to: graphNodeId("work_item", workItem.id),
+        relationship: "goal_work_item",
+        label: "tracks work",
+        confidence: null,
+        provenance: workItem.provenance,
+        createdAt: workItem.createdAt,
+      });
+    }
+    if (workItem.sourceId) {
+      addEdge({
+        id: `source_work:${workItem.sourceId}:${workItem.id}`,
+        from: graphNodeId("source", workItem.sourceId),
+        to: graphNodeId("work_item", workItem.id),
+        relationship: "source_work_item",
+        label: "created work item",
+        confidence: null,
+        provenance: workItem.provenance,
+        createdAt: workItem.createdAt,
+      });
+    }
+    if (workItem.artifactId) {
+      addEdge({
+        id: `artifact_work:${workItem.artifactId}:${workItem.id}`,
+        from: graphNodeId("artifact", workItem.artifactId),
+        to: graphNodeId("work_item", workItem.id),
+        relationship: "artifact_work_item",
+        label: "evidences work",
+        confidence: null,
+        provenance: workItem.provenance,
+        createdAt: workItem.createdAt,
+      });
+    }
+  }
+  for (const workflowRun of data.workflowRuns) {
+    if (workflowRun.workItemId) {
+      addEdge({
+        id: `work_workflow:${workflowRun.workItemId}:${workflowRun.id}`,
+        from: graphNodeId("work_item", workflowRun.workItemId),
+        to: graphNodeId("workflow_run", workflowRun.id),
+        relationship: "work_item_workflow_run",
+        label: "runs workflow",
+        confidence: null,
+        provenance: workflowRun.provenance,
+        createdAt: workflowRun.createdAt,
+      });
+    }
+    for (const artifactId of workflowRun.sourceArtifactIds) {
+      addEdge({
+        id: `artifact_workflow:${artifactId}:${workflowRun.id}`,
+        from: graphNodeId("artifact", artifactId),
+        to: graphNodeId("workflow_run", workflowRun.id),
+        relationship: "artifact_workflow_run",
+        label: "workflow evidence",
+        confidence: null,
+        provenance: workflowRun.provenance,
+        createdAt: workflowRun.createdAt,
+      });
+    }
+  }
+  for (const signal of data.signals) {
+    const signalNode = graphNodeId("signal", signal.id);
+    if (signal.sourceId) {
+      addEdge({
+        id: `source_signal:${signal.sourceId}:${signal.id}`,
+        from: graphNodeId("source", signal.sourceId),
+        to: signalNode,
+        relationship: "source_signal",
+        label: "emitted signal",
+        confidence: signal.confidence,
+        provenance: signal.provenance,
+        createdAt: signal.createdAt,
+      });
+    }
+    if (signal.artifactId) {
+      addEdge({
+        id: `artifact_signal:${signal.artifactId}:${signal.id}`,
+        from: graphNodeId("artifact", signal.artifactId),
+        to: signalNode,
+        relationship: "artifact_signal",
+        label: "generated signal",
+        confidence: signal.confidence,
+        provenance: signal.provenance,
+        createdAt: signal.createdAt,
+      });
+    }
+    if (signal.workItemId) {
+      addEdge({
+        id: `work_signal:${signal.workItemId}:${signal.id}`,
+        from: graphNodeId("work_item", signal.workItemId),
+        to: signalNode,
+        relationship: "work_item_signal",
+        label: "observes work",
+        confidence: signal.confidence,
+        provenance: signal.provenance,
+        createdAt: signal.createdAt,
+      });
+    }
+    if (signal.workflowRunId) {
+      addEdge({
+        id: `workflow_signal:${signal.workflowRunId}:${signal.id}`,
+        from: graphNodeId("workflow_run", signal.workflowRunId),
+        to: signalNode,
+        relationship: "workflow_run_signal",
+        label: "observes workflow",
+        confidence: signal.confidence,
+        provenance: signal.provenance,
+        createdAt: signal.createdAt,
+      });
+    }
+  }
+  for (const finding of data.alignmentFindings) {
+    const findingNode = graphNodeId("alignment_finding", finding.id);
+    for (const artifactId of finding.artifactIds) {
+      addEdge({
+        id: `artifact_finding:${artifactId}:${finding.id}`,
+        from: graphNodeId("artifact", artifactId),
+        to: findingNode,
+        relationship: "artifact_finding",
+        label: "supports finding",
+        confidence: finding.confidence,
+        provenance: finding.provenance,
+        createdAt: finding.createdAt,
+      });
+    }
+    for (const signalId of finding.signalIds) {
+      addEdge({
+        id: `signal_finding:${signalId}:${finding.id}`,
+        from: graphNodeId("signal", signalId),
+        to: findingNode,
+        relationship: "signal_finding",
+        label: "classified into finding",
+        confidence: finding.confidence,
+        provenance: finding.provenance,
+        createdAt: finding.createdAt,
+      });
+    }
+    if (finding.priorityId) {
+      addEdge({
+        id: `priority_finding:${finding.priorityId}:${finding.id}`,
+        from: graphNodeId("priority", finding.priorityId),
+        to: findingNode,
+        relationship: "priority_finding",
+        label: "evaluates priority",
+        confidence: finding.confidence,
+        provenance: finding.provenance,
+        createdAt: finding.createdAt,
+      });
+    }
+    if (finding.goalId) {
+      addEdge({
+        id: `goal_finding:${finding.goalId}:${finding.id}`,
+        from: graphNodeId("goal", finding.goalId),
+        to: findingNode,
+        relationship: "goal_finding",
+        label: "evaluates goal",
+        confidence: finding.confidence,
+        provenance: finding.provenance,
+        createdAt: finding.createdAt,
+      });
+    }
+    if (finding.workItemId) {
+      addEdge({
+        id: `work_finding:${finding.workItemId}:${finding.id}`,
+        from: graphNodeId("work_item", finding.workItemId),
+        to: findingNode,
+        relationship: "work_item_finding",
+        label: "evaluates work",
+        confidence: finding.confidence,
+        provenance: finding.provenance,
+        createdAt: finding.createdAt,
+      });
+    }
+    if (finding.workflowRunId) {
+      addEdge({
+        id: `workflow_finding:${finding.workflowRunId}:${finding.id}`,
+        from: graphNodeId("workflow_run", finding.workflowRunId),
+        to: findingNode,
+        relationship: "workflow_run_finding",
+        label: "evaluates workflow",
+        confidence: finding.confidence,
+        provenance: finding.provenance,
+        createdAt: finding.createdAt,
+      });
+    }
+  }
+  for (const guidance of data.guidanceItems) {
+    const guidanceNode = graphNodeId("guidance_item", guidance.id);
+    const guidanceLinks: Array<[
+      CompanyBrainEvidenceGraphNodeKind,
+      string | null,
+      string,
+      string,
+    ]> = [
+      ["alignment_finding", guidance.findingId, "finding_guidance", "generates guidance"],
+      ["signal", guidance.signalId, "signal_guidance", "generates guidance"],
+      ["work_item", guidance.workItemId, "work_guidance", "guides work"],
+      ["workflow_run", guidance.workflowRunId, "workflow_guidance", "guides workflow"],
+      ["priority", guidance.priorityId, "priority_guidance", "guides priority"],
+      ["goal", guidance.goalId, "goal_guidance", "guides goal"],
+    ];
+    for (const [kind, id, relationship, label] of guidanceLinks) {
+      if (!id) continue;
+      addEdge({
+        id: `${relationship}:${id}:${guidance.id}`,
+        from: graphNodeId(kind, id),
+        to: guidanceNode,
+        relationship,
+        label,
+        confidence: null,
+        provenance: guidance.provenance,
+        createdAt: guidance.createdAt,
+      });
+    }
+  }
+  for (const proposal of data.externalActionProposals) {
+    const proposalNode = graphNodeId("external_action_proposal", proposal.id);
+    const proposalLinks: Array<[
+      CompanyBrainEvidenceGraphNodeKind,
+      string | null,
+      string,
+      string,
+    ]> = [
+      ["guidance_item", proposal.guidanceItemId, "guidance_proposal", "creates proposal"],
+      ["signal", proposal.signalId, "signal_proposal", "informs proposal"],
+      ["alignment_finding", proposal.findingId, "finding_proposal", "informs proposal"],
+      ["work_item", proposal.workItemId, "work_proposal", "acts on work"],
+      ["workflow_run", proposal.workflowRunId, "workflow_proposal", "acts on workflow"],
+    ];
+    for (const [kind, id, relationship, label] of proposalLinks) {
+      if (!id) continue;
+      addEdge({
+        id: `${relationship}:${id}:${proposal.id}`,
+        from: graphNodeId(kind, id),
+        to: proposalNode,
+        relationship,
+        label,
+        confidence: null,
+        provenance: null,
+        createdAt: proposal.createdAt,
+      });
+    }
+    const target = targetBasesByProposal.get(proposal.id);
+    if (target) {
+      addEdge({
+        id: `proposal_target:${proposal.id}:${target.targetKey}`,
+        from: proposalNode,
+        to: graphNodeId("writeback_target", target.targetKey),
+        relationship: "proposal_writeback_target",
+        label: "targets writeback",
+        confidence: null,
+        provenance: null,
+        createdAt: proposal.createdAt,
+      });
+    }
+  }
+  for (const link of data.artifactLinks) {
+    const targetNode = artifactLinkTargetNodeId(link.targetType, link.targetId);
+    if (!targetNode) continue;
+    addEdge({
+      id: `artifact_link:${link.id}`,
+      from: graphNodeId("artifact", link.artifactId),
+      to: targetNode,
+      relationship: link.relationship,
+      label: link.relationship,
+      confidence: link.confidence,
+      provenance: null,
+      createdAt: link.createdAt,
+    });
+  }
+
+  let graphNodes = [...nodes.values()];
+  let graphEdges = [...edges.values()];
+  if (args.rootKind && args.rootId) {
+    const rootNodeId = graphNodeId(args.rootKind, args.rootId);
+    const connected = new Set<string>([rootNodeId]);
+    for (const edge of graphEdges) {
+      if (edge.from === rootNodeId) connected.add(edge.to);
+      if (edge.to === rootNodeId) connected.add(edge.from);
+    }
+    graphNodes = graphNodes.filter((node) => connected.has(node.id));
+    graphEdges = graphEdges.filter(
+      (edge) => connected.has(edge.from) && connected.has(edge.to)
+    );
+  }
+  graphNodes = graphNodes
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+    .slice(0, limit);
+  const includedNodeIds = new Set(graphNodes.map((node) => node.id));
+  graphEdges = graphEdges
+    .filter((edge) => includedNodeIds.has(edge.from) && includedNodeIds.has(edge.to))
+    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+    .slice(0, limit * 2);
+  const connectedNodeIds = new Set<string>();
+  for (const edge of graphEdges) {
+    connectedNodeIds.add(edge.from);
+    connectedNodeIds.add(edge.to);
+  }
+
+  return {
+    generatedAt,
+    filters: {
+      rootKind: args.rootKind ?? null,
+      rootId: args.rootId ?? null,
+      limit,
+    },
+    nodes: graphNodes,
+    edges: graphEdges,
+    stats: {
+      nodeCount: graphNodes.length,
+      edgeCount: graphEdges.length,
+      sourceCount: graphNodes.filter((node) => node.kind === "source").length,
+      artifactCount: graphNodes.filter((node) => node.kind === "artifact").length,
+      proposalCount: graphNodes.filter(
+        (node) => node.kind === "external_action_proposal"
+      ).length,
+      targetCount: graphNodes.filter((node) => node.kind === "writeback_target")
+        .length,
+      orphanNodeCount: graphNodes.filter((node) => !connectedNodeIds.has(node.id))
+        .length,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -6070,6 +6654,7 @@ app.get("/summary", (c) => {
   const reviewCohesion = buildReviewCohesion(data);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const writebackProposalTargetReview = buildWritebackProposalTargetReview({ data });
+  const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -6104,6 +6689,7 @@ app.get("/summary", (c) => {
       reviewCohesion,
       writebackSafetyDashboard,
       writebackProposalTargetReview,
+      evidenceGraph,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -6164,6 +6750,37 @@ app.get("/summary", (c) => {
 
 app.get("/writeback-safety-dashboard", (c) => {
   const data = buildWritebackSafetyDashboard(listAll());
+  return c.json({ data });
+});
+
+app.get("/evidence-graph", (c) => {
+  const rootKindParam = c.req.query("rootKind")?.trim() || null;
+  const rootId = c.req.query("rootId")?.trim() || null;
+  const limitParam = Number(c.req.query("limit") ?? "250");
+  const allowedRootKinds: CompanyBrainEvidenceGraphNodeKind[] = [
+    "source",
+    "artifact",
+    "priority",
+    "goal",
+    "work_item",
+    "workflow_run",
+    "signal",
+    "alignment_finding",
+    "guidance_item",
+    "external_action_proposal",
+    "writeback_target",
+  ];
+  const rootKind = allowedRootKinds.includes(
+    rootKindParam as CompanyBrainEvidenceGraphNodeKind
+  )
+    ? (rootKindParam as CompanyBrainEvidenceGraphNodeKind)
+    : null;
+  const data = buildCompanyBrainEvidenceGraph({
+    data: listAll(),
+    rootKind,
+    rootId,
+    limit: Number.isFinite(limitParam) ? limitParam : 250,
+  });
   return c.json({ data });
 });
 

@@ -117,7 +117,9 @@ Status Writeback Target Observability v0 em 2026-05-06: Safety Dashboard/Summary
 
 Status Writeback Proposal/Target Review v0 em 2026-05-06: criada visao read-only `writebackProposalTargetReview` no Summary e API `/external-action-proposals/proposal-target-review`, com filtros por proposal/target/destination/action/risk/review, consolidando target rollup, safety status, block reasons, hash/ref comparisons, approval/preview/execution events, evidence completeness, remediation count, GitHub status evidence e next action. Exposto tambem em MCP e UI.
 
-Proximo corte planejado: evidence/provenance graph v0 para visualizar relacoes entre proposal, guidance, signal, finding, work item, workflow run, artifact, source e target sem mutacao externa; depois timeline por proposal/target/source.
+Status Evidence/Provenance Graph v0 em 2026-05-06: criado grafo read-only `evidenceGraph` no Summary e API `/evidence-graph`, com filtros por root kind/id e nós para source, artifact, priority, goal, work item, workflow run, signal, alignment finding, guidance item, external action proposal e writeback target. Arestas cobrem source/artifact, artifact links, priority/goal/work, workflow, signal, finding, guidance e proposal->target. Exposto em MCP e UI.
+
+Proximo corte planejado: timelines por proposal/target/source para auditoria temporal de proposal, preview, execution, evidence e provenance, sem mutacao externa.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -163,6 +165,7 @@ Proximo corte planejado: evidence/provenance graph v0 para visualizar relacoes e
 - [x] **GitHub status writeback observability v0** — filtrar/exportar eventos de status, normalizar evidence de status GitHub e mostrar statusId/context/state/SHA/repo privado no audit/evidence/UI/briefing
 - [x] **Writeback target observability v0** — rollups read-only por repo/canal/alvo com adapters, statuses, stale approval/preview, duplicates, mutations, repoPrivate e ultimo target no Safety Dashboard/Summary/UI/briefing
 - [x] **Writeback proposal/target review v0** — visao read-only consolidada por proposal e target com safety review, hashes, refs, eventos, evidence completeness, remediation, GitHub status evidence, API/UI/MCP
+- [x] **Evidence/provenance graph v0** — grafo read-only de source/artifact/evidence/workflow/guidance/proposal/target com API/UI/MCP e filtro por root
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

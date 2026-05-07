@@ -367,6 +367,45 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_evidence_graph",
+  {
+    title: "Get Company Brain evidence graph",
+    description:
+      "Read-only provenance graph linking sources, artifacts, signals, findings, guidance, work items, workflow runs, writeback proposals and targets. Does not execute or mutate external systems.",
+    inputSchema: {
+      rootKind: z
+        .enum([
+          "source",
+          "artifact",
+          "priority",
+          "goal",
+          "work_item",
+          "workflow_run",
+          "signal",
+          "alignment_finding",
+          "guidance_item",
+          "external_action_proposal",
+          "writeback_target",
+        ])
+        .optional(),
+      rootId: z.string().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    },
+  },
+  async ({ rootKind, rootId, limit }) => {
+    const params = new URLSearchParams();
+    if (rootKind) params.set("rootKind", rootKind);
+    if (rootId) params.set("rootId", rootId);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/evidence-graph${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_felhen_demo_v0_1",
   {
     title: "Run Felhen Demo v0.1",

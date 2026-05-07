@@ -401,6 +401,7 @@ export default function CompanyBrainPage() {
   const reviewCohesion = summary?.reviewCohesion;
   const writebackSafetyDashboard = summary?.writebackSafetyDashboard;
   const writebackProposalTargetReview = summary?.writebackProposalTargetReview;
+  const evidenceGraph = summary?.evidenceGraph;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -2491,6 +2492,67 @@ export default function CompanyBrainPage() {
                           </p>
                         </div>
                       ))}
+                    </div>
+                  </div>
+                ) : null}
+                {evidenceGraph ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-medium text-neutral-300">
+                        Evidence graph
+                      </p>
+                      <p className="text-xs text-neutral-700">
+                        {evidenceGraph.stats.nodeCount} nodes ·{" "}
+                        {evidenceGraph.stats.edgeCount} edges ·{" "}
+                        {evidenceGraph.stats.orphanNodeCount} orphan
+                      </p>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-left md:grid-cols-4 xl:grid-cols-6">
+                      <MiniMetric
+                        label="sources"
+                        value={evidenceGraph.stats.sourceCount}
+                      />
+                      <MiniMetric
+                        label="artifacts"
+                        value={evidenceGraph.stats.artifactCount}
+                      />
+                      <MiniMetric
+                        label="proposals"
+                        value={evidenceGraph.stats.proposalCount}
+                      />
+                      <MiniMetric
+                        label="targets"
+                        value={evidenceGraph.stats.targetCount}
+                      />
+                    </div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {evidenceGraph.edges.slice(0, 6).map((edge) => {
+                        const from = evidenceGraph.nodes.find(
+                          (node) => node.id === edge.from
+                        );
+                        const to = evidenceGraph.nodes.find(
+                          (node) => node.id === edge.to
+                        );
+                        return (
+                          <div
+                            key={edge.id}
+                            className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge value={edge.relationship} />
+                              {edge.confidence !== null ? (
+                                <StatusBadge value={`conf ${edge.confidence}`} />
+                              ) : null}
+                            </div>
+                            <p className="mt-1 truncate text-neutral-600">
+                              {from?.kind ?? "node"} · {from?.label ?? edge.from}
+                            </p>
+                            <p className="mt-1 truncate text-neutral-700">
+                              → {to?.kind ?? "node"} · {to?.label ?? edge.to}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

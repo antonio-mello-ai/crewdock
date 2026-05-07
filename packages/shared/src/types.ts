@@ -2097,6 +2097,64 @@ export interface CompanyBrainWritebackProposalTargetReview {
   };
 }
 
+export type CompanyBrainEvidenceGraphNodeKind =
+  | "source"
+  | "artifact"
+  | "priority"
+  | "goal"
+  | "work_item"
+  | "workflow_run"
+  | "signal"
+  | "alignment_finding"
+  | "guidance_item"
+  | "external_action_proposal"
+  | "writeback_target";
+
+export interface CompanyBrainEvidenceGraphNode {
+  id: string;
+  kind: CompanyBrainEvidenceGraphNodeKind;
+  entityId: string;
+  label: string;
+  status: string | null;
+  area: CompanyBrainArea | null;
+  visibility: Visibility | null;
+  externalUrl: string | null;
+  rawRef: string | null;
+  provenance: Provenance | null;
+  updatedAt: number | null;
+}
+
+export interface CompanyBrainEvidenceGraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  relationship: string;
+  label: string;
+  confidence: number | null;
+  provenance: Provenance | null;
+  createdAt: number | null;
+}
+
+export interface CompanyBrainEvidenceGraph {
+  generatedAt: number;
+  filters: {
+    rootKind: CompanyBrainEvidenceGraphNodeKind | null;
+    rootId: string | null;
+    limit: number;
+  };
+  nodes: CompanyBrainEvidenceGraphNode[];
+  edges: CompanyBrainEvidenceGraphEdge[];
+  stats: {
+    nodeCount: number;
+    edgeCount: number;
+    sourceCount: number;
+    artifactCount: number;
+    proposalCount: number;
+    targetCount: number;
+    orphanNodeCount: number;
+  };
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2463,6 +2521,7 @@ export interface CompanyBrainSummary {
   reviewCohesion: CompanyBrainReviewCohesion;
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
   writebackProposalTargetReview: CompanyBrainWritebackProposalTargetReview;
+  evidenceGraph: CompanyBrainEvidenceGraph;
   stats: {
     sourceCount: number;
     artifactCount: number;
