@@ -122,13 +122,13 @@ Faltam:
 
 Operating Cadence v0 esta implementado internamente e dogfooded em DB temporario, sem instalar timer de producao.
 
-Gate Closure Ritual v0 e AgentContext Daily Handoff v0 estao implementados internamente e dogfooded em DB temporario.
+Gate Closure Ritual v0, AgentContext Daily Handoff v0 e Design Partner Operating Pack v0 estao implementados.
 
-O proximo corte mais importante e **Design Partner Operating Pack v0**:
+O proximo passo mais importante nao e nova feature; e rodar o pack em uma sessao real:
 
-1. consolidar demo seed, runbooks e fronteiras de dados em um pacote reproduzivel;
-2. documentar quais fontes entram, quais writebacks continuam bloqueados e como resetar o dogfood;
-3. criar narrativa curta de demo interna/design partner;
-4. manter tudo documental/read-only, sem nova mutacao externa.
+1. executar `docs/company-brain-design-partner-operating-pack.md`;
+2. observar friccoes reais na UI/briefing/adoption/dashboard;
+3. transformar apenas gaps concretos em backlog;
+4. manter tudo read-only ate haver novo alvo/policy aprovados.
 
 Nao avancar para novo executor externo antes desse corte.

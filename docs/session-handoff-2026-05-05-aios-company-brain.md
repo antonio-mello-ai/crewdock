@@ -2202,3 +2202,32 @@ Proximo corte recomendado:
 1. **Design Partner Operating Pack v0**: consolidar demo seed, runbooks, fronteiras de dados e narrativa reproduzivel.
 2. Depois avaliar polish de daily ops/adoption apenas a partir de friccao real.
 3. Parar antes de novo executor real, novo alvo externo, deploy, close/reopen/merge/delete ou qualquer mutacao externa nao aprovada.
+
+## Design Partner Operating Pack v0 - 2026-05-06
+
+Status: implementado como pacote documental/read-only. Sem codigo novo, sem mutacao externa e sem executor novo.
+
+Arquivo principal:
+
+- `docs/company-brain-design-partner-operating-pack.md`
+
+Conteudo do pack:
+
+- objetivo e narrativa;
+- fronteiras permitidas/proibidas;
+- comandos de demo seed em DB temporario;
+- AIOS Briefing;
+- Operating Cadence;
+- Gate Closure Ritual;
+- AgentContext Daily Handoff;
+- roteiro de demo em `/company-brain`;
+- dados/privacidade;
+- reset;
+- criterios de aceite;
+- proximos passos pos-demo.
+
+Proximo passo recomendado:
+
+1. Rodar o pack em uma sessao real e coletar friccoes concretas.
+2. Ajustar briefing/adoption/dashboard/UI apenas com base nessa friccao.
+3. Parar antes de novo executor real, novo alvo externo, deploy, close/reopen/merge/delete ou qualquer mutacao externa nao aprovada.

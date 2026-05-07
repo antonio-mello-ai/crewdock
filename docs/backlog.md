@@ -55,6 +55,8 @@ Status Gate Closure Ritual v0 em 2026-05-06: ritual diario read-only implementad
 
 Status AgentContext Daily Handoff v0 em 2026-05-06: gerador interno/read-only implementado em API `/agent-contexts/daily-handoff`, UI e MCP, criando `AgentContext` `ready/needs_review` para `targetAgent=codex` a partir do ultimo briefing, Gate Closure Ritual, Operating Cadence, Source Health, guidance aberta e decisions propostas. O contexto inclui contrato operacional, foco de gate closure, open guidance, briefing next steps, sourceKnowledgeIds e provenance `company_brain:daily_agent_handoff`. Nao roda agente, nao aplica patch e nao faz writeback.
 
+Status Design Partner Operating Pack v0 em 2026-05-06: pacote documental reproduzivel criado em `docs/company-brain-design-partner-operating-pack.md`, consolidando demo seed, operating cadence, gate closure, daily handoff, roteiro de demo, fronteiras de dados, reset e criterios de aceite. Sem codigo novo e sem mutacao externa.
+
 Status Review Cohesion v0 em 2026-05-06: fila unificada derivada para Decision/Signal/AlignmentFinding/Guidance candidates implementada em summary/API/UI/MCP. O corte mostra decisions propostas, signals sem finding, findings sem guidance e guidance aberta com feedback pendente, com next action, severity, provenance e acoes internas de review/extracao/feedback. Sem writeback externo.
 
 Status Writeback Governance v0 em 2026-05-06: politica A/B/C de `risk_class` + `action_policy` implementada com fila interna `ExternalActionProposal`, geracao a partir de `GuidanceItem` aceito, approve/reject por HITL, execution status e audit trail completo em API/UI/MCP. Slack/GitHub writeback real permanece bloqueado; aprovar proposta nao executa mutacao externa.
@@ -143,7 +145,7 @@ Status MCP Markdown Evidence Export v0 em 2026-05-06: MCP ganhou fetch textual e
 
 Status AIOS Core Operational Readiness v0 em 2026-05-06: criado relatório `docs/company-brain-operational-readiness.md` e visão derivada `coreReadiness` no summary/API/UI/MCP, classificando 15 modulos do core como `operational/dogfooded/read_only_only/preview_only/needs_real_adapter/blocked_by_policy/missing` e mapeando gaps de uso diario, demo, design partner, polish e mutacao externa. Dogfood inicial retornou `overallStatus=internal_closed_loop_ready`, 15 modulos operational/dogfooded, 0 missing, 2 gaps de uso diario e 1 gap de mutacao externa; apos Operating Cadence v0, o DB temporario do corte retornou `dailyUseBlockingGapCount=0`, `automatedWatcherCount=2`, `staleCadenceCount=0`, `dueCadenceCount=0`.
 
-Proximo corte planejado: Design Partner Operating Pack v0 para empacotar demo/runbook/fronteiras de dados/narrativa reproduzivel. Parar antes de novo executor real, novo alvo externo ou qualquer mutacao fora da policy aprovada.
+Proximo corte planejado: rodar o pack em sessao real e coletar friccoes antes de adicionar novas features. Parar antes de novo executor real, novo alvo externo ou qualquer mutacao fora da policy aprovada.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -151,6 +153,7 @@ Proximo corte planejado: Design Partner Operating Pack v0 para empacotar demo/ru
 - [x] **Operating Cadence v0** — usar schedules/jobs existentes como superficie de disparo, sem scheduler paralelo, para rodar `watcher-aios-briefing-v0` e `watcher-github-pr-ci-v0` com provenance `schedule://`, `nextRunAt`, Source Health/Core Readiness/Briefing e runbook
 - [x] **Gate Closure Ritual v0** — gerar checklist diario read-only de gates/SLA/workflow runs pendentes, exposto em summary/API/UI/MCP/briefing/core readiness, sem mutar workflows ou sistemas externos
 - [x] **AgentContext Daily Handoff v0** — gerar `AgentContext` diario para agentes a partir de briefing, gate closure, operating cadence, source health e guidance aberta, sem rodar agente ou auto-apply
+- [x] **Design Partner Operating Pack v0** — documentar demo seed, runbooks, fronteiras de dados, narrativa reproduzivel e criterios de aceite para design partner readiness
 - [x] **Watcher status em Source Health / Summary** — expor status basico de watchers, ultimas execucoes, erro, artifacts/signals/work items gerados e freshness em `/api/company-brain/summary` ou tela de Source Health
 - [x] **Watcher manual/simulado v0** — criar watcher manual para PR/CI ou GitHub Issues que consiga registrar uma execucao sem webhook real
 - [x] **Watcher output com provenance e policy** — garantir que uma execucao de watcher consiga gerar `Artifact`, `Signal` ou `WorkItem` com provenance, `action_policy`, `risk_class` e trilha auditavel antes de qualquer writeback. Implementado para `Artifact`, `Signal`, `WorkItem`, `AlignmentFinding` e `GuidanceItem`.
