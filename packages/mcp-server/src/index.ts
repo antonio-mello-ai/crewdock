@@ -63,12 +63,44 @@ async function daemonFetch<T>(
   return res.json() as Promise<T>;
 }
 
+async function daemonFetchText(
+  path: string,
+  init?: RequestInit
+): Promise<string> {
+  const res = await fetch(`${DAEMON_URL}${path}`, {
+    ...init,
+    headers: {
+      ...buildAuthHeaders(),
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as {
+      message?: string;
+      error?: string;
+    };
+    throw new Error(body.message ?? body.error ?? `API error ${res.status}`);
+  }
+  return res.text();
+}
+
 function formatJsonResult(data: unknown): { content: { type: "text"; text: string }[] } {
   return {
     content: [
       {
         type: "text",
         text: JSON.stringify(data, null, 2),
+      },
+    ],
+  };
+}
+
+function formatTextResult(text: string): { content: { type: "text"; text: string }[] } {
+  return {
+    content: [
+      {
+        type: "text",
+        text,
       },
     ],
   };
@@ -323,7 +355,7 @@ server.registerTool(
   {
     title: "Get Company Brain adoption dashboard",
     description:
-      "Show AIOS adoption by source/project, including closed-loop stage, unlinked work, pending gates, SLA risk, source health gaps and open guidance.",
+      "Show AIOS adoption by source/project, including closed-loop stage, audit readiness, writeback maturity, unlinked work, pending gates, SLA risk, source health gaps and open guidance.",
     inputSchema: {},
   },
   async () => {
@@ -1643,6 +1675,24 @@ server.registerTool(
       `/api/company-brain/external-action-proposals/${id}/evidence-packet`
     );
     return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_writeback_evidence_packet_markdown",
+  {
+    title: "Get Company Brain writeback evidence packet Markdown",
+    description:
+      "Read-only Markdown export for one ExternalActionProposal evidence packet, including proposal, hashes, events, evidence links, integrity gaps, GitHub status evidence and audit trail. Does not execute or mutate external systems.",
+    inputSchema: {
+      id: z.string().min(1),
+    },
+  },
+  async ({ id }) => {
+    const markdown = await daemonFetchText(
+      `/api/company-brain/external-action-proposals/${id}/evidence-packet?format=markdown`
+    );
+    return formatTextResult(markdown);
   }
 );
 

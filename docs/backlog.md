@@ -133,7 +133,9 @@ Status AIOS Briefing Audit/Readiness v0 em 2026-05-06: briefing interno ganhou s
 
 Status Adoption Dashboard Audit Maturity v0 em 2026-05-06: Adoption Dashboard agora calcula `auditReadiness` por projeto/source com stage, score, targets, proposal review needs action, evidence integrity gaps, remediation suggestions, graph/timeline coverage, preview/replay blockers, retry rationale e next action. UI mostra stage/score/targets/gaps e o briefing inclui contadores de audit-ready/readiness review. Sem novas mutacoes.
 
-Proximo corte planejado: MCP/export polish para evidence packet Markdown e audit readiness read-only, sem mutacao externa.
+Status MCP Markdown Evidence Export v0 em 2026-05-06: MCP ganhou fetch textual e tool `get_company_brain_writeback_evidence_packet_markdown`, retornando o Markdown read-only do evidence packet com proposta, hashes, eventos, evidence links, gaps, GitHub status evidence e audit trail. `get_company_brain_adoption_dashboard` agora descreve audit readiness/writeback maturity. Sem novas mutacoes.
+
+Proximo corte planejado: fila read-only principal concluida; parar antes de novo executor real, novo alvo externo ou qualquer mutacao fora da policy aprovada.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -187,6 +189,7 @@ Proximo corte planejado: MCP/export polish para evidence packet Markdown e audit
 - [x] **Markdown evidence packet export v0** — exportar evidence packet como Markdown auditavel por API/UI com eventos, hashes, refs, GitHub status evidence, gaps e audit trail
 - [x] **AIOS briefing audit/readiness v0** — briefing operacional mostra proposal/target review, graph/timeline, saved views, policy simulator e preview/replay readiness
 - [x] **Adoption Dashboard audit maturity v0** — calcular readiness auditavel por source/projeto com score, next action, targets, gaps, graph/timeline e preview/replay coverage
+- [x] **MCP Markdown evidence export v0** — expor evidence packet Markdown via MCP read-only usando fetch textual, validado com cliente MCP local
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

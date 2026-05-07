@@ -1929,6 +1929,23 @@ Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-exe
 - Watcher `watcher-aios-briefing-v0` gerou run `VqVSD92Mgwfm` e artifact `bFirMC4pdKTv`; o briefing incluiu `1/2 projects audit-ready; 0 need audit readiness review; 1 writeback targets tracked.`
 - Porta do daemon foi encerrada apos o teste e nao restou listener em `43159`.
 
+## Slice MCP Markdown Evidence Export v0
+
+Objetivo: permitir que agentes consumam o evidence packet Markdown diretamente via MCP, mantendo o mesmo endpoint read-only da API/UI.
+
+Implementado em 2026-05-06:
+
+1. MCP server ganhou `daemonFetchText` para respostas textuais sem assumir JSON.
+2. Nova tool `get_company_brain_writeback_evidence_packet_markdown` chama `/api/company-brain/external-action-proposals/:id/evidence-packet?format=markdown`.
+3. Tool retorna o Markdown como conteúdo MCP `text`, preservando título, proposta, hashes, eventos, evidence links, integrity, GitHub status evidence e audit trail.
+4. Descricao de `get_company_brain_adoption_dashboard` foi atualizada para mencionar audit readiness e writeback maturity.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43160`:
+
+- Cliente MCP local chamou `get_company_brain_writeback_evidence_packet_markdown` para proposal `35xo7wHd9CBV`.
+- Resultado continha `# AIOS Writeback Evidence Packet`, status id `47036420104`, payload hash `6737a218dba45d17e183f92ede73276af44a215f00a7e1444ac32558bc3de48f` e evento `github_status_set`.
+- Porta do daemon foi encerrada apos o teste e nao restou listener em `43160`.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -2047,7 +2064,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0, AIOS Briefing Audit/Readiness v0 e Adoption Dashboard Audit Maturity v0. O proximo corte recomendado e MCP/export polish para evidence packet Markdown e audit readiness read-only. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0, AIOS Briefing Audit/Readiness v0, Adoption Dashboard Audit Maturity v0 e MCP Markdown Evidence Export v0. Fila read-only principal concluida; pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
