@@ -1104,6 +1104,79 @@ export interface CreateGuidanceItemRequest {
   provenance?: Provenance | null;
 }
 
+export type WorkflowTrackerKind = "github" | "linear" | "jira" | "manual";
+
+export interface WorkflowTrackerConfig {
+  kind: WorkflowTrackerKind;
+  repo: string | null;
+  activeMilestone: string | null;
+  activeStates: string[];
+  terminalStates: string[];
+  apiKeyEnvRef: string | null;
+}
+
+export interface WorkflowPollingConfig {
+  intervalMs: number;
+}
+
+export interface WorkflowWorkspaceConfig {
+  root: string;
+  vcs: "git_worktree" | "git_clone" | "none";
+  baseBranch: string;
+}
+
+export interface WorkflowAgentConfig {
+  command: string;
+  args: string[];
+  maxConcurrentAgents: number;
+  maxTurns: number;
+  maxRetryBackoffMs: number;
+}
+
+export interface WorkflowCodexConfig {
+  approvalPolicy: string;
+  stallTimeoutMs: number;
+  turnTimeoutMs: number;
+  readTimeoutMs: number;
+}
+
+export interface WorkflowHooksConfig {
+  afterCreate: string | null;
+  beforeRun: string | null;
+  afterRun: string | null;
+  beforeRemove: string | null;
+  timeoutMs: number;
+}
+
+export interface WorkflowDefinitionConfig {
+  tracker: WorkflowTrackerConfig;
+  polling: WorkflowPollingConfig;
+  workspace: WorkflowWorkspaceConfig;
+  agent: WorkflowAgentConfig;
+  codex: WorkflowCodexConfig;
+  hooks: WorkflowHooksConfig;
+}
+
+export interface WorkflowDefinition {
+  generatedAt: number;
+  source: "repo_workflow_md" | "default" | "inline";
+  filePath: string | null;
+  raw: string;
+  config: WorkflowDefinitionConfig;
+  promptTemplate: string;
+  errors: string[];
+  warnings: string[];
+  isValid: boolean;
+  branchSuggestionPattern: string;
+  workspacePathPattern: string;
+}
+
+export interface PreviewWorkflowLoaderRequest {
+  filePath?: string;
+  rawContent?: string;
+  workItemId?: string | null;
+}
+
 export type AgentRunStatus =
   | "queued"
   | "claimed"

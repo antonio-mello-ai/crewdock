@@ -2131,6 +2131,43 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_workflow_definition",
+  {
+    title: "Get Company Brain workflow definition",
+    description:
+      "Read-only WorkflowDefinition derived from WORKFLOW.md at the daemon's repo root (or the closest parent). Returns parsed config (tracker, polling, workspace, agent, codex, hooks), prompt template body, branch/workspace patterns, validation errors and warnings. Falls back to internal defaults when WORKFLOW.md is missing. Does not launch any agent.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/workflow-loader"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "preview_company_brain_workflow_definition",
+  {
+    title: "Preview Company Brain workflow definition",
+    description:
+      "Validate a WORKFLOW.md candidate without writing anything. Accepts inline rawContent or a filePath relative to the daemon. Returns the same WorkflowDefinition shape as the loader, including errors and warnings, so callers can iterate before committing to the repo.",
+    inputSchema: {
+      filePath: z.string().optional(),
+      rawContent: z.string().optional(),
+      workItemId: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/workflow-loader/preview",
+      { method: "POST", body: JSON.stringify(params) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "list_company_brain_agent_runs",
   {
     title: "List Company Brain agent runs",
