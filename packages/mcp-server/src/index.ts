@@ -2131,6 +2131,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_area_blueprints",
+  {
+    title: "Get Company Brain Area Blueprint Registry",
+    description:
+      "Read-only Area Blueprint Registry for AIOS Company Operating Map. Returns 8 operating areas (Strategy, Development, Marketing, Sales, Operations, Finance, Support, Legal/Compliance) with owner role, description, primary CompanyBrainArea, default source types and patterns, active WorkflowBlueprint refs, expected agent roles, default gates, cadence, high-level goals and eligibility flags for command router, goal decomposition and agent-run evaluation. Readiness status (operational/dogfooded/seeded/stub/not_started) is derived live from current sources, work items and session_result artifacts. The registry stays a derived view; no parallel database per department.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/area-blueprints"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_operating_map",
   {
     title: "Get Company Operating Map",

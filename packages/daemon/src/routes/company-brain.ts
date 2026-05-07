@@ -29,6 +29,9 @@ import type {
   CompanyOperatingMapSourceSlice,
   CompanyOperatingMapTotals,
   CompanyOperatingMapWorkItemSlice,
+  AreaBlueprintEntry,
+  AreaBlueprintReadinessStatus,
+  AreaBlueprintRegistry,
   CommandRouterClassification,
   CommandRouterIntentKind,
   CommandRouterRouting,
@@ -11160,6 +11163,299 @@ app.get("/next-work", (c) => {
 
 app.get("/operating-map", (c) => {
   const data = buildCompanyOperatingMap(listAll());
+  return c.json({ data });
+});
+
+const AREA_BLUEPRINT_REGISTRY_BASE: Array<
+  Omit<AreaBlueprintEntry, "isPrimary" | "readiness">
+> = [
+  {
+    slug: "development",
+    displayName: "Development",
+    description:
+      "AIOS, ERP and product engineering. Owns WorkItems, agent runs, PR/CI gates and dogfood evidence for the AIOS roadmap itself.",
+    primaryArea: "development",
+    alternateAreas: ["platform"],
+    ownerRole: "Head of Engineering",
+    ownerName: "Felhen",
+    defaultSourceTypes: ["github_repo", "github_issue", "runtime"],
+    defaultSourcePatterns: [
+      "github://antonio-mello-ai/crewdock",
+      "aios:session-results",
+    ],
+    activeWorkflowBlueprintRefs: ["aios-development-blueprint-v0"],
+    expectedAgentRoles: [
+      "claude-code",
+      "codex",
+      "symphony-runner",
+      "qa-reviewer",
+    ],
+    defaultGates: [
+      "git_diff_check",
+      "npx_turbo_build",
+      "smoke_local",
+      "production_smoke",
+    ],
+    cadence: "continuous; Operating Loop tick every 5 minutes",
+    highLevelGoals: [
+      "Ship AIOS Execution Loop v0",
+      "Reduce time from issue triage to merged PR",
+    ],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: true,
+    notes:
+      "Primary dogfood area; all execution-loop work flows through it; AgentRunner schema arrives in AIOS-EXEC-03 v1+.",
+  },
+  {
+    slug: "strategy",
+    displayName: "Strategy",
+    description:
+      "StrategicPriorities, decisions, tradeoffs and OKRs. Owns the why behind the rest of the map.",
+    primaryArea: "strategy",
+    alternateAreas: [],
+    ownerRole: "Founder / CEO",
+    ownerName: "Antonio Mello",
+    defaultSourceTypes: ["local_doc", "decision_log"],
+    defaultSourcePatterns: [
+      "corp/docs/action/aios-product-roadmap.md",
+      "corp/docs/estrategia/",
+    ],
+    activeWorkflowBlueprintRefs: [],
+    expectedAgentRoles: ["claude-code", "decision-extractor"],
+    defaultGates: ["decision_review", "strategy_tradeoff_review"],
+    cadence: "weekly review",
+    highLevelGoals: [
+      "Maintain a coherent product narrative",
+      "Tie every WorkItem to a priority or goal",
+    ],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: false,
+    notes:
+      "Strategy seeds priorities/goals consumed by all other areas; agent run evaluation lives in Development for now.",
+  },
+  {
+    slug: "marketing",
+    displayName: "Marketing",
+    description:
+      "Brand, demand generation and content. Connects to outbound/ad operations once those sources are wired.",
+    primaryArea: "marketing",
+    alternateAreas: [],
+    ownerRole: "Head of Marketing",
+    ownerName: null,
+    defaultSourceTypes: ["google_ads", "linkedin_ads", "meta_ads", "blog"],
+    defaultSourcePatterns: [
+      "google_ads://account",
+      "linkedin_ads://account",
+      "meta_ads://account",
+    ],
+    activeWorkflowBlueprintRefs: [],
+    expectedAgentRoles: ["copy-writer", "ads-strategist"],
+    defaultGates: ["brand_review", "compliance_review"],
+    cadence: "weekly campaign review",
+    highLevelGoals: [
+      "Increase qualified design partner conversations",
+      "Improve brand recall in target ICP",
+    ],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: false,
+    notes:
+      "No active source yet. Wire one ad platform and one content source before turning agent runs on.",
+  },
+  {
+    slug: "sales",
+    displayName: "Sales",
+    description:
+      "Pipeline, design partner conversations and conversion. Hooks into CRM/Slack adapters when ready.",
+    primaryArea: "sales",
+    alternateAreas: [],
+    ownerRole: "Founder / Sales lead",
+    ownerName: "Antonio Mello",
+    defaultSourceTypes: ["crm", "slack_channel", "calendar"],
+    defaultSourcePatterns: [
+      "slack://#aios-runtime",
+      "crm://pipeline",
+    ],
+    activeWorkflowBlueprintRefs: [],
+    expectedAgentRoles: ["sdr-agent", "deal-summary"],
+    defaultGates: ["sales_review", "pricing_review"],
+    cadence: "weekly pipeline review",
+    highLevelGoals: [
+      "Increase signed design partners",
+      "Reduce time-to-first-meeting from inbound",
+    ],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: false,
+    notes: "CRM adapter still pending; Slack thread reply executor exists.",
+  },
+  {
+    slug: "operations",
+    displayName: "Operations",
+    description:
+      "Cadence, infrastructure, runtime health, deploy and monitoring. Operating Loop reports here.",
+    primaryArea: "operations",
+    alternateAreas: [],
+    ownerRole: "Head of Operations",
+    ownerName: "Felhen",
+    defaultSourceTypes: ["runtime", "github_repo", "monitoring"],
+    defaultSourcePatterns: [
+      "aios://operating-loop",
+      "github_pr_ci://antonio-mello-ai/crewdock",
+    ],
+    activeWorkflowBlueprintRefs: ["aios-operating-cadence-v0"],
+    expectedAgentRoles: ["sre-agent", "incident-response"],
+    defaultGates: ["operating_cadence_clear", "source_health_clear"],
+    cadence: "continuous; Operating Loop every 5 minutes",
+    highLevelGoals: [
+      "Keep AIOS daemon healthy in production",
+      "Resolve stale watchers within 1 hour",
+    ],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: true,
+    notes:
+      "Operating Loop and PR/CI watcher already report here. Incident-response agents arrive after AgentRunner v1+.",
+  },
+  {
+    slug: "finance",
+    displayName: "Finance",
+    description:
+      "Cost, revenue, runway and billing. Tracks token/cost telemetry from agent runs and product spend.",
+    primaryArea: "finance",
+    alternateAreas: [],
+    ownerRole: "Head of Finance",
+    ownerName: null,
+    defaultSourceTypes: ["asaas", "stripe", "telemetry"],
+    defaultSourcePatterns: [
+      "asaas://account",
+      "stripe://account",
+      "telemetry://agent-runs",
+    ],
+    activeWorkflowBlueprintRefs: [],
+    expectedAgentRoles: ["billing-reconciler", "cost-watcher"],
+    defaultGates: ["billing_review"],
+    cadence: "monthly close",
+    highLevelGoals: ["Increase margin per active customer", "Tighten runway"],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: false,
+    notes:
+      "Token/cost telemetry from session_result intake will feed this area; first dashboard pending.",
+  },
+  {
+    slug: "support",
+    displayName: "Support",
+    description:
+      "Customer success and support tickets. Maps to CompanyBrainArea=customer until a dedicated enum exists.",
+    primaryArea: "customer",
+    alternateAreas: [],
+    ownerRole: "Customer Success",
+    ownerName: null,
+    defaultSourceTypes: ["zendesk", "intercom", "slack_channel"],
+    defaultSourcePatterns: ["zendesk://tickets", "intercom://conversations"],
+    activeWorkflowBlueprintRefs: [],
+    expectedAgentRoles: ["triage-agent", "answer-suggester"],
+    defaultGates: ["customer_response_sla"],
+    cadence: "daily triage",
+    highLevelGoals: ["Reduce response time", "Reduce repeat tickets"],
+    eligibleForCommandRouter: true,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: false,
+    notes: "No support adapter wired yet; empty until customers exist.",
+  },
+  {
+    slug: "legal_compliance",
+    displayName: "Legal & Compliance",
+    description:
+      "LGPD/GDPR, contracts, privacy review and regulatory gates.",
+    primaryArea: "unknown",
+    alternateAreas: [],
+    ownerRole: "Legal counsel (external)",
+    ownerName: null,
+    defaultSourceTypes: ["contract_repo", "policy_doc"],
+    defaultSourcePatterns: ["corp/docs/legal/"],
+    activeWorkflowBlueprintRefs: [],
+    expectedAgentRoles: ["compliance-reviewer"],
+    defaultGates: ["lgpd_review", "contract_signoff"],
+    cadence: "ad hoc",
+    highLevelGoals: [
+      "Keep AIOS LGPD-compliant",
+      "Maintain contract templates current",
+    ],
+    eligibleForCommandRouter: false,
+    eligibleForGoalDecomposition: true,
+    eligibleForAgentRunEvaluation: false,
+    notes:
+      "Mapped to area=unknown until a dedicated legal/compliance enum exists; lacks adapter and seeded sources.",
+  },
+];
+
+function deriveAreaReadiness(
+  entry: Omit<AreaBlueprintEntry, "isPrimary" | "readiness">,
+  data: ReturnType<typeof listAll>
+): AreaBlueprintReadinessStatus {
+  const allowedAreas = new Set<CompanyBrainArea>([
+    entry.primaryArea,
+    ...entry.alternateAreas,
+  ]);
+  const sourceCount = data.sources.filter((source) =>
+    allowedAreas.has(source.area)
+  ).length;
+  const workItemCount = (data.workItems as WorkItem[]).filter((item) =>
+    allowedAreas.has(item.area)
+  ).length;
+  const sessionResultCount = data.artifacts.filter(
+    (artifact) =>
+      artifact.artifactType === "session_result" &&
+      allowedAreas.has(artifact.area)
+  ).length;
+  if (entry.slug === "development" && workItemCount > 0 && sessionResultCount > 0) {
+    return "dogfooded";
+  }
+  if (workItemCount > 0 || sessionResultCount > 0) return "operational";
+  if (sourceCount > 0) return "seeded";
+  if (entry.activeWorkflowBlueprintRefs.length > 0) return "stub";
+  return "not_started";
+}
+
+function buildAreaBlueprintRegistry(
+  data: ReturnType<typeof listAll>
+): AreaBlueprintRegistry {
+  const generatedAt = now();
+  const entries: AreaBlueprintEntry[] = AREA_BLUEPRINT_REGISTRY_BASE.map((base) => {
+    const readiness = deriveAreaReadiness(base, data);
+    const isPrimary = base.slug === COMPANY_OPERATING_MAP_PRIMARY;
+    return { ...base, isPrimary, readiness };
+  });
+  const totals = {
+    entryCount: entries.length,
+    operationalCount: entries.filter((entry) => entry.readiness === "operational").length,
+    dogfoodedCount: entries.filter((entry) => entry.readiness === "dogfooded").length,
+    seededCount: entries.filter((entry) => entry.readiness === "seeded").length,
+    stubCount: entries.filter((entry) => entry.readiness === "stub").length,
+    notStartedCount: entries.filter((entry) => entry.readiness === "not_started").length,
+    eligibleForCommandRouterCount: entries.filter((entry) => entry.eligibleForCommandRouter)
+      .length,
+    eligibleForGoalDecompositionCount: entries.filter(
+      (entry) => entry.eligibleForGoalDecomposition
+    ).length,
+    eligibleForAgentRunEvaluationCount: entries.filter(
+      (entry) => entry.eligibleForAgentRunEvaluation
+    ).length,
+  };
+  return {
+    generatedAt,
+    primaryAreaSlug: COMPANY_OPERATING_MAP_PRIMARY,
+    entries,
+    totals,
+  };
+}
+
+app.get("/area-blueprints", (c) => {
+  const data = buildAreaBlueprintRegistry(listAll());
   return c.json({ data });
 });
 

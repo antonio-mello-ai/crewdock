@@ -2853,6 +2853,53 @@ export interface CompanyOperatingMap {
   areas: CompanyOperatingMapArea[];
 }
 
+export type AreaBlueprintReadinessStatus =
+  | "operational"
+  | "dogfooded"
+  | "seeded"
+  | "stub"
+  | "not_started";
+
+export interface AreaBlueprintEntry {
+  slug: CompanyOperatingMapAreaSlug;
+  displayName: string;
+  description: string;
+  primaryArea: CompanyBrainArea;
+  alternateAreas: CompanyBrainArea[];
+  ownerRole: string;
+  ownerName: string | null;
+  isPrimary: boolean;
+  readiness: AreaBlueprintReadinessStatus;
+  defaultSourceTypes: string[];
+  defaultSourcePatterns: string[];
+  activeWorkflowBlueprintRefs: string[];
+  expectedAgentRoles: string[];
+  defaultGates: string[];
+  cadence: string;
+  highLevelGoals: string[];
+  eligibleForCommandRouter: boolean;
+  eligibleForGoalDecomposition: boolean;
+  eligibleForAgentRunEvaluation: boolean;
+  notes: string;
+}
+
+export interface AreaBlueprintRegistry {
+  generatedAt: number;
+  primaryAreaSlug: CompanyOperatingMapAreaSlug;
+  entries: AreaBlueprintEntry[];
+  totals: {
+    entryCount: number;
+    operationalCount: number;
+    dogfoodedCount: number;
+    seededCount: number;
+    stubCount: number;
+    notStartedCount: number;
+    eligibleForCommandRouterCount: number;
+    eligibleForGoalDecompositionCount: number;
+    eligibleForAgentRunEvaluationCount: number;
+  };
+}
+
 export interface CompanyBrainOperatingSnapshot {
   generatedAt: number;
   overallStatus: "healthy" | "attention" | "critical" | "error";
