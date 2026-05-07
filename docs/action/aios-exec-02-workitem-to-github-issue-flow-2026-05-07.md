@@ -142,6 +142,11 @@ Deploy realizado em 2026-05-07:
   confirmando que a rota nova esta publicada sem mutacao.
 - `GET https://ai.felhen.ai/company-brain/operating` com service token -> `200`.
 - `GET https://ai.felhen.ai/company-brain` com service token -> `200`.
+- Sync read-only de GitHub Issues em producao reconciliou o fechamento do #28:
+  `issuesSeen=32`, `workItemsCreated=25`, `workItemsUpdated=7`.
+- `GET https://api.felhen.ai/api/company-brain/next-work` com service token
+  agora recomenda `#29 AIOS-EXEC-03: Symphony-compatible Agent Runner`, com 3
+  candidatos ativos.
 
 Residual intencional: producao tem allowlist, mas nao foi encontrado
 `GITHUB_TOKEN`/`GH_TOKEN` no `.env.prod` nem no unit do systemd. Portanto o
