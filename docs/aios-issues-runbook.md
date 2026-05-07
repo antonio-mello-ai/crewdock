@@ -49,8 +49,10 @@ Categorizacao tradicional ainda usada quando aplicavel: `bug`, `enhancement`,
 Issues do roadmap AIOS usam prefixo:
 
 - `AIOS-CLEAN-NN` para limpeza de pipeline / produto / repo.
-- `AIOS-EXEC-NN` para execution loop (command center, work item flow, agent
-  launcher, result intake, project pipeline).
+- `AIOS-EXEC-NN` para execution loop e product surface operacional (command
+  center, work item flow, Symphony-compatible runner, result intake, company
+  operating map, command router, area blueprint registry, goal-to-execution,
+  agent-run evaluation).
 - `AIOS-OPS-NN` para operacao de Company Brain (cadence, briefing, gate
   closure, source health) quando precisar virar issue formal alem do backlog.
 
@@ -59,6 +61,10 @@ Exemplos atuais:
 - `#26 AIOS-CLEAN-01: AIOS GitHub Pipeline Hygiene`
 - `#27 AIOS-EXEC-01: Execution Command Center v0`
 - `#28 AIOS-EXEC-02: WorkItem to GitHub Issue Flow`
+- `#29 AIOS-EXEC-03: Symphony-compatible Agent Runner`
+- `#31 AIOS-EXEC-05: Company Operating Map v0`
+- `#39 AIOS-EXEC-08: Goal-to-Execution Superoptimizer v0`
+- `#40 AIOS-EXEC-09: Agent Run Evaluation Loop v0`
 
 Issues legacy (#1 a #24, milestones `v1.4.0`, `v1.5.0`) usavam prefixos
 diferentes (`sec:`, `perf:`, `ops:`, `test:`). Manter como esta; nao renomear.
@@ -138,6 +144,12 @@ Comportamento:
 3. Validar que a issue tem `Acceptance Criteria` e `Constraints` legiveis. Se
    nao tiver, abrir comentario sugestivo (HITL) em vez de implementar; nao
    inferir escopo.
+   - Para work de produto/superficie, validar tambem o direcional do
+     `Company Operating Map`: areas/departamentos, work items, agent runs,
+     blockers, HITL, gates, evidence, guidance e drilldown de provenance.
+   - Para work de superoptimization/evaluation, validar que o escopo nao vira
+     automacao generica: precisa preservar goal, metrica, evidence, policy,
+     outcome e aprendizado no Company Brain.
 4. Criar branch a partir de `origin/main`:
    `<aios-issue-key>-<short-slug>` (ex.: `aios-clean-01-pipeline-hygiene`).
 5. Implementar no escopo da issue. Parar antes de:

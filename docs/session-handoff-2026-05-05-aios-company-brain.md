@@ -2508,3 +2508,54 @@ Segundo tick recorrente:
 Residual:
 
 1. O status `overallStatus=demo_not_ready` de Core Readiness nao e mais daily-use blocker; ele vem do fallback de readiness, enquanto `demoGapCount=0` e `dailyUseBlockingGapCount=0`.
+
+## 2026-05-07 - Company Operating Map Alignment
+
+Direcional de produto atualizado apos benchmark contra Cofounder:
+
+- A superficie diaria do AIOS nao deve ficar como admin dashboard.
+- A experiencia alvo e `Company Operating Map`: AIOS/Company Brain no centro,
+  areas/departamentos ao redor, work items, agent runs, gates, blockers, HITL,
+  source health, evidence, guidance e handoff visiveis por area.
+- Project/repo pipeline continua necessario, mas vira drilldown dentro do mapa.
+- Symphony continua referencia para a camada de execucao de coding agents; AIOS
+  continua Company Brain, governanca, evidencia, strategy alignment e learning.
+- Transcript do CEO da Cofounder reforca que o alvo maior e "superoptimization":
+  agentes gerenciando agentes para objetivos de negocio, nao apenas execucao de
+  tasks. AIOS precisa preservar goal, metrica, evidence, policy, outcome e
+  aprendizado para chegar nisso.
+
+Fila GitHub atualizada:
+
+- `#29 AIOS-EXEC-03: Symphony-compatible Agent Runner` segue como proximo corte.
+- `#30 AIOS-EXEC-04: Session Result Intake`.
+- `#31 AIOS-EXEC-05: Company Operating Map v0` substitui o antigo `Project Pipeline View`.
+- `#37 AIOS-EXEC-06: Company Command Router v0` criado.
+- `#38 AIOS-EXEC-07: Area Blueprint Registry v0` criado.
+- `#39 AIOS-EXEC-08: Goal-to-Execution Superoptimizer v0` criado.
+- `#40 AIOS-EXEC-09: Agent Run Evaluation Loop v0` criado.
+
+Sync read-only de GitHub Issues em producao apos `#39/#40`:
+
+- `issuesSeen=7`;
+- `lastIssueNumbers=[40,39,38,37,31,30,29]`;
+- `workItemsCreated=2`;
+- `workItemsUpdated=5`;
+- `get_company_brain_next_work` / API seguem recomendando `#29`, agora com
+  `candidatesConsidered=7`.
+
+Docs atualizados:
+
+- `docs/backlog.md`;
+- `docs/aios-issues-runbook.md`;
+- `docs/action/aios-github-roadmap-reset-2026-05-07.md`;
+- `docs/action/aios-company-operating-map-alignment-2026-05-07.md`.
+
+Docs upstream no `corp` tambem foram atualizados:
+
+- `docs/action/aios-product-roadmap.md`;
+- `docs/action/aios-symphony-alignment-2026-05-07.md`;
+- `docs/action/aios-cofounder-product-surface-alignment-2026-05-07.md`;
+- `docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`;
+- `docs/action/roadmap.md`;
+- `docs/action/CHANGELOG.md`.

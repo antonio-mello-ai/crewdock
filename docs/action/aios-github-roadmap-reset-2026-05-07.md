@@ -32,7 +32,7 @@ labels de legado/icebox/superseded e fechamento `not planned`.
 Elas deixam de competir com o roadmap ativo de Company Brain, mas continuam
 pesquisaveis caso alguma necessidade de Runtime Admin volte a ser prioridade.
 
-## Fila ativa
+## Fila ativa inicial
 
 | Issue | Titulo | Papel |
 | --- | --- | --- |
@@ -40,9 +40,31 @@ pesquisaveis caso alguma necessidade de Runtime Admin volte a ser prioridade.
 | `#26` | `AIOS-CLEAN-01: AIOS GitHub Pipeline Hygiene` | Manter GitHub Issues como fila limpa e sincronizavel |
 | `#27` | `AIOS-EXEC-01: Execution Command Center v0` | Fazer a tela responder "o que faco agora?" |
 | `#28` | `AIOS-EXEC-02: WorkItem to GitHub Issue Flow` | Gerar issue GitHub governada a partir de WorkItem/Guidance |
-| `#29` | `AIOS-EXEC-03: Agent Session Launcher` | Gerar prompt acionavel por WorkItem/agente |
+| `#29` | `AIOS-EXEC-03: Symphony-compatible Agent Runner` | Usar Symphony como referencia para execucao de WorkItems por agente |
 | `#30` | `AIOS-EXEC-04: Session Result Intake` | Transformar resultado de sessao em evidence/follow-up |
 | `#31` | `AIOS-EXEC-05: Project Pipeline View` | Ver pipeline por projeto/repo/gate/PR |
+
+## Atualizacao Company Operating Map
+
+Em 07/Mai/2026, apos benchmark de produto contra Cofounder e alinhamento com o
+roadmap do `corp`, a fila foi expandida:
+
+| Issue | Titulo | Papel |
+| --- | --- | --- |
+| `#31` | `AIOS-EXEC-05: Company Operating Map v0` | Ver a empresa por areas/projetos com WorkItems, agent runs, gates e evidence |
+| `#37` | `AIOS-EXEC-06: Company Command Router v0` | Transformar solicitacao humana em WorkItem/run/proposal roteada por area |
+| `#38` | `AIOS-EXEC-07: Area Blueprint Registry v0` | Registrar areas, owners, agentes e blueprints iniciais |
+| `#39` | `AIOS-EXEC-08: Goal-to-Execution Superoptimizer v0` | Transformar objetivos de negocio em execucao multi-area mensuravel |
+| `#40` | `AIOS-EXEC-09: Agent Run Evaluation Loop v0` | Avaliar runs agentic e promover aprendizado |
+
+Sync read-only em producao reconciliou a fila aberta atual apos `#39/#40`:
+
+- `issuesSeen=7`;
+- `lastIssueNumbers=[40,39,38,37,31,30,29]`;
+- `workItemsCreated=2`;
+- `workItemsUpdated=5`;
+- `Next Work` segue recomendando `#29 AIOS-EXEC-03: Symphony-compatible Agent Runner`;
+- `candidatesConsidered=7`.
 
 ## Consumo da fila
 
