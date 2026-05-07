@@ -34,6 +34,7 @@ import {
   useCreateCompanyBrainGuidanceItem,
   useCreateCompanyBrainImprovementProposal,
   useExecuteCompanyBrainGitHubCommentWriteback,
+  useExecuteCompanyBrainGitHubIssueCreateWriteback,
   useExecuteCompanyBrainGitHubLabelWriteback,
   useExecuteCompanyBrainSlackThreadReplyWriteback,
   useCreateCompanyBrainPriority,
@@ -55,6 +56,7 @@ import {
   useSyncCompanyBrainGitHubPrCi,
   useSyncCompanyBrainSlackChannel,
   usePreviewCompanyBrainGitHubCommentWriteback,
+  usePreviewCompanyBrainGitHubIssueCreateProposal,
   usePreviewCompanyBrainGitHubLabelProposal,
   usePreviewCompanyBrainGitHubStatusCheckProposal,
   usePreviewCompanyBrainSlackThreadReplyWriteback,
@@ -193,6 +195,7 @@ const externalActionKinds: ExternalActionKind[] = [
   "label",
   "github_status",
   "github_check",
+  "github_issue_create",
   "thread_reply",
   "draft",
   "unknown",
@@ -200,6 +203,7 @@ const externalActionKinds: ExternalActionKind[] = [
 const writebackAdapters = [
   "github_comment",
   "github_label",
+  "github_issue_create",
   "github_status_check",
   "slack_thread_reply",
   "other",
@@ -211,6 +215,7 @@ const writebackActionFilters = [
   "github_label",
   "github_status",
   "github_check",
+  "github_issue_create",
   "thread_reply",
   "slack_thread_reply",
   "draft",
@@ -367,6 +372,10 @@ export default function CompanyBrainPage() {
     usePreviewCompanyBrainGitHubCommentWriteback();
   const previewGitHubLabelProposal = usePreviewCompanyBrainGitHubLabelProposal();
   const executeGitHubLabelWriteback = useExecuteCompanyBrainGitHubLabelWriteback();
+  const previewGitHubIssueCreateProposal =
+    usePreviewCompanyBrainGitHubIssueCreateProposal();
+  const executeGitHubIssueCreateWriteback =
+    useExecuteCompanyBrainGitHubIssueCreateWriteback();
   const previewGitHubStatusCheckProposal =
     usePreviewCompanyBrainGitHubStatusCheckProposal();
   const executeGitHubStatusCheckWriteback =
@@ -1253,6 +1262,28 @@ export default function CompanyBrainPage() {
     proposal.executionStatus === "dry_run" &&
     writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
 
+  const canPreviewGitHubIssueCreateProposal = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    proposal.actionType === "github_issue_create" &&
+    proposal.riskClass !== "unknown" &&
+    (proposal.actionPolicy === "request_human" ||
+      proposal.actionPolicy === "writeback_allowed") &&
+    !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
+    proposal.approvalStatus !== "rejected";
+
+  const canExecuteGitHubIssueCreateWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    proposal.destinationType === "github" &&
+    proposal.actionType === "github_issue_create" &&
+    proposal.approvalStatus === "approved" &&
+    proposal.riskClass === "B" &&
+    proposal.actionPolicy === "writeback_allowed" &&
+    proposal.executionStatus === "dry_run" &&
+    writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
+
   const canPreviewGitHubStatusCheckProposal = (
     proposal: (typeof externalActionProposals)[number]
   ) =>
@@ -1316,6 +1347,26 @@ export default function CompanyBrainPage() {
       return;
     }
     executeGitHubLabelWriteback.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const previewGitHubIssueCreateProposalDryRun = (id: string) => {
+    previewGitHubIssueCreateProposal.mutate({
+      id,
+      body: { actor: "Antonio" },
+    });
+  };
+
+  const executeGitHubIssueCreateProposal = (id: string) => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Create this approved GitHub issue now?")
+    ) {
+      return;
+    }
+    executeGitHubIssueCreateWriteback.mutate({
       id,
       body: { actor: "Antonio" },
     });
@@ -3723,6 +3774,41 @@ export default function CompanyBrainPage() {
                     </p>
                   </div>
                 ) : null}
+                {previewGitHubIssueCreateProposal.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {previewGitHubIssueCreateProposal.data.data.target.repo}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-neutral-300">
+                      {previewGitHubIssueCreateProposal.data.data.title}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      labels{" "}
+                      {previewGitHubIssueCreateProposal.data.data.labels.join(", ") ||
+                        "none"}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-600">
+                      {previewGitHubIssueCreateProposal.data.data.status} ·{" "}
+                      {previewGitHubIssueCreateProposal.data.data.executionBlocked
+                        ? "blocked"
+                        : "ready"}
+                    </p>
+                  </div>
+                ) : null}
+                {executeGitHubIssueCreateWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {executeGitHubIssueCreateWriteback.data.data.target.repo} ·{" "}
+                      {executeGitHubIssueCreateWriteback.data.data.status}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-neutral-300">
+                      {executeGitHubIssueCreateWriteback.data.data.externalId}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-500">
+                      {executeGitHubIssueCreateWriteback.data.data.externalUrl}
+                    </p>
+                  </div>
+                ) : null}
                 {previewGitHubStatusCheckProposal.data?.data ? (
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
                     <p className="truncate text-xs text-neutral-500">
@@ -4016,6 +4102,40 @@ export default function CompanyBrainPage() {
                                 >
                                   <GitPullRequest className="h-4 w-4" />
                                   Apply label
+                                </Button>
+                              </>
+                            ) : proposal.destinationType === "github" &&
+                              proposal.actionType === "github_issue_create" ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    previewGitHubIssueCreateProposal.isPending ||
+                                    !canPreviewGitHubIssueCreateProposal(proposal)
+                                  }
+                                  onClick={() =>
+                                    previewGitHubIssueCreateProposalDryRun(proposal.id)
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Preview issue
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={
+                                    executeGitHubIssueCreateWriteback.isPending ||
+                                    !canExecuteGitHubIssueCreateWriteback(proposal)
+                                  }
+                                  onClick={() =>
+                                    executeGitHubIssueCreateProposal(proposal.id)
+                                  }
+                                >
+                                  <GitPullRequest className="h-4 w-4" />
+                                  Create issue
                                 </Button>
                               </>
                             ) : proposal.destinationType === "github" &&

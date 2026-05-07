@@ -171,14 +171,40 @@ Comportamento:
    - `mcp__aios__sync_company_brain_github_issues` ou
    - `POST /api/company-brain/adapters/github/issues/sync`.
 
+## WorkItem -> GitHub Issue
+
+Um WorkItem do Company Brain pode virar draft de issue GitHub via
+`mcp__aios__create_company_brain_github_issue_create_proposal` (gera proposal
+persistida) e `mcp__aios__preview_company_brain_github_issue_create_proposal`
+(dry-run). O preview produz title, body com marker de idempotency, labels e
+milestone, e grava `github_issue_create_previewed` no audit trail. Idempotency
+e por `repo + workItemId + title`: re-criar a mesma combinacao retorna
+`reused=true` com a proposal original.
+
+Criacao real no GitHub existe apenas pelo executor governado
+`mcp__aios__execute_company_brain_github_issue_create_writeback`, com:
+
+- repo allowlisted em `AIOS_GITHUB_ISSUE_CREATE_ALLOWLIST`;
+- `GITHUB_TOKEN`/`GH_TOKEN`;
+- Risk B + `actionPolicy=writeback_allowed`;
+- HITL approval com actor/rationale;
+- preview posterior a aprovacao;
+- Retry Safety sem mismatch de payload/destination/idempotency;
+- dedupe por marker no body antes de chamar `POST /issues`.
+
+Ao completar, a proposal recebe `externalId/externalUrl` e o WorkItem passa a
+apontar para a issue criada em `externalProvider/externalId/externalUrl`.
+
 ## Mutation policy
 
 - Sessoes humano-com-claude podem aplicar labels e fechar issues
   manualmente como parte do trabalho documentado em uma issue ativa.
 - Watchers AIOS nao podem mutar issues sem `ExternalActionProposal` aprovada,
   preview registrado e executor real publicado. Hoje executor real existe
-  apenas para `github_comment` (Risk B) e `github_label` (Risk B,
-  preview-required, allowlist), ambos fora do escopo de Pipeline Hygiene.
+  apenas para `github_comment` (Risk B), `github_label` (Risk B,
+  preview-required, allowlist) e `github_status` (Risk B, allowlist private
+  repo) e `github_issue_create` (Risk B, allowlisted internal repo).
+  `github_check` permanece preview-only ate executor proprio + dogfood.
 - Acoes bloqueadas por default no AIOS: close, reopen, merge, deploy, delete,
   permissions, secrets, customer repos. Ver `docs/writeback-policy-matrix.md`
   para a matriz canonica.
