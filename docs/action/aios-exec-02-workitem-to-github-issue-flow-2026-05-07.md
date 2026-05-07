@@ -119,6 +119,36 @@ Resumo do smoke:
 - `npx turbo build`.
 - Dogfood real em repo GitHub privado/allowlisted.
 
+## Deploy / production smoke
+
+PR #35 foi mergeado em `main` no commit `0f555e0` e a issue #28 foi fechada
+automaticamente pelo `Closes #28`.
+
+Deploy realizado em 2026-05-07:
+
+- CT165 fast-forward ate `0f555e0`.
+- `.env.prod` no CT165 configurado com
+  `AIOS_GITHUB_ISSUE_CREATE_ALLOWLIST=antonio-mello-ai/crewdock`.
+- `npx turbo build --filter=@aios/daemon --force` passou no CT165.
+- `systemctl restart aios-daemon`; servico ficou `active`.
+- Cloudflare Pages publicado:
+  `https://b0569eb8.crewdock.pages.dev`.
+- `GET https://api.felhen.ai/api/health` -> `200`.
+- `GET https://api.felhen.ai/api/company-brain/operating-snapshot` com service
+  token -> `200`, `overallStatus=healthy`, `summary="5/5 operating cards ready;
+  0 attention; 0 critical; 0 errors; 0 missing."`.
+- `POST https://api.felhen.ai/api/company-brain/external-action-proposals/does-not-exist/github-issue-create/preview`
+  com service token -> `400 preview_failed: external action proposal not found`,
+  confirmando que a rota nova esta publicada sem mutacao.
+- `GET https://ai.felhen.ai/company-brain/operating` com service token -> `200`.
+- `GET https://ai.felhen.ai/company-brain` com service token -> `200`.
+
+Residual intencional: producao tem allowlist, mas nao foi encontrado
+`GITHUB_TOKEN`/`GH_TOKEN` no `.env.prod` nem no unit do systemd. Portanto o
+executor esta publicado e governado, mas execucao real em producao ainda exige
+instalar explicitamente um token GitHub apropriado; sem token, a API falha antes
+de qualquer write externo.
+
 ## Decisoes
 
 - O executor cria apenas issue nova. Nao fecha, reabre, edita, assina, faz
