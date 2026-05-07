@@ -2274,3 +2274,60 @@ Proximo passo recomendado:
 2. Coletar somente friccoes concretas de operacao antes de criar novas features.
 3. Continuar automaticamente para read-only/audit/docs/UI/MCP/dogfood temporario.
 4. Parar antes de novo executor real, novo alvo externo, deploy, secrets/permissoes, close/reopen/merge/delete ou qualquer mutacao externa fora da policy aprovada.
+
+## Operating Cycle Friction Closure v0 - 2026-05-07
+
+Status: implementado e dogfooded localmente antes de qualquer feature nova. O corte fecha as friccoes 3-6 registradas em `docs/action/company-brain-operating-cycle-real-2026-05-07.md`.
+
+Arquivos principais:
+
+- `packages/shared/src/types.ts`: adiciona `runs[].artifactId`, `GateClosureRitual.overallStatus/summary/totals`, `OperatingSnapshot.overallStatus/summary/totals` e novos `coreReadiness.overallStatus` (`daily_use_blocked`, `demo_not_ready`).
+- `packages/daemon/src/routes/company-brain.ts`: executa PR/CI antes do briefing no cadence, atualiza o artifact de briefing apos persistir o `WatcherRun`, popula `artifactId`, agrega Gate Closure/Operating Snapshot e ajusta a semantica de Core Readiness.
+- `packages/web/src/app/company-brain/operating/page.tsx`: mostra status/summary agregado da superficie Operating.
+- `packages/web/src/app/company-brain/page.tsx`: mostra status/summary agregado do Gate Closure e classifica `daily_use_blocked`/`demo_not_ready` como alerta.
+- `docs/company-brain-operating-cadence-runbook.md`: documenta `runs[].artifactId`.
+- `docs/company-brain-gate-closure-ritual-runbook.md`: documenta `overallStatus`, `summary` e `totals`.
+- `docs/action/company-brain-operating-cycle-real-2026-05-07.md`: registra o fix pass e evidencias.
+
+Dogfood validado:
+
+- DB: `/tmp/aios-cycle-fix-2026-05-07.sqlite`.
+- Daemon: `127.0.0.1:43182`.
+- `POST /api/company-brain/operating-cadence/run`:
+  - `watcherRunsCreated=2`;
+  - `artifactsCreated=2`;
+  - `activeScheduledWatcherCount=2`;
+  - `staleCadenceCount=0`;
+  - `dueCadenceCount=0`;
+  - `runs[].artifactId` preenchido para PR/CI e briefing.
+- `GET /api/company-brain/briefing`:
+  - secao `Operating Cadence` mostra `2/2 scheduled watchers active; 2 scheduled runs; 0 manual runs.`;
+  - `0 stale cadence watchers; 0 due`.
+- `GET /api/company-brain/gate-closure-ritual`:
+  - `overallStatus=attention`;
+  - `totals.itemCount=1`;
+  - `totals.pendingGateCount=1`.
+- `GET /api/company-brain/operating-snapshot` final:
+  - `overallStatus=attention`;
+  - `summary=4/5 operating cards ready; 1 attention; 0 critical; 0 errors; 0 missing.`;
+  - `latestAgentContext` ready.
+- `GET /api/company-brain/core-readiness`:
+  - `overallStatus=daily_use_blocked`;
+  - `dailyUseBlockingGapCount=1`;
+  - `demoGapCount=0`;
+  - `designPartnerGapCount=0`.
+
+Validacao executada:
+
+- `npx turbo build` passou.
+
+Proximo passo recomendado:
+
+1. Rodar `git diff --check` e `npx turbo build` finais.
+2. Commit/push deste corte.
+3. Deploy CT165 daemon (`git pull`, build daemon, restart `aios-daemon`).
+4. Deploy Cloudflare Pages com `NEXT_PUBLIC_DAEMON_URL=https://api.felhen.ai` e `NEXT_PUBLIC_VAPID_PUBLIC_KEY` lido do CT165.
+5. Validar:
+   - `GET https://api.felhen.ai/api/health`;
+   - `GET https://api.felhen.ai/api/company-brain/operating-snapshot`;
+   - `GET https://ai.felhen.ai/company-brain/operating`.

@@ -132,6 +132,12 @@ export default function CompanyBrainOperatingPage() {
             <h1 className="mt-2 text-3xl font-semibold tracking-normal">
               Company Brain Operating
             </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Badge variant={stateVariant(snapshot.overallStatus)}>
+                {snapshot.overallStatus}
+              </Badge>
+              <p className="text-sm text-muted-foreground">{snapshot.summary}</p>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button

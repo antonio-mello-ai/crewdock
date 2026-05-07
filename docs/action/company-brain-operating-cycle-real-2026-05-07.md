@@ -238,3 +238,60 @@ Em `/tmp` desta maquina (efemero):
 - `aios-cycle-2026-05-07.sqlite` (DB temp)
 
 Sem mutacao em producao, sem mutacao externa, sem novo deploy.
+
+## Fix pass - friccoes 3 a 6
+
+Status: implementado localmente em 2026-05-07 antes de qualquer feature nova.
+
+Mudancas:
+
+- `operating-cadence/run` agora executa o watcher GitHub PR/CI antes do AIOS Briefing e o artifact de briefing e atualizado depois que o proprio `WatcherRun` do briefing foi persistido. Resultado: a secao `Operating Cadence` do briefing pos-cadence passa a refletir o estado pos-run.
+- `RunOperatingCadenceResponse.runs[]` ganhou `artifactId` preenchido com o primeiro artifact criado pelo watcher, quando existir.
+- `gateClosureRitual` ganhou `overallStatus`, `summary` e `totals` no top-level, mantendo `stats` para compatibilidade.
+- `operatingSnapshot` ganhou `overallStatus`, `summary` e `totals` agregados.
+- `coreReadiness.overallStatus` agora distingue `daily_use_blocked` e `demo_not_ready`, evitando usar `design_partner_not_ready` quando `designPartnerGapCount=0` e o bloqueio real e daily gate/demo.
+
+Dogfood local:
+
+- DB: `/tmp/aios-cycle-fix-2026-05-07.sqlite`
+- Daemon: `127.0.0.1:43182`
+- `POST /api/company-brain/operating-cadence/run`:
+  - `watcherRunsCreated=2`
+  - `artifactsCreated=2`
+  - `operatingCadence.stats.activeScheduledWatcherCount=2`
+  - `staleCadenceCount=0`
+  - `dueCadenceCount=0`
+  - `runs[0].artifactId=eMjrMy2eNA3I`
+  - `runs[1].artifactId=pm6e-G2RntNO`
+- `GET /api/company-brain/briefing`:
+  - `Operating Cadence` = `2/2 scheduled watchers active; 2 scheduled runs; 0 manual runs.`
+  - `0 stale cadence watchers; 0 due`
+- `GET /api/company-brain/gate-closure-ritual`:
+  - `overallStatus=attention`
+  - `totals.itemCount=1`
+  - `totals.pendingGateCount=1`
+- `GET /api/company-brain/operating-snapshot` antes do handoff:
+  - `overallStatus=attention`
+  - `summary=3/5 operating cards ready; 1 attention; 0 critical; 0 errors; 1 missing.`
+  - `timeline.stats.externalWriteEventCount=0`
+- `POST /api/company-brain/agent-contexts/daily-handoff`:
+  - `status=ready`
+  - `sourceKnowledgeIds=8`
+- `GET /api/company-brain/operating-snapshot` final:
+  - `summary=4/5 operating cards ready; 1 attention; 0 critical; 0 errors; 0 missing.`
+- `GET /api/company-brain/core-readiness`:
+  - `overallStatus=daily_use_blocked`
+  - `dailyUseBlockingGapCount=1`
+  - `demoGapCount=0`
+  - `designPartnerGapCount=0`
+
+Validacao local:
+
+- `npx turbo build` passou apos as correcoes.
+
+Proximo passo apos commit/push:
+
+- deployar CT165 e Cloudflare Pages para tirar `api.felhen.ai` do commit antigo;
+- validar `GET https://api.felhen.ai/api/health`;
+- validar `GET https://api.felhen.ai/api/company-brain/operating-snapshot`;
+- validar `GET https://ai.felhen.ai/company-brain/operating`.

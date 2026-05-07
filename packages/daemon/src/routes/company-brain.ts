@@ -3730,32 +3730,53 @@ function buildGateClosureRitual(
     return (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0);
   });
 
+  const stats = {
+    itemCount: items.length,
+    criticalCount: items.filter((item) => item.severity === "critical").length,
+    warnCount: items.filter((item) => item.severity === "warn").length,
+    workflowGateCount: items.filter((item) => item.kind === "workflow_gate").length,
+    workflowSlaCount: items.filter((item) => item.kind === "workflow_sla").length,
+    goalSlaCount: items.filter((item) => item.kind === "goal_sla").length,
+    pendingGateCount: items.filter(
+      (item) => item.kind === "workflow_gate" && item.gateStatus === "pending"
+    ).length,
+    blockedGateCount: items.filter(
+      (item) => item.kind === "workflow_gate" && item.gateStatus === "blocked"
+    ).length,
+    failedGateCount: items.filter(
+      (item) => item.kind === "workflow_gate" && item.gateStatus === "failed"
+    ).length,
+    slaAtRiskCount: items.filter((item) => item.slaStatus === "at_risk").length,
+    slaBreachedCount: items.filter((item) => item.slaStatus === "breached").length,
+    dailyClosureReadyCount: items.filter(
+      (item) => item.status === "ready_for_review"
+    ).length,
+  };
+  const slaRiskCount = stats.slaAtRiskCount + stats.slaBreachedCount;
+  const overallStatus: CompanyBrainGateClosureRitual["overallStatus"] =
+    stats.criticalCount || stats.blockedGateCount || stats.failedGateCount
+      ? "critical"
+      : stats.itemCount
+        ? "attention"
+        : "clear";
+  const summary = stats.itemCount
+    ? `${stats.itemCount} gate/SLA items need review; ${stats.criticalCount} critical; ${stats.pendingGateCount} pending gates; ${slaRiskCount} SLA risks.`
+    : "No workflow gate or SLA items need closure.";
+
   return {
     generatedAt,
-    items,
-    stats: {
-      itemCount: items.length,
-      criticalCount: items.filter((item) => item.severity === "critical").length,
-      warnCount: items.filter((item) => item.severity === "warn").length,
-      workflowGateCount: items.filter((item) => item.kind === "workflow_gate").length,
-      workflowSlaCount: items.filter((item) => item.kind === "workflow_sla").length,
-      goalSlaCount: items.filter((item) => item.kind === "goal_sla").length,
-      pendingGateCount: items.filter(
-        (item) => item.kind === "workflow_gate" && item.gateStatus === "pending"
-      ).length,
-      blockedGateCount: items.filter(
-        (item) => item.kind === "workflow_gate" && item.gateStatus === "blocked"
-      ).length,
-      failedGateCount: items.filter(
-        (item) => item.kind === "workflow_gate" && item.gateStatus === "failed"
-      ).length,
-      slaAtRiskCount: items.filter((item) => item.slaStatus === "at_risk").length,
-      slaBreachedCount: items.filter((item) => item.slaStatus === "breached")
-        .length,
-      dailyClosureReadyCount: items.filter(
-        (item) => item.status === "ready_for_review"
-      ).length,
+    overallStatus,
+    summary,
+    totals: {
+      itemCount: stats.itemCount,
+      criticalCount: stats.criticalCount,
+      warnCount: stats.warnCount,
+      pendingGateCount: stats.pendingGateCount,
+      slaRiskCount,
+      dailyClosureReadyCount: stats.dailyClosureReadyCount,
     },
+    items,
+    stats,
   };
 }
 
@@ -4345,14 +4366,26 @@ function buildCoreReadiness(args: {
     adoptionDashboard.stats.closedLoopProjectCount > 0 &&
     evidencePacketCount > 0 &&
     hasWritebackDogfood;
-  const overallStatus: CompanyBrainCoreReadiness["overallStatus"] =
-    hasRequiredInternalLoop && lastBriefing
-      ? "internal_closed_loop_ready"
-      : hasRequiredInternalLoop
-        ? "demo_ready"
-        : modules.some((item) => item.statuses.includes("missing"))
-          ? "needs_foundation_work"
-          : "design_partner_not_ready";
+  const dailyUseBlockingGapCount = gaps.filter((gap) => gap.impact === "daily_use")
+    .length;
+  const demoGapCount = gaps.filter((gap) => gap.impact === "demo").length;
+  const designPartnerGapCount = gaps.filter(
+    (gap) => gap.impact === "design_partner"
+  ).length;
+  const hasMissingModule = modules.some((item) => item.statuses.includes("missing"));
+  const overallStatus: CompanyBrainCoreReadiness["overallStatus"] = hasMissingModule
+    ? "needs_foundation_work"
+    : dailyUseBlockingGapCount
+      ? "daily_use_blocked"
+      : demoGapCount
+        ? "demo_not_ready"
+        : designPartnerGapCount
+          ? "design_partner_not_ready"
+          : hasRequiredInternalLoop && lastBriefing
+            ? "internal_closed_loop_ready"
+            : hasRequiredInternalLoop
+              ? "demo_ready"
+              : "demo_not_ready";
 
   return {
     generatedAt,
@@ -4378,11 +4411,9 @@ function buildCoreReadiness(args: {
       ).length,
       missingCount: modules.filter((item) => item.statuses.includes("missing"))
         .length,
-      dailyUseBlockingGapCount: gaps.filter((gap) => gap.impact === "daily_use")
-        .length,
-      demoGapCount: gaps.filter((gap) => gap.impact === "demo").length,
-      designPartnerGapCount: gaps.filter((gap) => gap.impact === "design_partner")
-        .length,
+      dailyUseBlockingGapCount,
+      demoGapCount,
+      designPartnerGapCount,
       polishGapCount: gaps.filter((gap) => gap.impact === "polish").length,
       externalMutationGapCount: gaps.filter(
         (gap) => gap.impact === "requires_external_mutation"
@@ -4443,69 +4474,91 @@ function buildOperatingSnapshot(
     ? `${latestAgentContext.title} is ready for ${latestAgentContext.targetAgent}.`
     : "Generate a Daily Agent Handoff before starting a new agent session.";
 
+  const cards: CompanyBrainOperatingSnapshot["cards"] = [
+    {
+      key: "aios_briefing",
+      title: "AIOS Briefing",
+      state: lastBriefing ? "ready" : "needs_run",
+      lastUpdatedAt: lastBriefing?.generatedAt ?? null,
+      mainAlert: briefingAlert,
+      primaryActionLabel: "Run briefing",
+      primaryActionKind: "run_briefing",
+    },
+    {
+      key: "operating_cadence",
+      title: "Operating Cadence",
+      state:
+        operatingCadence.stats.errorCadenceCount > 0
+          ? "error"
+          : operatingCadence.stats.staleCadenceCount ||
+              operatingCadence.stats.dueCadenceCount
+            ? "needs_run"
+            : "healthy",
+      lastUpdatedAt: latestCadenceRunAt ?? operatingCadence.generatedAt,
+      mainAlert: cadenceAlert,
+      primaryActionLabel: "Run Operating Cadence",
+      primaryActionKind: "run_operating_cadence",
+    },
+    {
+      key: "gate_closure_ritual",
+      title: "Gate Closure Ritual",
+      state: gateClosureRitual.overallStatus,
+      lastUpdatedAt: latestGateActivityAt ?? gateClosureRitual.generatedAt,
+      mainAlert: gateAlert,
+      primaryActionLabel: "Review gates",
+      primaryActionKind: "review_gate_closure",
+    },
+    {
+      key: "source_health",
+      title: "Source Health",
+      state: sourceHealthReport.stats.errorCount
+        ? "error"
+        : sourceHealthAlertCount
+          ? "attention"
+          : "healthy",
+      lastUpdatedAt: latestSourceActivityAt ?? sourceHealthReport.generatedAt,
+      mainAlert: sourceAlert,
+      primaryActionLabel: "Review sources",
+      primaryActionKind: "review_source_health",
+    },
+    {
+      key: "daily_agent_handoff",
+      title: "Daily Agent Handoff",
+      state: latestAgentContext ? "ready" : "missing",
+      lastUpdatedAt: latestAgentContext?.updatedAt ?? null,
+      mainAlert: handoffAlert,
+      primaryActionLabel: "Generate handoff",
+      primaryActionKind: "generate_daily_handoff",
+    },
+  ];
+  const totals = {
+    cardCount: cards.length,
+    readyCount: cards.filter((card) =>
+      ["ready", "healthy", "clear"].includes(card.state)
+    ).length,
+    attentionCount: cards.filter((card) =>
+      ["attention", "needs_run"].includes(card.state)
+    ).length,
+    criticalCount: cards.filter((card) => card.state === "critical").length,
+    errorCount: cards.filter((card) => card.state === "error").length,
+    missingCount: cards.filter((card) => card.state === "missing").length,
+  };
+  const overallStatus: CompanyBrainOperatingSnapshot["overallStatus"] =
+    totals.errorCount > 0
+      ? "error"
+      : totals.criticalCount > 0
+        ? "critical"
+        : totals.attentionCount > 0 || totals.missingCount > 0
+          ? "attention"
+          : "healthy";
+  const summary = `${totals.readyCount}/${totals.cardCount} operating cards ready; ${totals.attentionCount} attention; ${totals.criticalCount} critical; ${totals.errorCount} errors; ${totals.missingCount} missing.`;
+
   return {
     generatedAt,
-    cards: [
-      {
-        key: "aios_briefing",
-        title: "AIOS Briefing",
-        state: lastBriefing ? "ready" : "needs_run",
-        lastUpdatedAt: lastBriefing?.generatedAt ?? null,
-        mainAlert: briefingAlert,
-        primaryActionLabel: "Run briefing",
-        primaryActionKind: "run_briefing",
-      },
-      {
-        key: "operating_cadence",
-        title: "Operating Cadence",
-        state:
-          operatingCadence.stats.errorCadenceCount > 0
-            ? "error"
-            : operatingCadence.stats.staleCadenceCount ||
-                operatingCadence.stats.dueCadenceCount
-              ? "needs_run"
-              : "healthy",
-        lastUpdatedAt: latestCadenceRunAt ?? operatingCadence.generatedAt,
-        mainAlert: cadenceAlert,
-        primaryActionLabel: "Run Operating Cadence",
-        primaryActionKind: "run_operating_cadence",
-      },
-      {
-        key: "gate_closure_ritual",
-        title: "Gate Closure Ritual",
-        state: gateClosureRitual.stats.criticalCount
-          ? "critical"
-          : gateClosureRitual.stats.itemCount
-            ? "attention"
-            : "clear",
-        lastUpdatedAt: latestGateActivityAt ?? gateClosureRitual.generatedAt,
-        mainAlert: gateAlert,
-        primaryActionLabel: "Review gates",
-        primaryActionKind: "review_gate_closure",
-      },
-      {
-        key: "source_health",
-        title: "Source Health",
-        state: sourceHealthReport.stats.errorCount
-          ? "error"
-          : sourceHealthAlertCount
-            ? "attention"
-            : "healthy",
-        lastUpdatedAt: latestSourceActivityAt ?? sourceHealthReport.generatedAt,
-        mainAlert: sourceAlert,
-        primaryActionLabel: "Review sources",
-        primaryActionKind: "review_source_health",
-      },
-      {
-        key: "daily_agent_handoff",
-        title: "Daily Agent Handoff",
-        state: latestAgentContext ? "ready" : "missing",
-        lastUpdatedAt: latestAgentContext?.updatedAt ?? null,
-        mainAlert: handoffAlert,
-        primaryActionLabel: "Generate handoff",
-        primaryActionKind: "generate_daily_handoff",
-      },
-    ],
+    overallStatus,
+    summary,
+    totals,
+    cards,
     lastBriefing,
     latestAgentContext,
     operatingCadence,
@@ -5409,7 +5462,7 @@ function runAiosBriefingWatcher(args: {
   const gapSignalIds = signalsCreated.map((signal) => signal.id);
   const summary = buildBriefingSummary(sections);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
-  const artifact = {
+  let artifact: typeof cbArtifacts.$inferInsert = {
     id: artifactId,
     sourceId: source.id,
     artifactType: "aios_briefing",
@@ -5528,6 +5581,55 @@ function runAiosBriefingWatcher(args: {
       updatedAt: finishedAt,
     })
     .where(eq(cbSources.id, source.id))
+    .run();
+
+  const refreshedData = listAll();
+  const refreshedAdoptionDashboard = buildAdoptionDashboard(refreshedData);
+  const refreshedSourceHealthReport = buildSourceHealthReport(refreshedData);
+  const refreshedBriefing = buildBriefingSections({
+    data: refreshedData,
+    adoptionDashboard: refreshedAdoptionDashboard,
+    sourceHealthReport: refreshedSourceHealthReport,
+    generatedAt: finishedAt,
+  });
+  const refreshedSummary = buildBriefingSummary(refreshedBriefing.sections);
+  const refreshedWritebackSafetyDashboard = buildWritebackSafetyDashboard(refreshedData);
+  artifact = {
+    ...artifact,
+    summary: refreshedSummary,
+    hash: stableHash(`${watcher.id}:${runId}:${refreshedSummary}`),
+    metadata: {
+      ...artifact.metadata,
+      sections: refreshedBriefing.sections,
+      nextSteps: refreshedBriefing.nextSteps,
+      adoptionDashboardStats: refreshedAdoptionDashboard.stats,
+      sourceHealthStats: refreshedSourceHealthReport.stats,
+      writebackSafetyStats: refreshedWritebackSafetyDashboard.stats,
+      writebackOperatingLoopMetrics:
+        refreshedWritebackSafetyDashboard.operatingLoopMetrics,
+      writebackEvidenceIntegritySummary:
+        refreshedWritebackSafetyDashboard.evidenceIntegritySummary,
+      writebackEvidenceRemediationSummary:
+        refreshedWritebackSafetyDashboard.evidenceRemediationSummary,
+      writebackProposalTargetReviewStats: buildWritebackProposalTargetReview({
+        data: refreshedData,
+      }).stats,
+      evidenceGraphStats: buildCompanyBrainEvidenceGraph({ data: refreshedData }).stats,
+      timelineStats: buildCompanyBrainTimeline({ data: refreshedData }).stats,
+      savedAuditViewStats: buildCompanyBrainSavedAuditViews(refreshedData).stats,
+      writebackPolicySimulatorStats: buildWritebackPolicySimulator().stats,
+      previewReplaySimulatorStats: buildPreviewReplaySimulator(refreshedData).stats,
+      refreshedAfterWatcherRunPersisted: true,
+      refreshedAt: finishedAt,
+    },
+  };
+  db.update(cbArtifacts)
+    .set({
+      summary: artifact.summary,
+      hash: artifact.hash,
+      metadata: artifact.metadata,
+    })
+    .where(eq(cbArtifacts.id, artifact.id))
     .run();
 
   return {
@@ -9822,46 +9924,6 @@ app.post("/operating-cadence/run", async (c) => {
   const scheduledAt = body.scheduledAt ?? startedAt;
   const runs: RunOperatingCadenceResponse["runs"] = [];
 
-  const runBriefing = requestedWatcherIds.includes(AIOS_BRIEFING_WATCHER_ID);
-  if (runBriefing) {
-    const watcher = getDb()
-      .select()
-      .from(cbWatchers)
-      .where(eq(cbWatchers.id, AIOS_BRIEFING_WATCHER_ID))
-      .get();
-    if (watcher) {
-      try {
-        const result = runAiosBriefingWatcher({
-          watcher,
-          startedAt: now(),
-          runId: nanoid(12),
-          triggerSource: "schedule",
-          scheduleId,
-          scheduledAt,
-        });
-        runs.push({
-          watcherId: AIOS_BRIEFING_WATCHER_ID,
-          status: result.run.status,
-          watcherRunId: result.run.id,
-          triggerRef: result.run.triggerRef,
-          artifactsCreated: result.run.artifactsCreated.length,
-          signalsCreated: result.run.signalsCreated.length,
-          errorSummary: result.run.errorSummary,
-        });
-      } catch (err) {
-        runs.push({
-          watcherId: AIOS_BRIEFING_WATCHER_ID,
-          status: "failed",
-          watcherRunId: null,
-          triggerRef: null,
-          artifactsCreated: 0,
-          signalsCreated: 0,
-          errorSummary: err instanceof Error ? err.message : "Unknown error",
-        });
-      }
-    }
-  }
-
   const runPrCi = requestedWatcherIds.includes(GITHUB_PR_CI_WATCHER_ID);
   if (runPrCi) {
     try {
@@ -9885,6 +9947,7 @@ app.post("/operating-cadence/run", async (c) => {
         watcherId: GITHUB_PR_CI_WATCHER_ID,
         status: result.watcherRun.status,
         watcherRunId: result.watcherRun.id,
+        artifactId: result.watcherRun.artifactsCreated[0] ?? null,
         triggerRef: result.watcherRun.triggerRef,
         artifactsCreated: result.artifactsCreated.length,
         signalsCreated: result.signalsCreated.length,
@@ -9899,11 +9962,54 @@ app.post("/operating-cadence/run", async (c) => {
         watcherId: GITHUB_PR_CI_WATCHER_ID,
         status: "failed",
         watcherRunId: lastFailedRun?.id ?? null,
+        artifactId: lastFailedRun?.artifactsCreated[0] ?? null,
         triggerRef: lastFailedRun?.triggerRef ?? null,
         artifactsCreated: 0,
         signalsCreated: 0,
         errorSummary: err instanceof Error ? err.message : "Unknown error",
       });
+    }
+  }
+
+  const runBriefing = requestedWatcherIds.includes(AIOS_BRIEFING_WATCHER_ID);
+  if (runBriefing) {
+    const watcher = getDb()
+      .select()
+      .from(cbWatchers)
+      .where(eq(cbWatchers.id, AIOS_BRIEFING_WATCHER_ID))
+      .get();
+    if (watcher) {
+      try {
+        const result = runAiosBriefingWatcher({
+          watcher,
+          startedAt: now(),
+          runId: nanoid(12),
+          triggerSource: "schedule",
+          scheduleId,
+          scheduledAt,
+        });
+        runs.push({
+          watcherId: AIOS_BRIEFING_WATCHER_ID,
+          status: result.run.status,
+          watcherRunId: result.run.id,
+          artifactId: result.run.artifactsCreated[0] ?? null,
+          triggerRef: result.run.triggerRef,
+          artifactsCreated: result.run.artifactsCreated.length,
+          signalsCreated: result.run.signalsCreated.length,
+          errorSummary: result.run.errorSummary,
+        });
+      } catch (err) {
+        runs.push({
+          watcherId: AIOS_BRIEFING_WATCHER_ID,
+          status: "failed",
+          watcherRunId: null,
+          artifactId: null,
+          triggerRef: null,
+          artifactsCreated: 0,
+          signalsCreated: 0,
+          errorSummary: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
     }
   }
 
@@ -9913,6 +10019,7 @@ app.post("/operating-cadence/run", async (c) => {
         watcherId,
         status: "skipped",
         watcherRunId: null,
+        artifactId: null,
         triggerRef: null,
         artifactsCreated: 0,
         signalsCreated: 0,

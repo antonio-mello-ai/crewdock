@@ -96,6 +96,7 @@ curl -sS -X POST http://127.0.0.1:43166/api/company-brain/operating-cadence/run 
           watcherId,
           status,
           watcherRunId,
+          artifactId,
           triggerRef,
           artifactsCreated,
           signalsCreated,
@@ -108,6 +109,7 @@ curl -sS -X POST http://127.0.0.1:43166/api/company-brain/operating-cadence/run 
 Campos canonicos do schema v0:
 
 - `runs[].watcherRunId`;
+- `runs[].artifactId` quando o watcher criar pelo menos um artifact;
 - `runs[].artifactsCreated`;
 - `runs[].signalsCreated`;
 - `artifactsCreated`;

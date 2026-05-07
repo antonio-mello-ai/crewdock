@@ -48,11 +48,19 @@ curl -sS -X POST http://127.0.0.1:43167/api/company-brain/demo/felhen-v0-1 \
 Ritual:
 
 ```bash
-curl -sS http://127.0.0.1:43167/api/company-brain/gate-closure-ritual | jq '.data.stats'
+curl -sS http://127.0.0.1:43167/api/company-brain/gate-closure-ritual | jq '{
+  overallStatus: .data.overallStatus,
+  summary: .data.summary,
+  totals: .data.totals,
+  stats: .data.stats
+}'
 ```
 
 Aceite esperado no demo:
 
+- `overallStatus=attention`;
+- `summary` preenchido no top-level;
+- `totals.itemCount=1`;
 - `itemCount=1`;
 - `workflowGateCount=1`;
 - `pendingGateCount=1`;

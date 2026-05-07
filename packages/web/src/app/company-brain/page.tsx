@@ -318,6 +318,8 @@ function StatusBadge({ value }: { value: string }) {
     value === "workflow_sla" ||
     value === "goal_sla" ||
     value === "ready_for_review" ||
+    value === "daily_use_blocked" ||
+    value === "demo_not_ready" ||
     value === "at_risk" ||
     value === "breached"
       ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
@@ -1650,12 +1652,18 @@ export default function CompanyBrainPage() {
           {gateClosureRitual ? (
             <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
               <div className="border-b border-neutral-800/50 px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <Workflow className="h-4 w-4 text-neutral-500" />
-                  <h2 className="text-sm font-semibold text-neutral-200">
-                    Gate Closure Ritual
-                  </h2>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <Workflow className="h-4 w-4 text-neutral-500" />
+                    <h2 className="text-sm font-semibold text-neutral-200">
+                      Gate Closure Ritual
+                    </h2>
+                  </div>
+                  <StatusBadge value={gateClosureRitual.overallStatus} />
                 </div>
+                <p className="mt-2 text-xs text-neutral-500">
+                  {gateClosureRitual.summary}
+                </p>
               </div>
               <div className="px-5 py-4">
                 <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">

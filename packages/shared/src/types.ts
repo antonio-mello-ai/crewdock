@@ -1911,6 +1911,16 @@ export interface GateClosureRitualItem {
 
 export interface CompanyBrainGateClosureRitual {
   generatedAt: number;
+  overallStatus: "clear" | "attention" | "critical";
+  summary: string;
+  totals: {
+    itemCount: number;
+    criticalCount: number;
+    warnCount: number;
+    pendingGateCount: number;
+    slaRiskCount: number;
+    dailyClosureReadyCount: number;
+  };
   items: GateClosureRitualItem[];
   stats: {
     itemCount: number;
@@ -1946,6 +1956,7 @@ export interface RunOperatingCadenceResponse {
     watcherId: string;
     status: WatcherRunStatus | "skipped";
     watcherRunId: string | null;
+    artifactId: string | null;
     triggerRef: string | null;
     artifactsCreated: number;
     signalsCreated: number;
@@ -2420,6 +2431,16 @@ export interface CompanyBrainOperatingSnapshotCard {
 
 export interface CompanyBrainOperatingSnapshot {
   generatedAt: number;
+  overallStatus: "healthy" | "attention" | "critical" | "error";
+  summary: string;
+  totals: {
+    cardCount: number;
+    readyCount: number;
+    attentionCount: number;
+    criticalCount: number;
+    errorCount: number;
+    missingCount: number;
+  };
   cards: CompanyBrainOperatingSnapshotCard[];
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   latestAgentContext: AgentContext | null;
@@ -2928,6 +2949,8 @@ export interface CompanyBrainCoreReadiness {
   overallStatus:
     | "internal_closed_loop_ready"
     | "demo_ready"
+    | "daily_use_blocked"
+    | "demo_not_ready"
     | "design_partner_not_ready"
     | "needs_foundation_work";
   modules: CoreReadinessModule[];
