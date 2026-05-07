@@ -34,6 +34,9 @@ import type {
   AreaBlueprintRegistry,
   AgentRun,
   AgentRunClaimState,
+  PreviewWorkflowLoaderRequest,
+  WorkflowDefinition,
+  WorkflowDefinitionConfig,
   AgentRunEvaluation,
   AgentRunEvaluationKind,
   AgentRunListResponse,
@@ -11482,6 +11485,426 @@ function buildAreaBlueprintRegistry(
 
 app.get("/area-blueprints", (c) => {
   const data = buildAreaBlueprintRegistry(listAll());
+  return c.json({ data });
+});
+
+const WORKFLOW_DEFAULT_CONFIG: WorkflowDefinitionConfig = {
+  tracker: {
+    kind: "github",
+    repo: "antonio-mello-ai/crewdock",
+    activeMilestone: "AIOS Agent Execution v1",
+    activeStates: ["open"],
+    terminalStates: ["closed"],
+    apiKeyEnvRef: "GITHUB_TOKEN",
+  },
+  polling: { intervalMs: 60000 },
+  workspace: {
+    root: "~/.aios/agent-workspaces",
+    vcs: "git_worktree",
+    baseBranch: "main",
+  },
+  agent: {
+    command: "claude",
+    args: ["-p"],
+    maxConcurrentAgents: 1,
+    maxTurns: 20,
+    maxRetryBackoffMs: 300000,
+  },
+  codex: {
+    approvalPolicy: "aios_writeback_policy",
+    stallTimeoutMs: 300000,
+    turnTimeoutMs: 3600000,
+    readTimeoutMs: 5000,
+  },
+  hooks: {
+    afterCreate: null,
+    beforeRun: null,
+    afterRun: null,
+    beforeRemove: null,
+    timeoutMs: 60000,
+  },
+};
+
+function unquoteYamlString(raw: string): string {
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseYamlScalar(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed === "null" || trimmed === "~") return null;
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (/^-?\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
+  if (/^-?\d+\.\d+$/.test(trimmed)) return Number.parseFloat(trimmed);
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    const inner = trimmed.slice(1, -1).trim();
+    if (!inner) return [];
+    return inner.split(",").map((part) => unquoteYamlString(part));
+  }
+  return unquoteYamlString(trimmed);
+}
+
+interface YamlLine {
+  indent: number;
+  content: string;
+}
+
+function parseYamlMinimal(text: string): Record<string, unknown> {
+  const lines: YamlLine[] = text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line) && line.trim() !== "")
+    .map((line) => ({
+      indent: line.match(/^\s*/)?.[0].length ?? 0,
+      content: line,
+    }));
+
+  let cursor = 0;
+
+  function parseBlock(parentIndent: number): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    while (cursor < lines.length) {
+      const line = lines[cursor];
+      if (line.indent <= parentIndent) break;
+      const stripped = line.content.trim();
+      const keyMatch = stripped.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/);
+      if (!keyMatch) {
+        cursor += 1;
+        continue;
+      }
+      const key = keyMatch[1];
+      const valuePart = keyMatch[2];
+      cursor += 1;
+      if (valuePart === "|" || valuePart === ">") {
+        const literal = valuePart === "|";
+        const buffer: string[] = [];
+        const blockIndent = lines[cursor]?.indent ?? line.indent + 2;
+        while (cursor < lines.length && lines[cursor].indent >= blockIndent) {
+          const slice = lines[cursor].content.slice(blockIndent);
+          buffer.push(slice);
+          cursor += 1;
+        }
+        result[key] = literal ? buffer.join("\n") : buffer.join(" ").trim();
+        continue;
+      }
+      if (valuePart === "") {
+        if (cursor < lines.length && lines[cursor].indent > line.indent) {
+          if (lines[cursor].content.trim().startsWith("-")) {
+            const list: unknown[] = [];
+            const itemIndent = lines[cursor].indent;
+            while (cursor < lines.length && lines[cursor].indent === itemIndent) {
+              const item = lines[cursor].content.trim();
+              if (item.startsWith("- ")) list.push(parseYamlScalar(item.slice(2)));
+              else if (item === "-") list.push(null);
+              else break;
+              cursor += 1;
+            }
+            result[key] = list;
+          } else {
+            result[key] = parseBlock(line.indent);
+          }
+        } else {
+          result[key] = null;
+        }
+      } else {
+        result[key] = parseYamlScalar(valuePart);
+      }
+    }
+    return result;
+  }
+
+  cursor = 0;
+  return parseBlock(-1);
+}
+
+function asString(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value.trim())) {
+    return Number.parseFloat(value);
+  }
+  return fallback;
+}
+
+function asStringArray(value: unknown, fallback: string[]): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  return fallback;
+}
+
+function asNullableString(value: unknown): string | null {
+  if (typeof value === "string" && value.trim() !== "") return value;
+  return null;
+}
+
+function buildWorkflowDefinitionFromRaw(
+  raw: string,
+  filePath: string | null,
+  source: WorkflowDefinition["source"]
+): WorkflowDefinition {
+  const generatedAt = now();
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  let promptTemplate = "";
+  let frontMatter: Record<string, unknown> = {};
+  const trimmed = raw.replace(/\r\n/g, "\n");
+  if (trimmed.trim().length === 0) {
+    return {
+      generatedAt,
+      source,
+      filePath,
+      raw,
+      config: WORKFLOW_DEFAULT_CONFIG,
+      promptTemplate: "",
+      errors: ["empty workflow content"],
+      warnings: [],
+      isValid: false,
+      branchSuggestionPattern: "<aios-issue-key>-<short-slug>",
+      workspacePathPattern: "<workspace.root>/<repo>/<work-item-key>",
+    };
+  }
+  if (trimmed.startsWith("---")) {
+    const closingIndex = trimmed.indexOf("\n---", 3);
+    if (closingIndex === -1) {
+      errors.push("front matter is not closed by a trailing --- line");
+    } else {
+      const yamlBlock = trimmed.slice(3, closingIndex).replace(/^\n/, "");
+      promptTemplate = trimmed.slice(closingIndex + 4).replace(/^\n/, "").trim();
+      try {
+        const parsed = parseYamlMinimal(yamlBlock);
+        if (parsed && typeof parsed === "object") {
+          frontMatter = parsed as Record<string, unknown>;
+        } else {
+          errors.push("front matter did not decode into a map");
+        }
+      } catch (err) {
+        errors.push(
+          `front matter parse error: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+  } else {
+    warnings.push("no YAML front matter found; using defaults");
+    promptTemplate = trimmed.trim();
+  }
+
+  const trackerObj = (frontMatter.tracker ?? {}) as Record<string, unknown>;
+  const pollingObj = (frontMatter.polling ?? {}) as Record<string, unknown>;
+  const workspaceObj = (frontMatter.workspace ?? {}) as Record<string, unknown>;
+  const agentObj = (frontMatter.agent ?? {}) as Record<string, unknown>;
+  const codexObj = (frontMatter.codex ?? {}) as Record<string, unknown>;
+  const hooksObj = (frontMatter.hooks ?? {}) as Record<string, unknown>;
+
+  const trackerKindRaw = asString(trackerObj.kind, WORKFLOW_DEFAULT_CONFIG.tracker.kind);
+  const trackerKind = (
+    ["github", "linear", "jira", "manual"].includes(trackerKindRaw)
+      ? trackerKindRaw
+      : "github"
+  ) as WorkflowDefinitionConfig["tracker"]["kind"];
+  if (trackerKindRaw !== trackerKind) {
+    warnings.push(
+      `tracker.kind=${trackerKindRaw} not recognized; falling back to github`
+    );
+  }
+  if (trackerKind === "linear" || trackerKind === "jira") {
+    warnings.push(
+      `tracker.kind=${trackerKind} reserved for future adapter; v0 only ships github support`
+    );
+  }
+  const repo = asNullableString(trackerObj.repo);
+  if (!repo) {
+    errors.push("tracker.repo is required for tracker.kind=github in v0");
+  }
+
+  const config: WorkflowDefinitionConfig = {
+    tracker: {
+      kind: trackerKind,
+      repo,
+      activeMilestone: asNullableString(
+        (trackerObj.active_milestone as unknown) ?? trackerObj.activeMilestone
+      ),
+      activeStates: asStringArray(
+        (trackerObj.active_states as unknown) ?? trackerObj.activeStates,
+        WORKFLOW_DEFAULT_CONFIG.tracker.activeStates
+      ),
+      terminalStates: asStringArray(
+        (trackerObj.terminal_states as unknown) ?? trackerObj.terminalStates,
+        WORKFLOW_DEFAULT_CONFIG.tracker.terminalStates
+      ),
+      apiKeyEnvRef: asNullableString(
+        (trackerObj.api_key_env as unknown) ??
+          trackerObj.apiKeyEnvRef ??
+          WORKFLOW_DEFAULT_CONFIG.tracker.apiKeyEnvRef
+      ),
+    },
+    polling: {
+      intervalMs: asNumber(
+        (pollingObj.interval_ms as unknown) ?? pollingObj.intervalMs,
+        WORKFLOW_DEFAULT_CONFIG.polling.intervalMs
+      ),
+    },
+    workspace: {
+      root: asString(workspaceObj.root, WORKFLOW_DEFAULT_CONFIG.workspace.root),
+      vcs: ((): WorkflowDefinitionConfig["workspace"]["vcs"] => {
+        const raw = asString(workspaceObj.vcs, WORKFLOW_DEFAULT_CONFIG.workspace.vcs);
+        if (raw === "git_worktree" || raw === "git_clone" || raw === "none") return raw;
+        warnings.push(`workspace.vcs=${raw} not recognized; defaulting to git_worktree`);
+        return "git_worktree";
+      })(),
+      baseBranch: asString(
+        (workspaceObj.base_branch as unknown) ?? workspaceObj.baseBranch,
+        WORKFLOW_DEFAULT_CONFIG.workspace.baseBranch
+      ),
+    },
+    agent: {
+      command: asString(agentObj.command, WORKFLOW_DEFAULT_CONFIG.agent.command),
+      args: asStringArray(agentObj.args, WORKFLOW_DEFAULT_CONFIG.agent.args),
+      maxConcurrentAgents: asNumber(
+        (agentObj.max_concurrent_agents as unknown) ?? agentObj.maxConcurrentAgents,
+        WORKFLOW_DEFAULT_CONFIG.agent.maxConcurrentAgents
+      ),
+      maxTurns: asNumber(
+        (agentObj.max_turns as unknown) ?? agentObj.maxTurns,
+        WORKFLOW_DEFAULT_CONFIG.agent.maxTurns
+      ),
+      maxRetryBackoffMs: asNumber(
+        (agentObj.max_retry_backoff_ms as unknown) ?? agentObj.maxRetryBackoffMs,
+        WORKFLOW_DEFAULT_CONFIG.agent.maxRetryBackoffMs
+      ),
+    },
+    codex: {
+      approvalPolicy: asString(
+        (codexObj.approval_policy as unknown) ?? codexObj.approvalPolicy,
+        WORKFLOW_DEFAULT_CONFIG.codex.approvalPolicy
+      ),
+      stallTimeoutMs: asNumber(
+        (codexObj.stall_timeout_ms as unknown) ?? codexObj.stallTimeoutMs,
+        WORKFLOW_DEFAULT_CONFIG.codex.stallTimeoutMs
+      ),
+      turnTimeoutMs: asNumber(
+        (codexObj.turn_timeout_ms as unknown) ?? codexObj.turnTimeoutMs,
+        WORKFLOW_DEFAULT_CONFIG.codex.turnTimeoutMs
+      ),
+      readTimeoutMs: asNumber(
+        (codexObj.read_timeout_ms as unknown) ?? codexObj.readTimeoutMs,
+        WORKFLOW_DEFAULT_CONFIG.codex.readTimeoutMs
+      ),
+    },
+    hooks: {
+      afterCreate: asNullableString(
+        (hooksObj.after_create as unknown) ?? hooksObj.afterCreate
+      ),
+      beforeRun: asNullableString(
+        (hooksObj.before_run as unknown) ?? hooksObj.beforeRun
+      ),
+      afterRun: asNullableString(
+        (hooksObj.after_run as unknown) ?? hooksObj.afterRun
+      ),
+      beforeRemove: asNullableString(
+        (hooksObj.before_remove as unknown) ?? hooksObj.beforeRemove
+      ),
+      timeoutMs: asNumber(
+        (hooksObj.timeout_ms as unknown) ?? hooksObj.timeoutMs,
+        WORKFLOW_DEFAULT_CONFIG.hooks.timeoutMs
+      ),
+    },
+  };
+
+  if (config.agent.maxConcurrentAgents <= 0) {
+    errors.push("agent.max_concurrent_agents must be >= 1");
+  }
+  if (config.agent.maxTurns <= 0) {
+    errors.push("agent.max_turns must be >= 1");
+  }
+  if (config.polling.intervalMs <= 0) {
+    errors.push("polling.interval_ms must be > 0");
+  }
+  if (config.codex.turnTimeoutMs <= 0) {
+    warnings.push("codex.turn_timeout_ms <= 0; turns will not time out");
+  }
+  if (!config.workspace.baseBranch.trim()) {
+    errors.push("workspace.base_branch must be a non-empty string");
+  }
+  if (!promptTemplate.trim()) {
+    warnings.push("prompt template body is empty; agent will receive a minimal default prompt");
+  }
+
+  return {
+    generatedAt,
+    source,
+    filePath,
+    raw,
+    config,
+    promptTemplate,
+    errors,
+    warnings,
+    isValid: errors.length === 0,
+    branchSuggestionPattern: "aios-<work-item-key>-<short-slug>",
+    workspacePathPattern: "<workspace.root>/<repo>/<sanitized-work-item-key>",
+  };
+}
+
+function loadWorkflowFromRepoRoot(): WorkflowDefinition {
+  const candidates = [
+    resolve(process.cwd(), "WORKFLOW.md"),
+    resolve(process.cwd(), "../WORKFLOW.md"),
+    resolve(process.cwd(), "../../WORKFLOW.md"),
+    resolve(process.cwd(), "../../../WORKFLOW.md"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      const raw = readFileSync(candidate, "utf-8");
+      return buildWorkflowDefinitionFromRaw(raw, candidate, "repo_workflow_md");
+    }
+  }
+  return buildWorkflowDefinitionFromRaw(
+    "---\n---\n",
+    null,
+    "default"
+  );
+}
+
+app.get("/workflow-loader", (c) => {
+  const data = loadWorkflowFromRepoRoot();
+  return c.json({ data });
+});
+
+app.post("/workflow-loader/preview", async (c) => {
+  const body = (await c.req
+    .json<PreviewWorkflowLoaderRequest>()
+    .catch(() => ({}))) as PreviewWorkflowLoaderRequest;
+  if (body.rawContent !== undefined) {
+    const data = buildWorkflowDefinitionFromRaw(body.rawContent, null, "inline");
+    return c.json({ data });
+  }
+  if (body.filePath) {
+    if (!existsSync(body.filePath)) {
+      return c.json(
+        {
+          error: "not_found",
+          message: `workflow file not found at ${body.filePath}`,
+        },
+        404
+      );
+    }
+    const raw = readFileSync(body.filePath, "utf-8");
+    const data = buildWorkflowDefinitionFromRaw(raw, body.filePath, "repo_workflow_md");
+    return c.json({ data });
+  }
+  const data = loadWorkflowFromRepoRoot();
   return c.json({ data });
 });
 
