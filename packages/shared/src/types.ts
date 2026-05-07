@@ -2228,6 +2228,41 @@ export interface CompanyBrainSavedAuditViews {
   };
 }
 
+export interface CompanyBrainWritebackPolicySimulationCase {
+  id: string;
+  title: string;
+  input: {
+    destinationType: ExternalActionDestination;
+    actionType: ExternalActionKind;
+    riskClass: RiskClass;
+    actionPolicy: ActionPolicy;
+  };
+  result: {
+    approvalStatus: ExternalActionApprovalStatus;
+    approvalRequired: boolean;
+    executionStatus: ExternalActionExecutionStatus;
+    policySummary: string;
+  };
+  executionBlocked: boolean;
+  previewOnly: boolean;
+  realExecutorAvailable: boolean;
+  requiredGates: string[];
+  blockedActions: string[];
+  rationale: string;
+}
+
+export interface CompanyBrainWritebackPolicySimulator {
+  generatedAt: number;
+  cases: CompanyBrainWritebackPolicySimulationCase[];
+  stats: {
+    caseCount: number;
+    executableCaseCount: number;
+    previewOnlyCaseCount: number;
+    blockedCaseCount: number;
+    humanApprovalRequiredCount: number;
+  };
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2597,6 +2632,7 @@ export interface CompanyBrainSummary {
   evidenceGraph: CompanyBrainEvidenceGraph;
   timeline: CompanyBrainTimeline;
   savedAuditViews: CompanyBrainSavedAuditViews;
+  writebackPolicySimulator: CompanyBrainWritebackPolicySimulator;
   stats: {
     sourceCount: number;
     artifactCount: number;

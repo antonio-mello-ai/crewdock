@@ -19,6 +19,7 @@ import type {
   CompanyBrainTimeline,
   CompanyBrainTimelineEvent,
   CompanyBrainTimelineScope,
+  CompanyBrainWritebackPolicySimulator,
   CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
   CompanyBrainWritebackAuditTrailResponse,
@@ -6846,6 +6847,163 @@ function buildCompanyBrainSavedAuditViews(
   };
 }
 
+function writebackPolicySimulationCase(args: {
+  id: string;
+  title: string;
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+}): CompanyBrainWritebackPolicySimulator["cases"][number] {
+  const result = externalActionPolicy(args);
+  const previewOnly =
+    args.destinationType === "github" && args.actionType === "github_check";
+  const realExecutorAvailable =
+    (args.destinationType === "github" &&
+      (isGitHubCommentAction(args.actionType) ||
+        isGitHubLabelAction(args.actionType) ||
+        args.actionType === "github_status")) ||
+    (args.destinationType === "slack" && isSlackThreadReplyAction(args.actionType));
+  const requiredGates = result.approvalRequired
+    ? [
+        "human_approval",
+        "hitl_rationale",
+        "preview_after_approval",
+        "payload_hash_match",
+        "destination_ref_match",
+        "idempotency_key",
+        "audit_trail",
+      ]
+    : ["audit_trail"];
+  if (args.destinationType === "github" && args.actionType === "github_status") {
+    requiredGates.push("private_repo_allowlist", "explicit_sha", "allowed_context_state");
+  }
+  if (args.destinationType === "github" && isGitHubLabelAction(args.actionType)) {
+    requiredGates.push("label_add_only", "current_labels_read");
+  }
+  if (args.destinationType === "slack" && isSlackThreadReplyAction(args.actionType)) {
+    requiredGates.push("existing_thread_only", "thread_replies_read");
+  }
+  const blockedActions = [
+    "close",
+    "reopen",
+    "merge",
+    "deploy",
+    "delete",
+    "permissions",
+    "secrets",
+    "slack_dm",
+    "slack_top_level",
+    "email",
+    "billing",
+  ];
+  if (previewOnly) blockedActions.push("real_check_run_creation");
+  return {
+    id: args.id,
+    title: args.title,
+    input: {
+      destinationType: args.destinationType,
+      actionType: args.actionType,
+      riskClass: args.riskClass,
+      actionPolicy: args.actionPolicy,
+    },
+    result,
+    executionBlocked: result.executionStatus === "blocked" || previewOnly,
+    previewOnly,
+    realExecutorAvailable: realExecutorAvailable && !previewOnly,
+    requiredGates,
+    blockedActions,
+    rationale: previewOnly
+      ? "Preview/dry-run is allowed, but real execution is intentionally blocked for this action type."
+      : result.policySummary,
+  };
+}
+
+function buildWritebackPolicySimulator(args?: {
+  customCase?: {
+    destinationType: ExternalActionDestination;
+    actionType: ExternalActionKind;
+    riskClass: RiskClass;
+    actionPolicy: ActionPolicy;
+  } | null;
+}): CompanyBrainWritebackPolicySimulator {
+  const generatedAt = now();
+  const cases: CompanyBrainWritebackPolicySimulator["cases"] = [];
+  if (args?.customCase) {
+    cases.push(
+      writebackPolicySimulationCase({
+        id: "custom",
+        title: "Custom simulation",
+        ...args.customCase,
+      })
+    );
+  }
+  cases.push(
+    writebackPolicySimulationCase({
+      id: "github-comment-risk-b",
+      title: "GitHub issue/PR comment",
+      destinationType: "github",
+      actionType: "github_comment",
+      riskClass: "B",
+      actionPolicy: "writeback_allowed",
+    }),
+    writebackPolicySimulationCase({
+      id: "github-label-risk-b",
+      title: "GitHub label add",
+      destinationType: "github",
+      actionType: "github_label",
+      riskClass: "B",
+      actionPolicy: "writeback_allowed",
+    }),
+    writebackPolicySimulationCase({
+      id: "github-status-risk-b",
+      title: "GitHub commit status",
+      destinationType: "github",
+      actionType: "github_status",
+      riskClass: "B",
+      actionPolicy: "writeback_allowed",
+    }),
+    writebackPolicySimulationCase({
+      id: "github-check-risk-b-preview",
+      title: "GitHub check-run preview",
+      destinationType: "github",
+      actionType: "github_check",
+      riskClass: "B",
+      actionPolicy: "request_human",
+    }),
+    writebackPolicySimulationCase({
+      id: "slack-thread-risk-b",
+      title: "Slack thread reply",
+      destinationType: "slack",
+      actionType: "slack_thread_reply",
+      riskClass: "B",
+      actionPolicy: "writeback_allowed",
+    }),
+    writebackPolicySimulationCase({
+      id: "risk-c-blocked",
+      title: "Risk C external action",
+      destinationType: "github",
+      actionType: "github_label",
+      riskClass: "C",
+      actionPolicy: "writeback_allowed",
+    })
+  );
+  return {
+    generatedAt,
+    cases,
+    stats: {
+      caseCount: cases.length,
+      executableCaseCount: cases.filter(
+        (item) => item.realExecutorAvailable && !item.executionBlocked
+      ).length,
+      previewOnlyCaseCount: cases.filter((item) => item.previewOnly).length,
+      blockedCaseCount: cases.filter((item) => item.executionBlocked).length,
+      humanApprovalRequiredCount: cases.filter((item) => item.result.approvalRequired)
+        .length,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -7208,6 +7366,7 @@ app.get("/summary", (c) => {
   const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
   const timeline = buildCompanyBrainTimeline({ data });
   const savedAuditViews = buildCompanyBrainSavedAuditViews(data);
+  const writebackPolicySimulator = buildWritebackPolicySimulator();
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -7245,6 +7404,7 @@ app.get("/summary", (c) => {
       evidenceGraph,
       timeline,
       savedAuditViews,
+      writebackPolicySimulator,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -7363,6 +7523,53 @@ app.get("/timeline", (c) => {
 
 app.get("/saved-audit-views", (c) => {
   const data = buildCompanyBrainSavedAuditViews(listAll());
+  return c.json({ data });
+});
+
+app.get("/writeback-policy-simulator", (c) => {
+  const destinationTypeParam = c.req.query("destinationType")?.trim() || null;
+  const actionTypeParam = c.req.query("actionType")?.trim() || null;
+  const riskClassParam = c.req.query("riskClass")?.trim() || null;
+  const actionPolicyParam = c.req.query("actionPolicy")?.trim() || null;
+  const allowedDestinations: ExternalActionDestination[] = [
+    "github",
+    "slack",
+    "internal",
+    "unknown",
+  ];
+  const allowedActions: ExternalActionKind[] = [
+    "comment",
+    "github_comment",
+    "label",
+    "github_label",
+    "github_status",
+    "github_check",
+    "thread_reply",
+    "slack_thread_reply",
+    "draft",
+    "unknown",
+  ];
+  const allowedRiskClasses: RiskClass[] = ["A", "B", "C", "unknown"];
+  const allowedActionPolicies: ActionPolicy[] = [
+    "observe_only",
+    "create_artifacts",
+    "create_work_items",
+    "request_human",
+    "writeback_allowed",
+  ];
+  const customCase =
+    allowedDestinations.includes(destinationTypeParam as ExternalActionDestination) &&
+    allowedActions.includes(actionTypeParam as ExternalActionKind) &&
+    allowedRiskClasses.includes(riskClassParam as RiskClass) &&
+    allowedActionPolicies.includes(actionPolicyParam as ActionPolicy)
+      ? {
+          destinationType: destinationTypeParam as ExternalActionDestination,
+          actionType: actionTypeParam as ExternalActionKind,
+          riskClass: riskClassParam as RiskClass,
+          actionPolicy: actionPolicyParam as ActionPolicy,
+        }
+      : null;
+  const data = buildWritebackPolicySimulator({ customCase });
   return c.json({ data });
 });
 

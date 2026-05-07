@@ -447,6 +447,54 @@ server.registerTool(
 );
 
 server.registerTool(
+  "simulate_company_brain_writeback_policy",
+  {
+    title: "Simulate Company Brain writeback policy",
+    description:
+      "Read-only simulation of destination/action/risk/action_policy combinations. Returns approval, execution, preview-only, required gates and blocked actions without creating proposals or mutating external systems.",
+    inputSchema: {
+      destinationType: z.enum(["github", "slack", "internal", "unknown"]).optional(),
+      actionType: z
+        .enum([
+          "comment",
+          "github_comment",
+          "label",
+          "github_label",
+          "github_status",
+          "github_check",
+          "thread_reply",
+          "slack_thread_reply",
+          "draft",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+      actionPolicy: z
+        .enum([
+          "observe_only",
+          "create_artifacts",
+          "create_work_items",
+          "request_human",
+          "writeback_allowed",
+        ])
+        .optional(),
+    },
+  },
+  async ({ destinationType, actionType, riskClass, actionPolicy }) => {
+    const params = new URLSearchParams();
+    if (destinationType) params.set("destinationType", destinationType);
+    if (actionType) params.set("actionType", actionType);
+    if (riskClass) params.set("riskClass", riskClass);
+    if (actionPolicy) params.set("actionPolicy", actionPolicy);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/writeback-policy-simulator${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_felhen_demo_v0_1",
   {
     title: "Run Felhen Demo v0.1",
