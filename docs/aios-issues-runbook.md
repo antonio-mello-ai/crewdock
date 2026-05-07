@@ -116,11 +116,16 @@ Limites:
 ## Como consumir a fila como agente
 
 1. Ler estado do Company Brain antes de tudo:
-   - `mcp__aios__get_company_brain_operating_snapshot`
-   - `mcp__aios__get_company_brain_summary`
+   - `mcp__aios__get_company_brain_operating_snapshot` ja inclui o card
+     `Next Work` derivado.
+   - `mcp__aios__get_company_brain_next_work` se quiser apenas o
+     recommendation (com agentPromptMarkdown pronto para colar).
+   - `mcp__aios__get_company_brain_summary` para inspecionar kernel completo.
    - `mcp__aios__generate_company_brain_daily_agent_handoff` se a sessao for
      "diaria/contextual" e nao houver handoff fresco.
 2. Identificar a proxima issue:
+   - Preferencialmente, usar o `Next Work` recommendation (ranking determinismo:
+     priority > goal > prefixo `AIOS-` > `dueAt` > issue number ascendente).
    - Listar issues abertas da milestone ativa via `gh issue list --milestone
      "AIOS Execution Loop v0" --state open` ordenadas por numero.
    - Ou ler WorkItems com `externalProvider=github` no Company Brain summary.

@@ -16,6 +16,7 @@ import type {
   CompanyBrainEvidenceGraph,
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainGateClosureRitual,
+  CompanyBrainNextWork,
   CompanyBrainOperatingCadence,
   CompanyBrainOperatingLoopState,
   CompanyBrainOperatingSnapshot,
@@ -94,6 +95,8 @@ import type {
   UpdateImprovementProposalRequest,
   Visibility,
   WatcherRunTriggerSource,
+  WorkItem,
+  WorkItemStatus,
   WritebackAdapterKey,
   WritebackEvidencePacket,
   WritebackPreviewReplaySimulator,
@@ -4499,6 +4502,334 @@ function buildCoreReadiness(args: {
   };
 }
 
+const NEXT_WORK_ACTIVE_STATUSES: WorkItemStatus[] = [
+  "new",
+  "triage",
+  "planned",
+  "in_progress",
+  "review",
+  "qa",
+  "security_review",
+  "reopened",
+  "needs_human",
+];
+
+function parseAcceptanceCriteria(description: string | null | undefined): string[] {
+  if (!description) return [];
+  const lines = description.split(/\r?\n/);
+  const headerIndex = lines.findIndex((line) =>
+    /^\s{0,3}#{1,6}\s*acceptance\s+criteria\s*$/i.test(line)
+  );
+  if (headerIndex === -1) return [];
+  const collected: string[] = [];
+  for (let i = headerIndex + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (/^\s{0,3}#{1,6}\s+/.test(line)) break;
+    const match = line.match(/^\s*[-*+]\s+(.+)$/);
+    if (match) {
+      collected.push(match[1].trim());
+    }
+  }
+  return collected;
+}
+
+function slugifyForBranch(input: string): string {
+  return (
+    input
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48) || "work-item"
+  );
+}
+
+function buildNextWorkBranchSuggestion(workItem: WorkItem): string {
+  if (workItem.externalProvider === "github") {
+    const titleMatch = workItem.title.match(/^([A-Z]+-[A-Z]+-\d+)/);
+    if (titleMatch) {
+      return slugifyForBranch(workItem.title);
+    }
+    if (workItem.externalId) {
+      const issueNumberMatch = workItem.externalId.match(/#(\d+)$/);
+      if (issueNumberMatch) {
+        return `gh-issue-${issueNumberMatch[1]}-${slugifyForBranch(workItem.title)}`;
+      }
+    }
+  }
+  return slugifyForBranch(workItem.title);
+}
+
+function buildNextWorkAgentPrompt(args: {
+  title: string;
+  workItem: WorkItem;
+  rationale: string[];
+  priority: { title: string; status: string } | null;
+  goal: { title: string; status: string; dueAt: number | null } | null;
+  acceptanceCriteria: string[];
+  linkedEvidence: {
+    sourceIds: string[];
+    artifactIds: string[];
+    signalIds: string[];
+    guidanceIds: string[];
+  };
+  branchSuggestion: string;
+  generatedAt: number;
+}): string {
+  const lines: string[] = [];
+  lines.push(`# Agent Prompt: ${args.title}`);
+  lines.push("");
+  lines.push(`Generated at: ${new Date(args.generatedAt).toISOString()}`);
+  lines.push("");
+  lines.push("## Work Item");
+  lines.push(bullet("Status", args.workItem.status));
+  lines.push(bullet("Area", args.workItem.area));
+  if (args.workItem.owner) {
+    lines.push(bullet("Owner", `${args.workItem.owner} (${args.workItem.ownerType})`));
+  }
+  if (args.workItem.externalProvider && args.workItem.externalId) {
+    lines.push(
+      bullet("External", `${args.workItem.externalProvider}:${args.workItem.externalId}`)
+    );
+  }
+  if (args.workItem.externalUrl) {
+    lines.push(bullet("URL", args.workItem.externalUrl));
+  }
+  if (args.workItem.labels.length) {
+    lines.push(bullet("Labels", args.workItem.labels.join(", ")));
+  }
+  if (args.workItem.dueAt) {
+    lines.push(bullet("Due", new Date(args.workItem.dueAt).toISOString()));
+  }
+  if (args.priority) {
+    lines.push("", "## Priority");
+    lines.push(bullet(args.priority.title, args.priority.status));
+  }
+  if (args.goal) {
+    lines.push("", "## Goal");
+    lines.push(
+      bullet(
+        args.goal.title,
+        `${args.goal.status}${args.goal.dueAt ? ` (due ${new Date(args.goal.dueAt).toISOString()})` : ""}`
+      )
+    );
+  }
+  if (args.rationale.length) {
+    lines.push("", "## Why this is next");
+    for (const reason of args.rationale) {
+      lines.push(`- ${reason}`);
+    }
+  }
+  if (args.acceptanceCriteria.length) {
+    lines.push("", "## Acceptance Criteria");
+    for (const ac of args.acceptanceCriteria) {
+      lines.push(`- ${ac}`);
+    }
+  }
+  const evidenceLines: string[] = [];
+  if (args.linkedEvidence.sourceIds.length) {
+    evidenceLines.push(bullet("Source", args.linkedEvidence.sourceIds.join(", ")));
+  }
+  if (args.linkedEvidence.artifactIds.length) {
+    evidenceLines.push(bullet("Artifacts", args.linkedEvidence.artifactIds.join(", ")));
+  }
+  if (args.linkedEvidence.signalIds.length) {
+    evidenceLines.push(bullet("Signals", args.linkedEvidence.signalIds.join(", ")));
+  }
+  if (args.linkedEvidence.guidanceIds.length) {
+    evidenceLines.push(bullet("Guidance", args.linkedEvidence.guidanceIds.join(", ")));
+  }
+  if (evidenceLines.length) {
+    lines.push("", "## Linked Evidence");
+    lines.push(...evidenceLines);
+  }
+  lines.push(
+    "",
+    "## Operating Contract",
+    "- Read Company Brain (operating snapshot, summary) before mutating anything.",
+    "- Stop before: external writeback not authorized by this work item, secret/permission changes, deploy not requested, real product ambiguity.",
+    "- Open a comment on the source issue if scope is unclear instead of inferring it.",
+    "",
+    "## Suggested Branch",
+    `\`${args.branchSuggestion}\` (from \`origin/main\`)`,
+    "",
+    "## Validation",
+    "- `git diff --check`",
+    "- `npx turbo build`",
+    "- Smoke test relevant to the changed area before commit.",
+    "",
+    "## Closing",
+    args.workItem.externalProvider === "github" && args.workItem.externalId
+      ? `- Open PR with \`Closes ${args.workItem.externalId}\`.`
+      : "- Open PR linking back to this WorkItem.",
+    "- Update `docs/backlog.md` with a status line for the cut.",
+    "- Capture durable learning in `docs/action/<topic>-<date>.md` if the cycle produced one."
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
+  const generatedAt = now();
+  const workItems = data.workItems as WorkItem[];
+  const totals = {
+    activeWorkItemCount: workItems.filter((item) =>
+      NEXT_WORK_ACTIVE_STATUSES.includes(item.status)
+    ).length,
+    blockedWorkItemCount: workItems.filter((item) => item.status === "blocked").length,
+    doneWorkItemCount: workItems.filter(
+      (item) => item.status === "done" || item.status === "cancelled"
+    ).length,
+  };
+  const candidates = workItems.filter(
+    (item) =>
+      NEXT_WORK_ACTIVE_STATUSES.includes(item.status) &&
+      !item.blockedReason
+  );
+  if (!candidates.length) {
+    const reason =
+      totals.blockedWorkItemCount > 0
+        ? "All open work items are blocked. Resolve gate closure or guidance before starting a new session."
+        : totals.doneWorkItemCount > 0 && totals.activeWorkItemCount === 0
+          ? "All work items are done. Sync GitHub Issues or import new evidence to populate the queue."
+          : "No work items available. Run a GitHub Issues sync or import evidence into the Company Brain.";
+    const nextSteps = [
+      "Run `mcp__aios__sync_company_brain_github_issues` against the active repository.",
+      "Review Adoption Dashboard to find sources without work items.",
+      "Open a new issue with the AIOS-* prefix for the next planned cut.",
+    ];
+    return {
+      generatedAt,
+      recommended: null,
+      emptyState: { reason, nextSteps },
+      candidatesConsidered: 0,
+      totals,
+    };
+  }
+
+  const ranked = [...candidates].sort((a, b) => {
+    const aHasPriority = a.priorityId ? 1 : 0;
+    const bHasPriority = b.priorityId ? 1 : 0;
+    if (aHasPriority !== bHasPriority) return bHasPriority - aHasPriority;
+    const aHasGoal = a.goalId ? 1 : 0;
+    const bHasGoal = b.goalId ? 1 : 0;
+    if (aHasGoal !== bHasGoal) return bHasGoal - aHasGoal;
+    const aIsAios = /^AIOS-/i.test(a.title) ? 1 : 0;
+    const bIsAios = /^AIOS-/i.test(b.title) ? 1 : 0;
+    if (aIsAios !== bIsAios) return bIsAios - aIsAios;
+    const aDue = a.dueAt ?? Number.POSITIVE_INFINITY;
+    const bDue = b.dueAt ?? Number.POSITIVE_INFINITY;
+    if (aDue !== bDue) return aDue - bDue;
+    if (a.externalId && b.externalId) {
+      const aNum = Number(a.externalId.match(/(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+      const bNum = Number(b.externalId.match(/(\d+)$/)?.[1] ?? Number.MAX_SAFE_INTEGER);
+      if (aNum !== bNum) return aNum - bNum;
+    }
+    return a.id.localeCompare(b.id);
+  });
+
+  const top = ranked[0];
+  const priorityRecord = top.priorityId
+    ? data.priorities.find((p) => p.id === top.priorityId)
+    : null;
+  const goalRecord = top.goalId ? data.goals.find((g) => g.id === top.goalId) : null;
+  const rationale: string[] = [];
+  if (priorityRecord) {
+    rationale.push(`Linked to priority "${priorityRecord.title}" (${priorityRecord.status}).`);
+  }
+  if (goalRecord) {
+    rationale.push(`Tied to goal "${goalRecord.title}" (${goalRecord.status}).`);
+  }
+  if (/^AIOS-/i.test(top.title)) {
+    rationale.push("Active AIOS roadmap prefix.");
+  }
+  if (top.dueAt) {
+    rationale.push(`Due by ${new Date(top.dueAt).toISOString()}.`);
+  }
+  if (!rationale.length) {
+    rationale.push(`First open work item by FIFO (${candidates.length} candidates).`);
+  }
+
+  const acceptanceCriteria = parseAcceptanceCriteria(top.description);
+
+  const sourceIds = top.sourceId ? [top.sourceId] : [];
+  const artifactIds = top.artifactId ? [top.artifactId] : [];
+  const signalIds = (data.signals as Array<{ workItemId: string | null; id: string }>)
+    .filter((signal) => signal.workItemId === top.id)
+    .map((signal) => signal.id);
+  const guidanceIds = (
+    data.guidanceItems as Array<{ workItemId: string | null; id: string }>
+  )
+    .filter((guidance) => guidance.workItemId === top.id)
+    .map((guidance) => guidance.id);
+
+  const linkedEvidence = { sourceIds, artifactIds, signalIds, guidanceIds };
+  const branchSuggestion = buildNextWorkBranchSuggestion(top);
+  const agentPromptMarkdown = buildNextWorkAgentPrompt({
+    title: top.title,
+    workItem: top,
+    rationale,
+    priority: priorityRecord
+      ? { title: priorityRecord.title, status: priorityRecord.status }
+      : null,
+    goal: goalRecord
+      ? {
+          title: goalRecord.title,
+          status: goalRecord.status,
+          dueAt: goalRecord.dueAt ?? null,
+        }
+      : null,
+    acceptanceCriteria,
+    linkedEvidence,
+    branchSuggestion,
+    generatedAt,
+  });
+
+  return {
+    generatedAt,
+    recommended: {
+      workItem: {
+        id: top.id,
+        title: top.title,
+        description: top.description ?? null,
+        status: top.status,
+        area: top.area,
+        owner: top.owner ?? null,
+        riskClass: top.riskClass,
+        dueAt: top.dueAt ?? null,
+        labels: top.labels ?? [],
+        externalProvider: top.externalProvider ?? null,
+        externalId: top.externalId ?? null,
+        externalUrl: top.externalUrl ?? null,
+        sourceId: top.sourceId ?? null,
+        artifactId: top.artifactId ?? null,
+        updatedAt: top.updatedAt,
+      },
+      rationale,
+      priority: priorityRecord
+        ? {
+            id: priorityRecord.id,
+            title: priorityRecord.title,
+            status: priorityRecord.status,
+          }
+        : null,
+      goal: goalRecord
+        ? {
+            id: goalRecord.id,
+            title: goalRecord.title,
+            status: goalRecord.status,
+            dueAt: goalRecord.dueAt ?? null,
+          }
+        : null,
+      acceptanceCriteria,
+      linkedEvidence,
+      agentPromptMarkdown,
+      branchSuggestion,
+    },
+    emptyState: null,
+    candidatesConsidered: candidates.length,
+    totals,
+  };
+}
+
 function buildOperatingSnapshot(
   data: ReturnType<typeof listAll>
 ): CompanyBrainOperatingSnapshot {
@@ -4507,6 +4838,7 @@ function buildOperatingSnapshot(
   const operatingCadence = buildOperatingCadence(data);
   const gateClosureRitual = buildGateClosureRitual(data);
   const sourceHealthReport = buildSourceHealthReport(data);
+  const nextWork = buildNextWork(data);
   const timeline = buildCompanyBrainTimeline({ data, limit: 12 });
   const latestAgentContext =
     data.agentContexts
@@ -4638,6 +4970,7 @@ function buildOperatingSnapshot(
     summary,
     totals,
     cards,
+    nextWork,
     lastBriefing,
     latestAgentContext,
     operatingCadence,
@@ -9978,6 +10311,11 @@ app.get("/core-readiness", (c) => {
 
 app.get("/operating-snapshot", (c) => {
   const data = buildOperatingSnapshot(listAll());
+  return c.json({ data });
+});
+
+app.get("/next-work", (c) => {
+  const data = buildNextWork(listAll());
   return c.json({ data });
 });
 

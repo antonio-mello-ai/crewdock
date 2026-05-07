@@ -8,10 +8,12 @@ import {
   Clipboard,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   Loader2,
   RefreshCw,
   ShieldCheck,
+  Target,
 } from "lucide-react";
 import {
   useCompanyBrainOperatingSnapshot,
@@ -57,6 +59,8 @@ export default function CompanyBrainOperatingPage() {
   const generateHandoff = useGenerateCompanyBrainDailyAgentHandoff();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
+  const [nextWorkCopyState, setNextWorkCopyState] = useState<"idle" | "copied" | "failed">("idle");
+
   const snapshot = data?.data;
   const operatingLoop = snapshot?.operatingCadence.operatingLoop;
   const handoffMarkdown = snapshot?.latestAgentContext?.content ?? "";
@@ -66,6 +70,35 @@ export default function CompanyBrainOperatingPage() {
       .slice(0, 10);
     return `aios-daily-agent-handoff-${date}.md`;
   }, [snapshot?.latestAgentContext?.createdAt]);
+  const nextWork = snapshot?.nextWork;
+  const nextWorkPrompt = nextWork?.recommended?.agentPromptMarkdown ?? "";
+  const nextWorkFilename = useMemo(() => {
+    const date = new Date(nextWork?.generatedAt ?? Date.now()).toISOString().slice(0, 10);
+    const slug = nextWork?.recommended?.branchSuggestion ?? "next-work";
+    return `aios-next-work-${slug}-${date}.md`;
+  }, [nextWork?.generatedAt, nextWork?.recommended?.branchSuggestion]);
+
+  const copyNextWorkPrompt = async () => {
+    if (!nextWorkPrompt) return;
+    try {
+      await navigator.clipboard.writeText(nextWorkPrompt);
+      setNextWorkCopyState("copied");
+      window.setTimeout(() => setNextWorkCopyState("idle"), 1800);
+    } catch {
+      setNextWorkCopyState("failed");
+    }
+  };
+
+  const downloadNextWorkPrompt = () => {
+    if (!nextWorkPrompt) return;
+    const blob = new Blob([nextWorkPrompt], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = nextWorkFilename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const runPrimaryAction = (card: CompanyBrainOperatingSnapshotCard) => {
     if (card.primaryActionKind === "run_briefing") {
@@ -179,45 +212,188 @@ export default function CompanyBrainOperatingPage() {
           </div>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {snapshot.cards.map((card) => {
-            const Icon = cardIcons[card.key];
-            return (
-              <article key={card.key} className="rounded-md border border-border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Icon className="size-4 shrink-0 text-muted-foreground" />
-                    <h2 className="truncate text-sm font-semibold">{card.title}</h2>
+        <section className="rounded-md border border-primary/40 bg-primary/5 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Target className="size-5 text-primary" />
+              <h2 className="text-lg font-semibold">Next Work</h2>
+              {nextWork?.recommended ? (
+                <Badge variant="default">{nextWork.recommended.workItem.status}</Badge>
+              ) : (
+                <Badge variant="secondary">empty</Badge>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {nextWork
+                ? `${nextWork.candidatesConsidered} candidates - active=${nextWork.totals.activeWorkItemCount} blocked=${nextWork.totals.blockedWorkItemCount}`
+                : null}
+            </span>
+          </div>
+
+          {nextWork?.recommended ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+              <div className="space-y-4">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold">
+                      {nextWork.recommended.workItem.title}
+                    </h3>
+                    {nextWork.recommended.workItem.externalUrl ? (
+                      <a
+                        href={nextWork.recommended.workItem.externalUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <ExternalLink className="size-3" />
+                        {nextWork.recommended.workItem.externalId ?? "external"}
+                      </a>
+                    ) : null}
                   </div>
-                  <Badge variant={stateVariant(card.state)}>{card.state}</Badge>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <Badge variant="outline">{nextWork.recommended.workItem.area}</Badge>
+                    {nextWork.recommended.priority ? (
+                      <Badge variant="outline">
+                        Priority: {nextWork.recommended.priority.title}
+                      </Badge>
+                    ) : null}
+                    {nextWork.recommended.goal ? (
+                      <Badge variant="outline">Goal: {nextWork.recommended.goal.title}</Badge>
+                    ) : null}
+                    {nextWork.recommended.workItem.labels.slice(0, 4).map((label) => (
+                      <Badge key={label} variant="outline">
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-                <p className="mt-3 min-h-12 text-sm text-muted-foreground">
-                  {card.mainAlert}
-                </p>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                  <span className="text-xs text-muted-foreground">
-                    {formatTimestamp(card.lastUpdatedAt)}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => runPrimaryAction(card)}
-                    disabled={running}
-                  >
-                    {running &&
-                    ["run_briefing", "run_operating_cadence", "generate_daily_handoff"].includes(
-                      card.primaryActionKind
-                    ) ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="size-3" />
-                    )}
-                    {card.primaryActionLabel}
-                  </Button>
+
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Why this is next
+                  </h4>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                    {nextWork.recommended.rationale.map((reason, idx) => (
+                      <li key={idx}>{reason}</li>
+                    ))}
+                  </ul>
                 </div>
-              </article>
-            );
-          })}
+
+                {nextWork.recommended.acceptanceCriteria.length ? (
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Acceptance Criteria
+                    </h4>
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                      {nextWork.recommended.acceptanceCriteria.map((ac, idx) => (
+                        <li key={idx}>{ac}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                <div className="text-xs text-muted-foreground">
+                  Suggested branch:{" "}
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                    {nextWork.recommended.branchSuggestion}
+                  </code>
+                </div>
+              </div>
+
+              <aside className="rounded-md border border-border bg-background p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold">Agent Prompt</h4>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={copyNextWorkPrompt}
+                      disabled={!nextWorkPrompt}
+                    >
+                      <Copy className="size-3" />
+                      {nextWorkCopyState === "copied"
+                        ? "Copied"
+                        : nextWorkCopyState === "failed"
+                          ? "Failed"
+                          : "Copy"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={downloadNextWorkPrompt}
+                      disabled={!nextWorkPrompt}
+                    >
+                      <Download className="size-3" />
+                      .md
+                    </Button>
+                  </div>
+                </div>
+                <pre className="mt-3 max-h-[280px] overflow-auto whitespace-pre-wrap rounded border border-border bg-muted/30 p-2 text-[11px] leading-4">
+                  {nextWorkPrompt || "Generate a recommendation to populate this prompt."}
+                </pre>
+              </aside>
+            </div>
+          ) : nextWork?.emptyState ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-sm">{nextWork.emptyState.reason}</p>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Next steps
+                </h4>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
+                  {nextWork.emptyState.nextSteps.map((step, idx) => (
+                    <li key={idx}>{step}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Health
+          </h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {snapshot.cards.map((card) => {
+              const Icon = cardIcons[card.key];
+              return (
+                <article key={card.key} className="rounded-md border border-border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Icon className="size-4 shrink-0 text-muted-foreground" />
+                      <h2 className="truncate text-sm font-semibold">{card.title}</h2>
+                    </div>
+                    <Badge variant={stateVariant(card.state)}>{card.state}</Badge>
+                  </div>
+                  <p className="mt-3 min-h-12 text-sm text-muted-foreground">
+                    {card.mainAlert}
+                  </p>
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      {formatTimestamp(card.lastUpdatedAt)}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => runPrimaryAction(card)}
+                      disabled={running}
+                    >
+                      {running &&
+                      ["run_briefing", "run_operating_cadence", "generate_daily_handoff"].includes(
+                        card.primaryActionKind
+                      ) ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="size-3" />
+                      )}
+                      {card.primaryActionLabel}
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">

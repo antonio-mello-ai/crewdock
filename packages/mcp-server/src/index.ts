@@ -419,12 +419,28 @@ server.registerTool(
   {
     title: "Get Company Brain operating snapshot",
     description:
-      "Read-only compact daily operating surface for AIOS Briefing, Operating Cadence, Gate Closure Ritual, Source Health, Daily Agent Handoff and recent timeline events.",
+      "Read-only compact daily operating surface for AIOS Briefing, Operating Cadence, Gate Closure Ritual, Source Health, Daily Agent Handoff, Next Work recommendation and recent timeline events.",
     inputSchema: {},
   },
   async () => {
     const result = await daemonFetch<{ data: unknown }>(
       "/api/company-brain/operating-snapshot"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_next_work",
+  {
+    title: "Get Company Brain next work recommendation",
+    description:
+      "Read-only execution recommendation: the next WorkItem an agent should pick up, with rationale, linked priority/goal, parsed acceptance criteria, evidence ids, branch suggestion and an agent-ready prompt in markdown. Returns an empty state with next steps when no candidate is available. Does not run an agent or mutate external systems.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/next-work"
     );
     return formatJsonResult(result.data);
   }
