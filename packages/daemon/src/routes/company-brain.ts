@@ -15,6 +15,9 @@ import type {
   CompanyBrainEvidenceGraph,
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainReviewCohesion,
+  CompanyBrainTimeline,
+  CompanyBrainTimelineEvent,
+  CompanyBrainTimelineScope,
   CompanyBrainReviewQueueItem,
   CompanyBrainSourceHealthReport,
   CompanyBrainWritebackAuditTrailResponse,
@@ -6295,6 +6298,370 @@ function buildCompanyBrainEvidenceGraph(args: {
   };
 }
 
+function buildCompanyBrainTimeline(args: {
+  data: ReturnType<typeof listAll>;
+  scope?: CompanyBrainTimelineScope | null;
+  id?: string | null;
+  limit?: number;
+}): CompanyBrainTimeline {
+  const generatedAt = now();
+  const scope = args.scope ?? "all";
+  const id = args.id ?? null;
+  const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
+  const events: CompanyBrainTimelineEvent[] = [];
+  const includeSource = (sourceId: string | null) =>
+    scope === "all" || (scope === "source" && sourceId === id);
+  const proposalMatches = (proposal: ExternalActionProposal) => {
+    if (scope === "all") return true;
+    if (scope === "proposal") return proposal.id === id;
+    if (scope === "target") {
+      return writebackTargetObservabilityBase(proposal).targetKey === id;
+    }
+    return false;
+  };
+  const includeProposalLink = (proposalId: string | null, targetKey: string | null) => {
+    if (scope === "all") return true;
+    if (scope === "proposal") return proposalId === id;
+    if (scope === "target") return targetKey === id;
+    return false;
+  };
+  const pushEvent = (event: CompanyBrainTimelineEvent) => {
+    events.push(event);
+  };
+
+  for (const source of args.data.sources) {
+    if (!includeSource(source.id)) continue;
+    pushEvent({
+      id: `source_created:${source.id}`,
+      at: source.createdAt,
+      scope: "source",
+      eventType: "source_created",
+      entityKind: "source",
+      entityId: source.id,
+      title: source.name,
+      status: source.healthStatus,
+      detail: source.sourceType,
+      actor: source.owner,
+      sourceId: source.id,
+      proposalId: null,
+      targetKey: null,
+      externalUrl: null,
+      rawRef: source.externalRef,
+      provenance: null,
+    });
+    if (source.lastSyncAt) {
+      pushEvent({
+        id: `source_synced:${source.id}:${source.lastSyncAt}`,
+        at: source.lastSyncAt,
+        scope: "source",
+        eventType: source.syncError ? "source_sync_error" : "source_synced",
+        entityKind: "source",
+        entityId: source.id,
+        title: source.name,
+        status: source.syncError ? "error" : source.healthStatus,
+        detail: source.syncError,
+        actor: source.owner,
+        sourceId: source.id,
+        proposalId: null,
+        targetKey: null,
+        externalUrl: null,
+        rawRef: source.externalRef,
+        provenance: null,
+      });
+    }
+  }
+  for (const artifact of args.data.artifacts) {
+    if (!includeSource(artifact.sourceId)) continue;
+    pushEvent({
+      id: `artifact_ingested:${artifact.id}`,
+      at: artifact.ingestedAt,
+      scope: "source",
+      eventType: "artifact_ingested",
+      entityKind: "artifact",
+      entityId: artifact.id,
+      title: artifact.title,
+      status: artifact.humanReviewStatus,
+      detail: artifact.artifactType,
+      actor: artifact.author,
+      sourceId: artifact.sourceId,
+      proposalId: null,
+      targetKey: null,
+      externalUrl: artifact.contentRef,
+      rawRef: artifact.rawRef,
+      provenance: artifact.provenance,
+    });
+  }
+  for (const watcherRun of args.data.watcherRuns) {
+    const sourceId = watcherRun.sourceIds[0] ?? null;
+    if (!includeSource(sourceId)) continue;
+    pushEvent({
+      id: `watcher_run:${watcherRun.id}`,
+      at: watcherRun.finishedAt ?? watcherRun.startedAt,
+      scope: "source",
+      eventType: "watcher_run",
+      entityKind: "watcher_run",
+      entityId: watcherRun.id,
+      title: watcherRun.watcherId,
+      status: watcherRun.status,
+      detail: watcherRun.errorSummary,
+      actor: null,
+      sourceId,
+      proposalId: null,
+      targetKey: null,
+      externalUrl: null,
+      rawRef: watcherRun.triggerRef,
+      provenance: watcherRun.provenance,
+    });
+  }
+  const proposalIdsByLinkedEntity = new Map<string, ExternalActionProposal[]>();
+  for (const proposal of args.data.externalActionProposals) {
+    for (const [kind, entityId] of [
+      ["guidance_item", proposal.guidanceItemId],
+      ["signal", proposal.signalId],
+      ["alignment_finding", proposal.findingId],
+      ["work_item", proposal.workItemId],
+      ["workflow_run", proposal.workflowRunId],
+    ] as const) {
+      if (!entityId) continue;
+      const key = `${kind}:${entityId}`;
+      proposalIdsByLinkedEntity.set(key, [
+        ...(proposalIdsByLinkedEntity.get(key) ?? []),
+        proposal,
+      ]);
+    }
+  }
+  const pushLinkedEvent = (args: {
+    at: number;
+    eventType: string;
+    entityKind: CompanyBrainTimelineEvent["entityKind"];
+    entityId: string;
+    title: string;
+    status: string | null;
+    detail: string | null;
+    actor?: string | null;
+    sourceId?: string | null;
+    externalUrl?: string | null;
+    rawRef?: string | null;
+    provenance?: Provenance | null;
+  }) => {
+    const linkedProposals =
+      proposalIdsByLinkedEntity.get(`${args.entityKind}:${args.entityId}`) ?? [];
+    if (scope === "source") {
+      if (!includeSource(args.sourceId ?? null)) return;
+      pushEvent({
+        ...args,
+        id: `${args.eventType}:${args.entityId}`,
+        scope: "source",
+        actor: args.actor ?? null,
+        sourceId: args.sourceId ?? null,
+        proposalId: null,
+        targetKey: null,
+        externalUrl: args.externalUrl ?? null,
+        rawRef: args.rawRef ?? null,
+        provenance: args.provenance ?? null,
+      });
+      return;
+    }
+    if (!linkedProposals.length && scope === "all") {
+      pushEvent({
+        ...args,
+        id: `${args.eventType}:${args.entityId}`,
+        scope: "all",
+        actor: args.actor ?? null,
+        sourceId: args.sourceId ?? null,
+        proposalId: null,
+        targetKey: null,
+        externalUrl: args.externalUrl ?? null,
+        rawRef: args.rawRef ?? null,
+        provenance: args.provenance ?? null,
+      });
+      return;
+    }
+    for (const proposal of linkedProposals) {
+      const targetKey = writebackTargetObservabilityBase(proposal).targetKey;
+      if (!includeProposalLink(proposal.id, targetKey)) continue;
+      pushEvent({
+        ...args,
+        id: `${args.eventType}:${args.entityId}:${proposal.id}`,
+        scope: scope === "all" ? "proposal" : scope,
+        actor: args.actor ?? null,
+        sourceId: args.sourceId ?? null,
+        proposalId: proposal.id,
+        targetKey,
+        externalUrl: args.externalUrl ?? null,
+        rawRef: args.rawRef ?? null,
+        provenance: args.provenance ?? null,
+      });
+    }
+  };
+  for (const workItem of args.data.workItems) {
+    pushLinkedEvent({
+      at: workItem.createdAt,
+      eventType: "work_item_created",
+      entityKind: "work_item",
+      entityId: workItem.id,
+      title: workItem.title,
+      status: workItem.status,
+      detail: workItem.externalUrl,
+      actor: workItem.owner,
+      sourceId: workItem.sourceId,
+      externalUrl: workItem.externalUrl,
+      rawRef: workItem.externalId,
+      provenance: workItem.provenance,
+    });
+  }
+  for (const workflowRun of args.data.workflowRuns) {
+    pushLinkedEvent({
+      at: workflowRun.startedAt ?? workflowRun.createdAt,
+      eventType: "workflow_run_started",
+      entityKind: "workflow_run",
+      entityId: workflowRun.id,
+      title: workflowRun.title,
+      status: workflowRun.status,
+      detail: workflowRun.currentStep,
+      actor: workflowRun.owner,
+      sourceId: null,
+      provenance: workflowRun.provenance,
+    });
+    if (workflowRun.finishedAt) {
+      pushLinkedEvent({
+        at: workflowRun.finishedAt,
+        eventType: "workflow_run_finished",
+        entityKind: "workflow_run",
+        entityId: workflowRun.id,
+        title: workflowRun.title,
+        status: workflowRun.status,
+        detail: workflowRun.currentStep,
+        actor: workflowRun.owner,
+        sourceId: null,
+        provenance: workflowRun.provenance,
+      });
+    }
+  }
+  for (const signal of args.data.signals) {
+    pushLinkedEvent({
+      at: signal.createdAt,
+      eventType: "signal_created",
+      entityKind: "signal",
+      entityId: signal.id,
+      title: signal.summary,
+      status: signal.severity,
+      detail: signal.source,
+      actor: null,
+      sourceId: signal.sourceId,
+      rawRef: signal.rawRef,
+      provenance: signal.provenance,
+    });
+  }
+  for (const finding of args.data.alignmentFindings) {
+    pushLinkedEvent({
+      at: finding.createdAt,
+      eventType: "alignment_finding_created",
+      entityKind: "alignment_finding",
+      entityId: finding.id,
+      title: finding.rationale,
+      status: finding.classification,
+      detail: finding.suggestedAction,
+      actor: null,
+      sourceId: null,
+      provenance: finding.provenance,
+    });
+  }
+  for (const guidance of args.data.guidanceItems) {
+    pushLinkedEvent({
+      at: guidance.createdAt,
+      eventType: "guidance_created",
+      entityKind: "guidance_item",
+      entityId: guidance.id,
+      title: guidance.title,
+      status: guidance.status,
+      detail: guidance.action,
+      actor: null,
+      sourceId: null,
+      provenance: guidance.provenance,
+    });
+    if (guidance.feedbackAt) {
+      pushLinkedEvent({
+        at: guidance.feedbackAt,
+        eventType: "guidance_feedback",
+        entityKind: "guidance_item",
+        entityId: guidance.id,
+        title: guidance.title,
+        status: guidance.feedbackStatus,
+        detail: guidance.feedbackNote,
+        actor: null,
+        sourceId: null,
+        provenance: guidance.provenance,
+      });
+    }
+  }
+  for (const proposal of args.data.externalActionProposals) {
+    if (!proposalMatches(proposal)) continue;
+    const targetKey = writebackTargetObservabilityBase(proposal).targetKey;
+    pushEvent({
+      id: `proposal_created:${proposal.id}`,
+      at: proposal.createdAt,
+      scope: scope === "all" ? "proposal" : scope,
+      eventType: "proposal_created",
+      entityKind: "external_action_proposal",
+      entityId: proposal.id,
+      title: proposal.title,
+      status: proposal.approvalStatus,
+      detail: proposal.policySummary,
+      actor: proposal.requestedBy,
+      sourceId: null,
+      proposalId: proposal.id,
+      targetKey,
+      externalUrl: proposal.externalUrl,
+      rawRef: proposal.destinationRef,
+      provenance: null,
+    });
+    for (const auditEvent of proposal.auditTrail) {
+      if (auditEvent.event === "proposal_created") continue;
+      pushEvent({
+        id: `proposal_audit:${proposal.id}:${auditEvent.event}:${auditEvent.at}`,
+        at: auditEvent.at,
+        scope: scope === "all" ? "proposal" : scope,
+        eventType: auditEvent.event,
+        entityKind: "external_action_proposal",
+        entityId: proposal.id,
+        title: proposal.title,
+        status: proposal.executionStatus,
+        detail: auditEvent.note,
+        actor: auditEvent.actor,
+        sourceId: null,
+        proposalId: proposal.id,
+        targetKey,
+        externalUrl: proposal.externalUrl,
+        rawRef: proposal.destinationRef,
+        provenance: null,
+      });
+    }
+  }
+
+  const sorted = events.sort((a, b) => b.at - a.at);
+  const limited = sorted.slice(0, limit);
+  return {
+    generatedAt,
+    filters: { scope, id, limit },
+    events: limited,
+    total: sorted.length,
+    stats: {
+      eventCount: sorted.length,
+      proposalEventCount: sorted.filter((event) => event.proposalId).length,
+      targetEventCount: sorted.filter((event) => event.targetKey).length,
+      sourceEventCount: sorted.filter((event) => event.sourceId).length,
+      externalWriteEventCount: sorted.filter((event) =>
+        ["github_comment_posted", "github_label_added", "github_status_set", "slack_thread_reply_posted"].includes(
+          event.eventType
+        )
+      ).length,
+      latestAt: sorted[0]?.at ?? null,
+      earliestAt: sorted.at(-1)?.at ?? null,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -6655,6 +7022,7 @@ app.get("/summary", (c) => {
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const writebackProposalTargetReview = buildWritebackProposalTargetReview({ data });
   const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
+  const timeline = buildCompanyBrainTimeline({ data });
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -6690,6 +7058,7 @@ app.get("/summary", (c) => {
       writebackSafetyDashboard,
       writebackProposalTargetReview,
       evidenceGraph,
+      timeline,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -6780,6 +7149,28 @@ app.get("/evidence-graph", (c) => {
     rootKind,
     rootId,
     limit: Number.isFinite(limitParam) ? limitParam : 250,
+  });
+  return c.json({ data });
+});
+
+app.get("/timeline", (c) => {
+  const scopeParam = c.req.query("scope")?.trim() || null;
+  const id = c.req.query("id")?.trim() || null;
+  const limitParam = Number(c.req.query("limit") ?? "100");
+  const allowedScopes: CompanyBrainTimelineScope[] = [
+    "all",
+    "proposal",
+    "target",
+    "source",
+  ];
+  const scope = allowedScopes.includes(scopeParam as CompanyBrainTimelineScope)
+    ? (scopeParam as CompanyBrainTimelineScope)
+    : "all";
+  const data = buildCompanyBrainTimeline({
+    data: listAll(),
+    scope,
+    id,
+    limit: Number.isFinite(limitParam) ? limitParam : 100,
   });
   return c.json({ data });
 });

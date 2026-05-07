@@ -406,6 +406,31 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_timeline",
+  {
+    title: "Get Company Brain timeline",
+    description:
+      "Read-only timeline for Company Brain events by all activity, proposal, writeback target or source. Includes proposal audit, preview, execution, evidence and provenance events without mutating external systems.",
+    inputSchema: {
+      scope: z.enum(["all", "proposal", "target", "source"]).optional(),
+      id: z.string().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    },
+  },
+  async ({ scope, id, limit }) => {
+    const params = new URLSearchParams();
+    if (scope) params.set("scope", scope);
+    if (id) params.set("id", id);
+    if (limit) params.set("limit", String(limit));
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/timeline${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_felhen_demo_v0_1",
   {
     title: "Run Felhen Demo v0.1",

@@ -2155,6 +2155,47 @@ export interface CompanyBrainEvidenceGraph {
   };
 }
 
+export type CompanyBrainTimelineScope = "all" | "proposal" | "target" | "source";
+
+export interface CompanyBrainTimelineEvent {
+  id: string;
+  at: number;
+  scope: CompanyBrainTimelineScope;
+  eventType: string;
+  entityKind: CompanyBrainEvidenceGraphNodeKind | "watcher_run";
+  entityId: string;
+  title: string;
+  status: string | null;
+  detail: string | null;
+  actor: string | null;
+  sourceId: string | null;
+  proposalId: string | null;
+  targetKey: string | null;
+  externalUrl: string | null;
+  rawRef: string | null;
+  provenance: Provenance | null;
+}
+
+export interface CompanyBrainTimeline {
+  generatedAt: number;
+  filters: {
+    scope: CompanyBrainTimelineScope;
+    id: string | null;
+    limit: number;
+  };
+  events: CompanyBrainTimelineEvent[];
+  total: number;
+  stats: {
+    eventCount: number;
+    proposalEventCount: number;
+    targetEventCount: number;
+    sourceEventCount: number;
+    externalWriteEventCount: number;
+    latestAt: number | null;
+    earliestAt: number | null;
+  };
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2522,6 +2563,7 @@ export interface CompanyBrainSummary {
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
   writebackProposalTargetReview: CompanyBrainWritebackProposalTargetReview;
   evidenceGraph: CompanyBrainEvidenceGraph;
+  timeline: CompanyBrainTimeline;
   stats: {
     sourceCount: number;
     artifactCount: number;

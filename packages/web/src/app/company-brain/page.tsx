@@ -402,6 +402,7 @@ export default function CompanyBrainPage() {
   const writebackSafetyDashboard = summary?.writebackSafetyDashboard;
   const writebackProposalTargetReview = summary?.writebackProposalTargetReview;
   const evidenceGraph = summary?.evidenceGraph;
+  const timeline = summary?.timeline;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -2553,6 +2554,46 @@ export default function CompanyBrainPage() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                ) : null}
+                {timeline ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-medium text-neutral-300">
+                        Timeline
+                      </p>
+                      <p className="text-xs text-neutral-700">
+                        {timeline.stats.eventCount} events ·{" "}
+                        {timeline.stats.externalWriteEventCount} external writes ·{" "}
+                        {timeline.stats.targetEventCount} target-linked
+                      </p>
+                    </div>
+                    <div className="mt-2 divide-y divide-neutral-800/40">
+                      {timeline.events.slice(0, 8).map((event) => (
+                        <div
+                          key={event.id}
+                          className="grid gap-1 py-2 text-xs lg:grid-cols-[1fr_auto]"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <StatusBadge value={event.eventType} />
+                              <StatusBadge value={event.entityKind} />
+                              {event.status ? <StatusBadge value={event.status} /> : null}
+                            </div>
+                            <p className="mt-1 truncate text-neutral-500">
+                              {event.title}
+                            </p>
+                            <p className="mt-1 truncate text-neutral-700">
+                              {event.targetKey ?? event.sourceId ?? event.entityId}
+                              {event.detail ? ` · ${event.detail}` : ""}
+                            </p>
+                          </div>
+                          <p className="text-neutral-700">
+                            {event.actor ?? "system"} · {formatTimeAgo(event.at)}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ) : null}
