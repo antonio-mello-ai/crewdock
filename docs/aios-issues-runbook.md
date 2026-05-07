@@ -88,15 +88,17 @@ Issues GitHub sao espelhadas (read-only) para o Company Brain via adapter
 GitHub Issues. Por issue criada/fechada/relabelada, esperar:
 
 - `Source` `AIOS GitHub Issues active roadmap` (reusado, nao recriado).
-- `Artifact` `github_issue` por issue, com `raw_ref` apontando para a URL HTML
-  do GitHub e provenance `adapter:github_issues_sync`.
-- `WorkItem` canonico com `external_provider=github`, `external_id=<issue
-  number>`, `external_url`, status `open|closed`, owner derivado de assignees,
-  labels e milestone copiados do GitHub.
+- `Artifact` `github_issue` por issue, com `rawRef` apontando para a URL HTML
+  do GitHub e provenance `adapter:github_issues`.
+- `WorkItem` canonico com `externalProvider=github`,
+  `externalId=antonio-mello-ai/crewdock#<issue number>`, `externalUrl`,
+  status `triage` para issue aberta ou `done` para issue fechada, owner
+  derivado de assignees, labels e milestone copiados do GitHub.
+- WorkItem provenance: `adapter:github_issues:work_item`.
 
 Adapter:
 
-- API: `POST /api/company-brain/sources/github-issues/sync`.
+- API: `POST /api/company-brain/adapters/github/issues/sync`.
 - MCP tool: `mcp__aios__sync_company_brain_github_issues`.
 
 Modo: read-only. Nao escreve em GitHub. Issues que mudam de label/state apos o
@@ -105,7 +107,7 @@ ultimo sync sao reconciliadas no proximo sync.
 Limites:
 
 - Sync nao apaga `WorkItem` quando a issue some do filtro. Ha dedupe por
-  `external_id`; mudancas chegam como reconciliacao.
+  `externalId`; mudancas chegam como reconciliacao.
 - Issues com prefixo `AIOS-` viram WorkItems sob prioridade do roadmap quando
   associacao manual existe; demais ficam visiveis em Adoption Dashboard com gap
   `no_priority_or_goal`.
@@ -120,7 +122,7 @@ Limites:
 2. Identificar a proxima issue:
    - Listar issues abertas da milestone ativa via `gh issue list --milestone
      "AIOS Execution Loop v0" --state open` ordenadas por numero.
-   - Ou ler WorkItems com `external_provider=github` no Company Brain summary.
+   - Ou ler WorkItems com `externalProvider=github` no Company Brain summary.
    - Ou ler `Adoption Dashboard` para ver gaps por source.
 3. Validar que a issue tem `Acceptance Criteria` e `Constraints` legiveis. Se
    nao tiver, abrir comentario sugestivo (HITL) em vez de implementar; nao
@@ -156,7 +158,7 @@ Limites:
 5. Preencher template (Context/Goal/Scope/Acceptance/Constraints).
 6. Apos abrir, rodar sync read-only para criar `Artifact`/`WorkItem`:
    - `mcp__aios__sync_company_brain_github_issues` ou
-   - `POST /api/company-brain/sources/github-issues/sync`.
+   - `POST /api/company-brain/adapters/github/issues/sync`.
 
 ## Mutation policy
 
