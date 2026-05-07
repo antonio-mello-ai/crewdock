@@ -32,7 +32,10 @@ import type {
   AreaBlueprintEntry,
   AreaBlueprintReadinessStatus,
   AreaBlueprintRegistry,
+  AgentRunEvaluation,
+  AgentRunEvaluationKind,
   DecomposeOperatingGoalRequest,
+  EvaluateAgentRunRequest,
   OperatingGoalAreaPlan,
   OperatingGoalDecomposition,
   OperatingGoalDirection,
@@ -115,6 +118,7 @@ import type {
   SignalSeverity,
   RunWatcherRequest,
   SessionResultOutcome,
+  SessionResultRunnerType,
   SessionResultValidation,
   SubmitSessionResultRequest,
   SubmitSessionResultResponse,
@@ -11725,6 +11729,399 @@ function buildOperatingGoalDecomposition(
       "Goal-to-Execution Superoptimizer v0 is read-first and governed: it derives areas, candidate WorkItems, watchers and gates from the existing Company Brain. It does not auto-create WorkItems, agent runs or external writeback. Use Command Router to commit Risk A artefacts; use the existing proposal flow for Risk B writeback.",
   };
 }
+
+function classifyAgentRun(
+  outcome: SessionResultOutcome | null,
+  validations: Array<{ kind: string; status: string }>,
+  blockers: Array<{ kind: string }>,
+  nextSteps: Array<{ action: string }>,
+  treatPartialAsFailure: boolean
+): { kind: AgentRunEvaluationKind; rationale: string[]; confidence: number } {
+  const rationale: string[] = [];
+  const failedValidations = validations.filter((v) => v.status === "failed");
+  const policyKeywords = /\b(?:policy|writeback|approval|allowlist|gate)\b/i;
+  const contextKeywords = /\b(?:context|prompt|missing|unclear|ambiguous|spec)\b/i;
+  const toolKeywords = /\b(?:tool|api|connector|adapter|http|timeout|rate.?limit|network)\b/i;
+  const executionKeywords = /\b(?:build|compile|exception|crash|error|panic)\b/i;
+  const validationKeywords = /\b(?:test|qa|lint|type|review)\b/i;
+
+  let kind: AgentRunEvaluationKind = "success";
+  let confidence = 0.7;
+
+  if (outcome === "completed" && !blockers.length && !failedValidations.length) {
+    rationale.push("Outcome=completed with no blockers and no failed validations.");
+    return { kind: "success", rationale, confidence: 0.9 };
+  }
+  if (outcome === "pr_opened" || outcome === "awaiting_review") {
+    if (failedValidations.length) {
+      rationale.push("PR opened but validations report failures; partial.");
+      return {
+        kind: treatPartialAsFailure ? "failed_validation" : "partial",
+        rationale,
+        confidence: 0.8,
+      };
+    }
+    rationale.push("PR opened/awaiting review with no validation failure.");
+    return { kind: "success", rationale, confidence: 0.85 };
+  }
+  if (outcome === "blocked") {
+    rationale.push("Outcome=blocked surfaces an explicit blocker for human review.");
+    kind = "needs_human";
+    confidence = 0.8;
+    return { kind, rationale, confidence };
+  }
+  if (outcome === "cancelled") {
+    rationale.push("Outcome=cancelled; treated as needs_human until reviewer triages it.");
+    return { kind: "needs_human", rationale, confidence: 0.7 };
+  }
+  if (outcome === "failed" || failedValidations.length || blockers.length) {
+    const sample = [
+      ...validations.map((v) => `${v.kind}:${v.status}`),
+      ...blockers.map((b) => b.kind),
+      ...nextSteps.map((s) => s.action),
+    ].join(" \n ");
+    if (policyKeywords.test(sample)) {
+      kind = "failed_policy";
+      rationale.push("Failure mentions policy/writeback/approval/allowlist/gate.");
+      confidence = 0.85;
+    } else if (toolKeywords.test(sample)) {
+      kind = "failed_tool";
+      rationale.push("Failure mentions tool/api/connector/timeout/network.");
+      confidence = 0.8;
+    } else if (validationKeywords.test(sample)) {
+      kind = "failed_validation";
+      rationale.push("Failure mentions test/qa/lint/type/review.");
+      confidence = 0.8;
+    } else if (executionKeywords.test(sample)) {
+      kind = "failed_execution";
+      rationale.push("Failure mentions build/compile/exception/crash/error.");
+      confidence = 0.8;
+    } else if (contextKeywords.test(sample)) {
+      kind = "failed_context";
+      rationale.push("Failure mentions context/prompt/missing/unclear/spec.");
+      confidence = 0.75;
+    } else {
+      kind = "failed_execution";
+      rationale.push(
+        "Failure detected but no specific category keywords matched; defaulting to failed_execution."
+      );
+      confidence = 0.55;
+    }
+    if (failedValidations.length && kind !== "failed_validation") {
+      rationale.push(
+        `Detected ${failedValidations.length} failed validation(s); raising validation focus.`
+      );
+    }
+    return { kind, rationale, confidence };
+  }
+  if (nextSteps.length && !blockers.length) {
+    rationale.push("No outcome but nextSteps require human review.");
+    return { kind: "needs_human", rationale, confidence: 0.6 };
+  }
+  rationale.push("No outcome, validations, blockers or nextSteps; defaulting to needs_human.");
+  return { kind: "needs_human", rationale, confidence: 0.4 };
+}
+
+function severityForEvaluationKind(kind: AgentRunEvaluationKind): SignalSeverity {
+  if (kind === "success") return "info";
+  if (kind === "partial" || kind === "needs_human") return "warn";
+  return "critical";
+}
+
+app.post("/agent-run-evaluations", async (c) => {
+  try {
+    const db = getDb();
+    const body = (await c.req
+      .json<EvaluateAgentRunRequest>()
+      .catch(() => ({}))) as EvaluateAgentRunRequest;
+    if (!body.sessionResultArtifactId && !body.inlineSessionResult) {
+      return c.json(
+        {
+          error: "validation",
+          message:
+            "Either sessionResultArtifactId or inlineSessionResult is required",
+        },
+        400
+      );
+    }
+    const visibility = body.visibility ?? "internal";
+    const treatPartialAsFailure = body.treatPartialAsFailure === true;
+    let sessionArtifact: typeof cbArtifacts.$inferSelect | null = null;
+    if (body.sessionResultArtifactId) {
+      sessionArtifact = db
+        .select()
+        .from(cbArtifacts)
+        .where(eq(cbArtifacts.id, body.sessionResultArtifactId))
+        .get() as typeof cbArtifacts.$inferSelect | undefined ?? null;
+      if (!sessionArtifact) {
+        return c.json(
+          {
+            error: "not_found",
+            message: "session_result artifact not found",
+          },
+          404
+        );
+      }
+      if (sessionArtifact.artifactType !== "session_result") {
+        return c.json(
+          {
+            error: "validation",
+            message: "artifact is not of type session_result",
+          },
+          400
+        );
+      }
+    }
+
+    const sessionMetadata = (sessionArtifact?.metadata ??
+      (body.inlineSessionResult as Record<string, unknown> | undefined) ??
+      {}) as Record<string, unknown>;
+    const outcome =
+      (sessionMetadata.outcome as SessionResultOutcome | undefined) ?? null;
+    const runnerType =
+      (sessionMetadata.runnerType as SessionResultRunnerType | undefined) ?? null;
+    const validations = Array.isArray(sessionMetadata.validations)
+      ? (sessionMetadata.validations as Array<{ kind: string; status: string; notes?: string }>)
+      : [];
+    const blockers = Array.isArray(sessionMetadata.blockers)
+      ? (sessionMetadata.blockers as Array<{ kind: string; description: string }>)
+      : [];
+    const nextSteps = Array.isArray(sessionMetadata.nextSteps)
+      ? (sessionMetadata.nextSteps as Array<{ action: string }>)
+      : [];
+    const branch =
+      typeof sessionMetadata.branch === "string" ? sessionMetadata.branch : null;
+    const prUrl =
+      typeof sessionMetadata.prUrl === "string" ? sessionMetadata.prUrl : null;
+    const tokensTotal =
+      typeof sessionMetadata.tokensTotal === "number"
+        ? (sessionMetadata.tokensTotal as number)
+        : null;
+    const sessionWorkItemId =
+      typeof sessionMetadata.workItemId === "string"
+        ? (sessionMetadata.workItemId as string)
+        : null;
+    const workItemId =
+      body.workItemId ?? sessionWorkItemId ?? null;
+    const workflowRunId =
+      typeof sessionMetadata.workflowRunId === "string"
+        ? (sessionMetadata.workflowRunId as string)
+        : null;
+
+    const classification = classifyAgentRun(
+      outcome,
+      validations,
+      blockers,
+      nextSteps,
+      treatPartialAsFailure
+    );
+
+    const timestamp = now();
+    const evaluationArtifactId = nanoid(12);
+    const sourceId =
+      sessionArtifact?.sourceId ??
+      ensureSessionResultsSource("development", visibility, timestamp);
+    const rawRef = `aios://agent-run-evaluation/${evaluationArtifactId}-${timestamp}`;
+    const evaluationMetadata: Record<string, unknown> = {
+      kind: classification.kind,
+      confidence: classification.confidence,
+      sessionResultArtifactId: sessionArtifact?.id ?? null,
+      reviewer: body.reviewer ?? null,
+      runnerType,
+      outcome,
+      branch,
+      prUrl,
+      validationsFailed: validations.filter((v) => v.status === "failed").length,
+      blockerCount: blockers.length,
+      nextStepCount: nextSteps.length,
+      tokensTotal,
+    };
+    const evaluationArtifact: Artifact = {
+      id: evaluationArtifactId,
+      sourceId,
+      artifactType: "agent_run_evaluation",
+      area: (sessionArtifact?.area as CompanyBrainArea) ?? "development",
+      title: `Agent run evaluation: ${classification.kind} (${runnerType ?? "unknown"})`,
+      summary: classification.rationale.join(" "),
+      contentRef: sessionArtifact?.id ?? null,
+      rawRef,
+      author: body.reviewer ?? null,
+      occurredAt: timestamp,
+      ingestedAt: timestamp,
+      hash: createHash("sha256")
+        .update(JSON.stringify({ evaluationArtifactId, evaluationMetadata }))
+        .digest("hex"),
+      visibility,
+      provenance: {
+        sourceId,
+        rawRef,
+        artifactId: evaluationArtifactId,
+        createdFrom: "company_brain:agent_run_evaluation",
+        confidence: classification.confidence,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending",
+        visibility,
+        notes: `kind=${classification.kind}; runner=${runnerType ?? "unknown"}; outcome=${outcome ?? "unknown"}`,
+      },
+      humanReviewStatus: "pending",
+      confidence: classification.confidence,
+      metadata: evaluationMetadata,
+    };
+    db.insert(cbArtifacts).values(evaluationArtifact as never).run();
+
+    const signalsCreated: Signal[] = [];
+    const severity = severityForEvaluationKind(classification.kind);
+    if (classification.kind !== "success") {
+      const signalId = nanoid(12);
+      const signalRow = {
+        id: signalId,
+        source: "qa" as const,
+        scope: "core" as const,
+        entityType: "job" as const,
+        entityId: workItemId ?? evaluationArtifactId,
+        timestamp,
+        summary: `Agent run evaluation: ${classification.kind}. ${classification.rationale[0] ?? ""}`,
+        rawRef,
+        severity,
+        confidence: classification.confidence,
+        tags: ["agent_run_evaluation", classification.kind, runnerType ?? "unknown"],
+        area: (sessionArtifact?.area as CompanyBrainArea) ?? "development",
+        sourceId,
+        artifactId: evaluationArtifactId,
+        workItemId,
+        workflowRunId,
+        watcherId: null,
+        watcherRunId: null,
+        visibility,
+        provenance: {
+          sourceId,
+          rawRef,
+          artifactId: evaluationArtifactId,
+          createdFrom: "company_brain:agent_run_evaluation:signal",
+          confidence: classification.confidence,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility,
+          notes: `kind=${classification.kind}`,
+        },
+        metadata: { kind: classification.kind, rationale: classification.rationale },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbSignals).values(signalRow as never).run();
+      signalsCreated.push(signalRow as unknown as Signal);
+    }
+
+    const guidanceCreated: GuidanceItem[] = [];
+    if (
+      classification.kind !== "success" &&
+      classification.kind !== "partial"
+    ) {
+      const guidanceId = nanoid(12);
+      const guidanceAction =
+        classification.kind === "failed_context"
+          ? "Improve agent context: clarify the prompt, attach the missing spec or evidence, then retry."
+          : classification.kind === "failed_tool"
+            ? "Inspect tool/connector logs, check rate limits and retry the agent run after the tool layer is fixed."
+            : classification.kind === "failed_policy"
+              ? "Route the failed action through the existing ExternalActionProposal flow with HITL approval and policy gates."
+              : classification.kind === "failed_execution"
+                ? "Reproduce the failure locally, debug the build/runtime path, then re-run."
+                : classification.kind === "failed_validation"
+                  ? "Fix the failing tests/lint/type errors before reopening the PR."
+                  : "Human review required before the next attempt.";
+      const guidanceRow = {
+        id: guidanceId,
+        audience: "human" as const,
+        priorityId: null,
+        goalId: null,
+        findingId: null,
+        signalId: signalsCreated[0]?.id ?? null,
+        workItemId,
+        workflowRunId,
+        area: (sessionArtifact?.area as CompanyBrainArea) ?? "development",
+        title: `Agent run evaluation follow-up: ${classification.kind}`,
+        action: guidanceAction,
+        dueAt: null,
+        severity,
+        status: "new" as const,
+        feedbackStatus: "pending" as const,
+        feedbackNote: null,
+        feedbackAt: null,
+        generatedFrom: {
+          evaluationArtifactId,
+          sessionResultArtifactId: sessionArtifact?.id ?? null,
+        },
+        visibility,
+        provenance: {
+          sourceId,
+          rawRef,
+          artifactId: evaluationArtifactId,
+          createdFrom: "company_brain:agent_run_evaluation:guidance",
+          confidence: classification.confidence,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility,
+          notes: `kind=${classification.kind}`,
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbGuidanceItems).values(guidanceRow as never).run();
+      guidanceCreated.push(guidanceRow as unknown as GuidanceItem);
+    }
+
+    let improvementProposalSuggested = false;
+    let improvementProposalRationale: string | null = null;
+    if (workItemId && classification.kind.startsWith("failed_")) {
+      const repeatedSignals = (
+        db
+          .select()
+          .from(cbSignals)
+          .where(eq(cbSignals.workItemId, workItemId))
+          .all() as Array<{ tags: string[] | null; severity: string }>
+      ).filter((row) =>
+        Array.isArray(row.tags) &&
+        row.tags.includes("agent_run_evaluation") &&
+        row.tags.includes(classification.kind)
+      );
+      if (repeatedSignals.length >= 2) {
+        improvementProposalSuggested = true;
+        improvementProposalRationale = `Detected ${repeatedSignals.length} repeated ${classification.kind} signals on this WorkItem; v0 emits a candidate marker for the next ImprovementProposal cut.`;
+      }
+    }
+
+    const evaluation: AgentRunEvaluation = {
+      generatedAt: timestamp,
+      evaluationArtifactId,
+      sessionResultArtifactId: sessionArtifact?.id ?? null,
+      workItemId,
+      workflowRunId,
+      primaryKind: classification.kind,
+      confidence: classification.confidence,
+      rationale: classification.rationale,
+      signalsCreated,
+      guidanceItemsCreated: guidanceCreated,
+      improvementProposalSuggested,
+      improvementProposalRationale,
+      reviewedReviewer: body.reviewer ?? null,
+      evidenceSummary: {
+        runnerType,
+        outcome,
+        branch,
+        prUrl,
+        validationsFailed: validations.filter((v) => v.status === "failed").length,
+        blockerCount: blockers.length,
+        nextStepCount: nextSteps.length,
+        tokensTotal,
+      },
+    };
+    return c.json({ data: evaluation });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "evaluation_failed", message }, 400);
+  }
+});
 
 app.post("/operating-goals/decompose", async (c) => {
   try {

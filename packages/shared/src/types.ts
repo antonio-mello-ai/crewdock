@@ -2947,6 +2947,58 @@ export interface DecomposeOperatingGoalRequest {
   actor?: string | null;
 }
 
+export type AgentRunEvaluationKind =
+  | "success"
+  | "partial"
+  | "failed_context"
+  | "failed_tool"
+  | "failed_policy"
+  | "failed_execution"
+  | "failed_validation"
+  | "needs_human";
+
+export interface AgentRunEvaluationFinding {
+  kind: AgentRunEvaluationKind;
+  severity: SignalSeverity;
+  rationale: string;
+  evidenceArtifactIds: string[];
+}
+
+export interface AgentRunEvaluation {
+  generatedAt: number;
+  evaluationArtifactId: string;
+  sessionResultArtifactId: string | null;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  primaryKind: AgentRunEvaluationKind;
+  confidence: number;
+  rationale: string[];
+  signalsCreated: Signal[];
+  guidanceItemsCreated: GuidanceItem[];
+  improvementProposalSuggested: boolean;
+  improvementProposalRationale: string | null;
+  reviewedReviewer: string | null;
+  evidenceSummary: {
+    runnerType: SessionResultRunnerType | null;
+    outcome: SessionResultOutcome | null;
+    branch: string | null;
+    prUrl: string | null;
+    validationsFailed: number;
+    blockerCount: number;
+    nextStepCount: number;
+    tokensTotal: number | null;
+  };
+}
+
+export interface EvaluateAgentRunRequest {
+  sessionResultArtifactId?: string;
+  workItemId?: string;
+  reviewer?: string | null;
+  visibility?: Visibility;
+  inlineSessionResult?: SubmitSessionResultRequest;
+  treatPartialAsFailure?: boolean;
+}
+
 export interface AreaBlueprintRegistry {
   generatedAt: number;
   primaryAreaSlug: CompanyOperatingMapAreaSlug;
