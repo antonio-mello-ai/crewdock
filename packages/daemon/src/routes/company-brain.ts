@@ -18,6 +18,16 @@ import type {
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainGateClosureRitual,
   CompanyBrainNextWork,
+  CompanyOperatingMap,
+  CompanyOperatingMapArea,
+  CompanyOperatingMapAreaSlug,
+  CompanyOperatingMapAreaStatus,
+  CompanyOperatingMapEvidenceSlice,
+  CompanyOperatingMapGuidanceSlice,
+  CompanyOperatingMapProposalSlice,
+  CompanyOperatingMapSourceSlice,
+  CompanyOperatingMapTotals,
+  CompanyOperatingMapWorkItemSlice,
   GuidanceItem,
   Signal,
   CompanyBrainOperatingCadence,
@@ -5217,6 +5227,398 @@ function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
     emptyState: null,
     candidatesConsidered: candidates.length,
     totals,
+  };
+}
+
+const COMPANY_OPERATING_MAP_AREAS: Array<{
+  slug: CompanyOperatingMapAreaSlug;
+  displayName: string;
+  description: string;
+  primaryArea: CompanyBrainArea;
+  alternateAreas: CompanyBrainArea[];
+}> = [
+  {
+    slug: "development",
+    displayName: "Development",
+    description:
+      "AIOS, ERP and product engineering. WorkItems, agent runs, PR/CI, gates and dogfood evidence flow here first.",
+    primaryArea: "development",
+    alternateAreas: ["platform"],
+  },
+  {
+    slug: "strategy",
+    displayName: "Strategy",
+    description:
+      "StrategicPriorities, decisions, tradeoffs, OKRs. Owns the why behind the rest of the map.",
+    primaryArea: "strategy",
+    alternateAreas: [],
+  },
+  {
+    slug: "marketing",
+    displayName: "Marketing",
+    description:
+      "Brand, demand generation, content. Connects to outbound and ad operations once those sources are wired.",
+    primaryArea: "marketing",
+    alternateAreas: [],
+  },
+  {
+    slug: "sales",
+    displayName: "Sales",
+    description:
+      "Pipeline, design partner conversations, conversion. Hooks into CRM/Slack adapters when ready.",
+    primaryArea: "sales",
+    alternateAreas: [],
+  },
+  {
+    slug: "operations",
+    displayName: "Operations",
+    description:
+      "Cadence, infrastructure, runtime health, deploy and monitoring. The Operating Loop reports here.",
+    primaryArea: "operations",
+    alternateAreas: [],
+  },
+  {
+    slug: "finance",
+    displayName: "Finance",
+    description:
+      "Cost, revenue, runway, billing. Tracks token/cost telemetry from agent runs and product spend.",
+    primaryArea: "finance",
+    alternateAreas: [],
+  },
+  {
+    slug: "support",
+    displayName: "Support",
+    description:
+      "Customer success and support tickets. Maps to CompanyBrainArea=customer until a dedicated enum exists.",
+    primaryArea: "customer",
+    alternateAreas: [],
+  },
+  {
+    slug: "legal_compliance",
+    displayName: "Legal & Compliance",
+    description:
+      "LGPD, contracts, privacy review, regulatory gates. Empty until adapters are wired; mapped to area=unknown for now.",
+    primaryArea: "unknown",
+    alternateAreas: [],
+  },
+];
+
+const COMPANY_OPERATING_MAP_PRIMARY: CompanyOperatingMapAreaSlug = "development";
+
+const SESSION_RESULT_RECENT_LIMIT = 4;
+
+function deriveSessionResultOutcome(
+  artifact: { metadata: Record<string, unknown> | null }
+): SessionResultOutcome | null {
+  const outcome = artifact.metadata && typeof artifact.metadata === "object"
+    ? (artifact.metadata as Record<string, unknown>).outcome
+    : null;
+  if (typeof outcome !== "string") return null;
+  const allowed: SessionResultOutcome[] = [
+    "completed",
+    "pr_opened",
+    "awaiting_review",
+    "blocked",
+    "failed",
+    "cancelled",
+  ];
+  return allowed.includes(outcome as SessionResultOutcome)
+    ? (outcome as SessionResultOutcome)
+    : null;
+}
+
+function deriveSessionResultPrUrl(
+  artifact: { metadata: Record<string, unknown> | null }
+): string | null {
+  if (!artifact.metadata) return null;
+  const meta = artifact.metadata as Record<string, unknown>;
+  const value = meta.prUrl;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function deriveSessionResultBranch(
+  artifact: { metadata: Record<string, unknown> | null }
+): string | null {
+  if (!artifact.metadata) return null;
+  const meta = artifact.metadata as Record<string, unknown>;
+  const value = meta.branch;
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function buildCompanyOperatingMap(
+  data: ReturnType<typeof listAll>
+): CompanyOperatingMap {
+  const generatedAt = now();
+  const lastSessionResultByWorkItem = new Map<string, typeof data.artifacts[number]>();
+  for (const artifact of data.artifacts) {
+    if (artifact.artifactType !== "session_result") continue;
+    const meta = (artifact.metadata as Record<string, unknown> | null) ?? null;
+    const workItemId =
+      meta && typeof meta.workItemId === "string" ? meta.workItemId : null;
+    if (!workItemId) continue;
+    const existing = lastSessionResultByWorkItem.get(workItemId);
+    if (!existing || existing.occurredAt < artifact.occurredAt) {
+      lastSessionResultByWorkItem.set(workItemId, artifact);
+    }
+  }
+
+  const sourceHealthMap = new Map<
+    string,
+    ReturnType<typeof buildSourceHealthReport>["sources"][number]
+  >(buildSourceHealthReport(data).sources.map((source) => [source.sourceId, source]));
+
+  const areas: CompanyOperatingMapArea[] = COMPANY_OPERATING_MAP_AREAS.map((spec) => {
+    const allowedAreas = new Set<CompanyBrainArea>([
+      spec.primaryArea,
+      ...spec.alternateAreas,
+    ]);
+    const areaWorkItems = (data.workItems as WorkItem[]).filter((item) =>
+      allowedAreas.has(item.area)
+    );
+    const areaSources = data.sources.filter((source) =>
+      allowedAreas.has(source.area)
+    );
+    const areaArtifacts = data.artifacts.filter((artifact) =>
+      allowedAreas.has(artifact.area)
+    );
+    const areaSignals = data.signals.filter((signal) =>
+      allowedAreas.has(signal.area)
+    );
+    const areaGuidance = data.guidanceItems.filter((guidance) =>
+      allowedAreas.has(guidance.area)
+    );
+    const areaProposals = (data.externalActionProposals as Array<{
+      id: string;
+      title: string;
+      destinationType: ExternalActionDestination;
+      destinationRef: string | null;
+      actionType: ExternalActionKind;
+      riskClass: RiskClass;
+      approvalStatus: ExternalActionApprovalStatus;
+      executionStatus: ExternalActionExecutionStatus;
+      workItemId: string | null;
+    }>).filter((proposal) => {
+      if (!proposal.workItemId) return false;
+      const linked = areaWorkItems.find((item) => item.id === proposal.workItemId);
+      return Boolean(linked);
+    });
+
+    const sourceHealthyCount = areaSources.filter((source) => {
+      const health = sourceHealthMap.get(source.id);
+      return health
+        ? health.healthStatus === "healthy" && health.freshnessStatus !== "stale"
+        : source.healthStatus === "healthy";
+    }).length;
+    const sourceStaleCount = areaSources.filter((source) => {
+      const health = sourceHealthMap.get(source.id);
+      return health ? health.freshnessStatus === "stale" : false;
+    }).length;
+
+    const recentSessionResultCount = areaArtifacts.filter(
+      (artifact) => artifact.artifactType === "session_result"
+    ).length;
+    const openGuidanceCount = areaGuidance.filter((guidance) =>
+      ["new", "open", "accepted"].includes(guidance.status)
+    ).length;
+    const pendingProposalCount = areaProposals.filter(
+      (proposal) => proposal.approvalStatus === "pending"
+    ).length;
+    const blockedProposalCount = areaProposals.filter(
+      (proposal) =>
+        proposal.executionStatus === "blocked" ||
+        proposal.approvalStatus === "blocked"
+    ).length;
+    const blockedWorkItemCount = areaWorkItems.filter(
+      (item) => item.status === "blocked" || item.blockedReason
+    ).length;
+    const signalsAttentionCount = areaSignals.filter(
+      (signal) => signal.severity === "warn" || signal.severity === "critical"
+    ).length;
+
+    const totals: CompanyOperatingMapTotals = {
+      workItemCount: areaWorkItems.length,
+      workItemOpenCount: areaWorkItems.filter((item) =>
+        ["new", "triage", "planned", "in_progress", "reopened", "needs_human"].includes(
+          item.status
+        )
+      ).length,
+      workItemReviewCount: areaWorkItems.filter((item) =>
+        ["review", "qa", "security_review"].includes(item.status)
+      ).length,
+      workItemBlockedCount: blockedWorkItemCount,
+      workItemDoneCount: areaWorkItems.filter(
+        (item) => item.status === "done" || item.status === "deployed"
+      ).length,
+      sourceCount: areaSources.length,
+      sourceHealthyCount,
+      sourceStaleCount,
+      artifactCount: areaArtifacts.length,
+      recentSessionResultCount,
+      openGuidanceCount,
+      pendingProposalCount,
+      blockedProposalCount,
+      agentRunCount: 0,
+      blockedWorkItemCount,
+      signalsAttentionCount,
+    };
+
+    let status: CompanyOperatingMapAreaStatus;
+    if (
+      blockedWorkItemCount > 0 ||
+      areaSignals.some((signal) => signal.severity === "critical")
+    ) {
+      status = "critical";
+    } else if (
+      openGuidanceCount > 0 ||
+      pendingProposalCount > 0 ||
+      sourceStaleCount > 0 ||
+      signalsAttentionCount > 0
+    ) {
+      status = "attention";
+    } else if (totals.workItemCount === 0 && totals.sourceCount === 0) {
+      status = "empty";
+    } else {
+      status = "healthy";
+    }
+
+    const emptyStateReason =
+      status === "empty"
+        ? `No data for ${spec.displayName}. Wire a source and create the first WorkItem to populate this area.`
+        : null;
+
+    const sortedWorkItems = [...areaWorkItems].sort((a, b) => {
+      const aPriority = a.priorityId ? 1 : 0;
+      const bPriority = b.priorityId ? 1 : 0;
+      if (aPriority !== bPriority) return bPriority - aPriority;
+      const aBlocked = a.status === "blocked" ? 1 : 0;
+      const bBlocked = b.status === "blocked" ? 1 : 0;
+      if (aBlocked !== bBlocked) return bBlocked - aBlocked;
+      return b.updatedAt - a.updatedAt;
+    });
+
+    const topWorkItems: CompanyOperatingMapWorkItemSlice[] = sortedWorkItems
+      .slice(0, 5)
+      .map((item) => {
+        const session = lastSessionResultByWorkItem.get(item.id);
+        return {
+          workItemId: item.id,
+          title: item.title,
+          status: item.status,
+          externalProvider: item.externalProvider ?? null,
+          externalId: item.externalId ?? null,
+          externalUrl: item.externalUrl ?? null,
+          area: item.area,
+          riskClass: item.riskClass,
+          blockedReason: item.blockedReason ?? null,
+          prUrl: session ? deriveSessionResultPrUrl(session) : null,
+          branch: session ? deriveSessionResultBranch(session) : null,
+          lastSessionResultArtifactId: session?.id ?? null,
+          lastSessionResultOutcome: session ? deriveSessionResultOutcome(session) : null,
+        };
+      });
+
+    const sourcesSlice: CompanyOperatingMapSourceSlice[] = areaSources
+      .slice(0, 6)
+      .map((source) => ({
+        sourceId: source.id,
+        name: source.name,
+        sourceType: source.sourceType,
+        healthStatus: sourceHealthMap.get(source.id)?.healthStatus ?? source.healthStatus,
+        lastSyncAt: source.lastSyncAt ?? null,
+        externalRef: source.externalRef ?? null,
+      }));
+
+    const recentEvidence: CompanyOperatingMapEvidenceSlice[] = [...areaArtifacts]
+      .sort((a, b) => b.occurredAt - a.occurredAt)
+      .slice(0, SESSION_RESULT_RECENT_LIMIT)
+      .map((artifact) => ({
+        artifactId: artifact.id,
+        title: artifact.title,
+        artifactType: artifact.artifactType,
+        occurredAt: artifact.occurredAt,
+        rawRef: artifact.rawRef,
+        summary: artifact.summary ?? null,
+      }));
+
+    const openGuidance: CompanyOperatingMapGuidanceSlice[] = areaGuidance
+      .filter((guidance) =>
+        ["new", "open", "accepted"].includes(guidance.status)
+      )
+      .slice(0, 5)
+      .map((guidance) => ({
+        guidanceId: guidance.id,
+        title: guidance.title,
+        action: guidance.action,
+        audience: guidance.audience,
+        severity: guidance.severity,
+        status: guidance.status,
+        feedbackStatus: guidance.feedbackStatus,
+        workItemId: guidance.workItemId ?? null,
+      }));
+
+    const pendingProposals: CompanyOperatingMapProposalSlice[] = areaProposals
+      .filter(
+        (proposal) =>
+          proposal.approvalStatus === "pending" ||
+          proposal.executionStatus === "blocked" ||
+          proposal.executionStatus === "dry_run"
+      )
+      .slice(0, 5)
+      .map((proposal) => ({
+        proposalId: proposal.id,
+        title: proposal.title,
+        destinationType: proposal.destinationType,
+        actionType: proposal.actionType,
+        riskClass: proposal.riskClass,
+        approvalStatus: proposal.approvalStatus,
+        executionStatus: proposal.executionStatus,
+        destinationRef: proposal.destinationRef ?? null,
+      }));
+
+    const agentRunsSummary = {
+      runningCount: 0,
+      queuedCount: 0,
+      failedCount: 0,
+      completedCount: recentSessionResultCount,
+      note:
+        recentSessionResultCount > 0
+          ? "Agent run records derived from session_result artifacts. Symphony-compatible AgentRunner schema lands in AIOS-EXEC-03 v1+."
+          : "No agent runs recorded yet. AgentRunner schema arrives in AIOS-EXEC-03 v1+; manual session results can be submitted via /session-results.",
+    };
+
+    return {
+      slug: spec.slug,
+      displayName: spec.displayName,
+      description: spec.description,
+      primaryArea: spec.primaryArea,
+      isPrimary: spec.slug === COMPANY_OPERATING_MAP_PRIMARY,
+      status,
+      emptyStateReason,
+      totals,
+      topWorkItems,
+      sources: sourcesSlice,
+      recentEvidence,
+      openGuidance,
+      pendingProposals,
+      agentRunsSummary,
+    };
+  });
+
+  const totalsRollup = {
+    areaCount: areas.length,
+    primaryAreaCount: areas.filter((area) => area.isPrimary).length,
+    healthyAreaCount: areas.filter((area) => area.status === "healthy").length,
+    attentionAreaCount: areas.filter((area) => area.status === "attention").length,
+    criticalAreaCount: areas.filter((area) => area.status === "critical").length,
+    emptyAreaCount: areas.filter((area) => area.status === "empty").length,
+    policyBlockedAreaCount: areas.filter((area) => area.status === "policy_blocked").length,
+  };
+
+  return {
+    generatedAt,
+    primaryAreaSlug: COMPANY_OPERATING_MAP_PRIMARY,
+    totals: totalsRollup,
+    areas,
   };
 }
 
@@ -10747,6 +11149,11 @@ app.get("/operating-snapshot", (c) => {
 
 app.get("/next-work", (c) => {
   const data = buildNextWork(listAll());
+  return c.json({ data });
+});
+
+app.get("/operating-map", (c) => {
+  const data = buildCompanyOperatingMap(listAll());
   return c.json({ data });
 });
 

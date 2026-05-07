@@ -205,6 +205,13 @@ export default function CompanyBrainOperatingPage() {
               )}
               Run Operating Cadence
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "/company-brain/map")}
+            >
+              <FileText className="size-4" />
+              Operating Map
+            </Button>
             <Button variant="outline" onClick={() => (window.location.href = "/company-brain")}>
               <FileText className="size-4" />
               Admin
