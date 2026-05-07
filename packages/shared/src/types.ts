@@ -2883,6 +2883,70 @@ export interface AreaBlueprintEntry {
   notes: string;
 }
 
+export type OperatingGoalDirection =
+  | "increase"
+  | "decrease"
+  | "maintain"
+  | "achieve"
+  | "unknown";
+
+export interface OperatingGoalMetric {
+  raw: string;
+  direction: OperatingGoalDirection;
+  metricName: string;
+  target: string | null;
+}
+
+export interface OperatingGoalAreaPlan {
+  slug: CompanyOperatingMapAreaSlug;
+  displayName: string;
+  ownerRole: string;
+  reasonIncluded: string;
+  contributionWeight: number;
+  defaultSourcePatterns: string[];
+  expectedAgentRoles: string[];
+  defaultGates: string[];
+  cadence: string;
+  candidateWorkItems: Array<{
+    workItemId: string;
+    title: string;
+    status: WorkItemStatus;
+    externalUrl: string | null;
+    relevance: number;
+  }>;
+  candidateWatchers: string[];
+  candidateGuidanceQuestions: string[];
+}
+
+export interface OperatingGoalEvaluationCriterion {
+  metric: string;
+  target: string | null;
+  cadence: string;
+  evidenceSource: string;
+}
+
+export interface OperatingGoalDecomposition {
+  generatedAt: number;
+  goalText: string;
+  metric: OperatingGoalMetric;
+  primaryAreaSlug: CompanyOperatingMapAreaSlug;
+  areas: OperatingGoalAreaPlan[];
+  reviewCadence: string;
+  evaluationCriteria: OperatingGoalEvaluationCriterion[];
+  recommendedNextActions: string[];
+  clarifications: Array<{ question: string; options?: string[] }>;
+  policySummary: string;
+}
+
+export interface DecomposeOperatingGoalRequest {
+  goalText: string;
+  primaryAreaSlug?: CompanyOperatingMapAreaSlug;
+  targetMetric?: string;
+  cadenceHint?: string;
+  visibility?: Visibility;
+  actor?: string | null;
+}
+
 export interface AreaBlueprintRegistry {
   generatedAt: number;
   primaryAreaSlug: CompanyOperatingMapAreaSlug;
