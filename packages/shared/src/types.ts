@@ -1620,7 +1620,8 @@ export type AdoptionGapKind =
   | "missing_workflow"
   | "missing_signal"
   | "open_guidance"
-  | "writeback_needs_review";
+  | "writeback_needs_review"
+  | "audit_readiness_gap";
 
 export type WritebackMaturityStage =
   | "none"
@@ -1629,6 +1630,13 @@ export type WritebackMaturityStage =
   | "preview_ready"
   | "executed_or_noop"
   | "blocked_or_failed";
+
+export type AdoptionAuditReadinessStage =
+  | "not_started"
+  | "evidence_ready"
+  | "review_ready"
+  | "execution_ready"
+  | "needs_attention";
 
 export interface AdoptionGap {
   id: string;
@@ -1680,6 +1688,23 @@ export interface AdoptionProjectStatus {
     latestAuditAt: number | null;
     latestExternalUrl: string | null;
   };
+  auditReadiness: {
+    stage: AdoptionAuditReadinessStage;
+    score: number;
+    targetCount: number;
+    proposalReviewNeedsActionCount: number;
+    evidenceIntegrityGapCount: number;
+    remediationSuggestionCount: number;
+    evidenceGraphNodeCount: number;
+    evidenceGraphOrphanCount: number;
+    timelineEventCount: number;
+    externalWriteEventCount: number;
+    previewBlockedCount: number;
+    replayTerminalCount: number;
+    retryNeedsRationaleCount: number;
+    latestAuditAt: number | null;
+    nextAction: string;
+  };
   gapKinds: AdoptionGapKind[];
 }
 
@@ -1700,6 +1725,10 @@ export interface CompanyBrainAdoptionDashboard {
     writebackCompletedProjectCount: number;
     writebackNeedsReviewProjectCount: number;
     duplicatePreventedWritebackCount: number;
+    auditReadyProjectCount: number;
+    auditNeedsAttentionProjectCount: number;
+    auditReadinessGapCount: number;
+    auditTargetCount: number;
   };
 }
 

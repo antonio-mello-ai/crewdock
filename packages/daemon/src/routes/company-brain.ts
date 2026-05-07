@@ -2145,6 +2145,28 @@ function buildAdoptionDashboard(
       buildWritebackExecutionReview(proposal, generatedAt),
     ])
   );
+  const writebackIntegrityGaps = buildWritebackEvidenceIntegrityGaps(
+    data,
+    writebackReviews,
+    generatedAt
+  );
+  const writebackRemediationSuggestions =
+    buildWritebackEvidenceRemediationSuggestions(
+      writebackIntegrityGaps,
+      generatedAt
+    );
+  const proposalTargetReview = buildWritebackProposalTargetReview({
+    data,
+    reviews: writebackReviews,
+    generatedAt,
+    limit: 500,
+  });
+  const previewReplaySimulator = buildPreviewReplaySimulator(data);
+  const targetObservabilitySummaries = buildWritebackTargetObservabilitySummaries(
+    data.externalActionProposals,
+    writebackReviews,
+    generatedAt
+  );
   const writebackMaturityFor = (
     writebackProposals: ExternalActionProposal[]
   ): AdoptionProject["writebackMaturity"] => {
@@ -2283,6 +2305,37 @@ function buildAdoptionDashboard(
         (proposal.workflowRunId ? workflowRunIds.has(proposal.workflowRunId) : false)
     );
     const writebackMaturity = writebackMaturityFor(writebackProposals);
+    const writebackProposalIds = new Set(writebackProposals.map((proposal) => proposal.id));
+    const writebackTargetKeys = new Set(
+      writebackProposals.map((proposal) => writebackTargetObservabilityBase(proposal).targetKey)
+    );
+    const projectProposalReviewItems = proposalTargetReview.items.filter((item) =>
+      writebackProposalIds.has(item.proposalId)
+    );
+    const projectIntegrityGaps = writebackIntegrityGaps.filter((gap) =>
+      writebackProposalIds.has(gap.proposalId)
+    );
+    const projectRemediationSuggestions = writebackRemediationSuggestions.filter(
+      (suggestion) => writebackProposalIds.has(suggestion.proposalId)
+    );
+    const projectTargetSummaries = targetObservabilitySummaries.filter((target) =>
+      writebackTargetKeys.has(target.targetKey)
+    );
+    const projectPreviewReplayItems = previewReplaySimulator.items.filter((item) =>
+      writebackProposalIds.has(item.proposalId)
+    );
+    const sourceEvidenceGraph = buildCompanyBrainEvidenceGraph({
+      data,
+      rootKind: "source",
+      rootId: source.id,
+      limit: 250,
+    });
+    const sourceTimeline = buildCompanyBrainTimeline({
+      data,
+      scope: "source",
+      id: source.id,
+      limit: 100,
+    });
     const openGuidance = guidance.filter((item) => ["new", "open"].includes(item.status));
     const activeWorkflowRuns = workflowRuns.filter((run) =>
       ["planned", "running", "blocked", "needs_human"].includes(run.status)
@@ -2297,6 +2350,88 @@ function buildAdoptionDashboard(
     const sourceIsStale =
       !source.lastSyncAt || generatedAt - source.lastSyncAt > staleAfterMs;
     const sourceHasHealthIssue = source.healthStatus !== "healthy" || sourceIsStale;
+    const proposalReviewNeedsActionCount = projectProposalReviewItems.filter((item) =>
+      [
+        "ready_to_execute",
+        "needs_preview",
+        "needs_reapproval",
+        "retryable_failed",
+        "unsafe_failed",
+        "payload_mismatch",
+        "destination_mismatch",
+        "blocked",
+      ].includes(item.reviewStatus)
+    ).length;
+    const previewBlockedCount = projectPreviewReplayItems.filter(
+      (item) => item.preview.executionBlocked || !item.preview.available
+    ).length;
+    const replayTerminalCount = projectPreviewReplayItems.filter(
+      (item) => item.replay.terminalState
+    ).length;
+    const retryNeedsRationaleCount = projectPreviewReplayItems.filter(
+      (item) => item.replay.manualRetryRequiresRationale
+    ).length;
+    const projectExternalWriteEventCount =
+      sourceTimeline.stats.externalWriteEventCount +
+      writebackMaturity.mutationAttemptedCount;
+    const auditProblemCount =
+      proposalReviewNeedsActionCount +
+      projectIntegrityGaps.length +
+      projectRemediationSuggestions.length +
+      previewBlockedCount +
+      retryNeedsRationaleCount +
+      sourceEvidenceGraph.stats.orphanNodeCount;
+    let auditReadinessStage: AdoptionProject["auditReadiness"]["stage"] =
+      "not_started";
+    if (artifacts.length || workItems.length) auditReadinessStage = "evidence_ready";
+    if (workflowRuns.length || signals.length || guidance.length || writebackProposals.length) {
+      auditReadinessStage = "review_ready";
+    }
+    if (
+      (writebackMaturity.completedCount ||
+        writebackMaturity.completedNoopCount ||
+        writebackMaturity.duplicatePreventedCount) &&
+      !auditProblemCount
+    ) {
+      auditReadinessStage = "execution_ready";
+    }
+    if (auditProblemCount) auditReadinessStage = "needs_attention";
+    const auditReadinessScore = Math.max(
+      0,
+      Math.min(
+        100,
+        (artifacts.length ? 20 : 0) +
+          (workItems.length ? 15 : 0) +
+          (workflowRuns.length ? 15 : 0) +
+          (signals.length || guidance.length ? 15 : 0) +
+          (writebackProposals.length ? 15 : 0) +
+          (writebackMaturity.completedCount ||
+          writebackMaturity.completedNoopCount ||
+          writebackMaturity.duplicatePreventedCount
+            ? 10
+            : 0) +
+          (auditProblemCount ? 0 : 10) -
+          Math.min(40, auditProblemCount * 8)
+      )
+    );
+    const auditNextAction =
+      projectIntegrityGaps.length > 0
+        ? `Repair ${projectIntegrityGaps.length} evidence integrity gaps.`
+        : projectRemediationSuggestions.length > 0
+          ? `Review ${projectRemediationSuggestions.length} remediation suggestions.`
+          : proposalReviewNeedsActionCount > 0
+            ? `Use proposal/target review for ${proposalReviewNeedsActionCount} items.`
+            : previewBlockedCount > 0
+              ? `Use preview/replay simulator for ${previewBlockedCount} blocked previews.`
+              : sourceEvidenceGraph.stats.orphanNodeCount > 0
+                ? `Inspect ${sourceEvidenceGraph.stats.orphanNodeCount} evidence graph orphans.`
+                : !artifacts.length
+                  ? "Register source evidence."
+                  : !workflowRuns.length && workItems.length
+                    ? "Create workflow run for linked work."
+                    : !writebackProposals.length
+                      ? "Create governed proposal only from accepted guidance."
+                      : "Keep audit readiness monitored.";
     const gapKinds = new Set<AdoptionGapKind>();
 
     if (sourceHasHealthIssue) {
@@ -2374,7 +2509,23 @@ function buildAdoptionDashboard(
         sourceId: source.id,
         targetType: "source",
         targetId: source.id,
-        rationale: `${writebackMaturity.blockedCount} blocked, ${writebackMaturity.failedCount} failed, ${writebackMaturity.staleApprovalCount} stale approvals, ${writebackMaturity.stalePreviewCount} stale previews.`,
+          rationale: `${writebackMaturity.blockedCount} blocked, ${writebackMaturity.failedCount} failed, ${writebackMaturity.staleApprovalCount} stale approvals, ${writebackMaturity.stalePreviewCount} stale previews.`,
+      });
+    }
+    if (auditReadinessStage === "needs_attention") {
+      gapKinds.add("audit_readiness_gap");
+      addGap({
+        id: `audit_readiness_gap:${source.id}`,
+        kind: "audit_readiness_gap",
+        title: `${source.name} audit readiness needs review`,
+        severity: projectIntegrityGaps.some((gap) => gap.severity === "critical")
+          ? "critical"
+          : "warn",
+        area: source.area,
+        sourceId: source.id,
+        targetType: "source",
+        targetId: source.id,
+        rationale: auditNextAction,
       });
     }
 
@@ -2419,6 +2570,26 @@ function buildAdoptionDashboard(
         slaAtRiskCount: slaAtRisk.length,
       },
       writebackMaturity,
+      auditReadiness: {
+        stage: auditReadinessStage,
+        score: auditReadinessScore,
+        targetCount: projectTargetSummaries.length,
+        proposalReviewNeedsActionCount,
+        evidenceIntegrityGapCount: projectIntegrityGaps.length,
+        remediationSuggestionCount: projectRemediationSuggestions.length,
+        evidenceGraphNodeCount: sourceEvidenceGraph.stats.nodeCount,
+        evidenceGraphOrphanCount: sourceEvidenceGraph.stats.orphanNodeCount,
+        timelineEventCount: sourceTimeline.stats.eventCount,
+        externalWriteEventCount: projectExternalWriteEventCount,
+        previewBlockedCount,
+        replayTerminalCount,
+        retryNeedsRationaleCount,
+        latestAuditAt: latestTimestamp([
+          writebackMaturity.latestAuditAt,
+          sourceTimeline.stats.latestAt,
+        ]),
+        nextAction: auditNextAction,
+      },
       gapKinds: [...gapKinds],
     };
   });
@@ -2537,6 +2708,18 @@ function buildAdoptionDashboard(
       ).length,
       duplicatePreventedWritebackCount: projects.reduce(
         (sum, project) => sum + project.writebackMaturity.duplicatePreventedCount,
+        0
+      ),
+      auditReadyProjectCount: projects.filter((project) =>
+        ["review_ready", "execution_ready"].includes(project.auditReadiness.stage)
+      ).length,
+      auditNeedsAttentionProjectCount: projects.filter(
+        (project) => project.auditReadiness.stage === "needs_attention"
+      ).length,
+      auditReadinessGapCount: gaps.filter((gap) => gap.kind === "audit_readiness_gap")
+        .length,
+      auditTargetCount: projects.reduce(
+        (sum, project) => sum + project.auditReadiness.targetCount,
         0
       ),
     },
@@ -2673,7 +2856,7 @@ function buildSourceHealthReport(
       sourceWithoutWorkItemsCount: sources.filter((source) =>
         source.issueKinds.includes("no_work_items")
       ).length,
-      sourceWithoutSignalsCount: sources.filter((source) =>
+          sourceWithoutSignalsCount: sources.filter((source) =>
         source.issueKinds.includes("no_signals")
       ).length,
     },
@@ -2997,6 +3180,7 @@ function buildBriefingSections(args: {
       items: [
         `${adoptionDashboard.stats.closedLoopProjectCount}/${adoptionDashboard.stats.projectCount} projects closed-loop; ${adoptionDashboard.stats.improvingProjectCount} improving.`,
         `${relevantGaps.length} adoption gaps visible; ${adoptionDashboard.stats.openGuidanceCount} open guidance; ${adoptionDashboard.stats.pendingGateCount} pending gates; ${adoptionDashboard.stats.slaRiskCount} SLA risks.`,
+        `${adoptionDashboard.stats.auditReadyProjectCount}/${adoptionDashboard.stats.projectCount} projects audit-ready; ${adoptionDashboard.stats.auditNeedsAttentionProjectCount} need audit readiness review; ${adoptionDashboard.stats.auditTargetCount} writeback targets tracked.`,
         ...relevantGaps
           .slice(0, 4)
           .map((gap) =>

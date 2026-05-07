@@ -1909,6 +1909,26 @@ Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-exe
 - `execution_readiness` mostrou `4 executable policy cases`, `1 preview-only`, `2 blocked`, `1/1 proposals have local preview simulators` e replay terminal bloqueado para proposal completada.
 - Porta do daemon foi encerrada apos o teste e nao restou listener em `43158`.
 
+## Slice Adoption Dashboard Audit Maturity v0
+
+Objetivo: fazer o Adoption Dashboard refletir maturidade auditavel por projeto/source, conectando closed loop, writeback maturity e evidence/readiness sem criar nenhuma mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. `AdoptionProjectStatus` ganhou `auditReadiness` com stage, score, target count, proposal review needs action, evidence integrity gaps, remediation suggestions, evidence graph/timeline coverage, preview/replay blockers, retry rationale, latest audit e next action.
+2. `AdoptionGapKind` ganhou `audit_readiness_gap` para destacar sources com readiness comprometida por gaps, remediation, proposal review, preview/replay ou graph orphan.
+3. `CompanyBrainAdoptionDashboard.stats` ganhou contadores `auditReadyProjectCount`, `auditNeedsAttentionProjectCount`, `auditReadinessGapCount` e `auditTargetCount`.
+4. UI `/company-brain` mostra badge de audit readiness, score, targets, gaps e next action por projeto no Adoption Dashboard.
+5. AIOS Briefing passou a incluir contadores de audit-ready/readiness review/writeback targets na secao Adoption Dashboard.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43159`:
+
+- Summary retornou `auditReadyProjectCount=1`, `auditNeedsAttentionProjectCount=0`, `auditReadinessGapCount=0` e `auditTargetCount=1`.
+- Projeto `Felhen Demo v0.1` retornou `auditReadiness.stage=execution_ready`, `score=100`, `targetCount=1`, `replayTerminalCount=1` e next action `Keep audit readiness monitored.`
+- Projeto `AIOS Briefing Runtime` retornou `auditReadiness.stage=evidence_ready`, `score=30`, `targetCount=0` e next action `Create governed proposal only from accepted guidance.`
+- Watcher `watcher-aios-briefing-v0` gerou run `VqVSD92Mgwfm` e artifact `bFirMC4pdKTv`; o briefing incluiu `1/2 projects audit-ready; 0 need audit readiness review; 1 writeback targets tracked.`
+- Porta do daemon foi encerrada apos o teste e nao restou listener em `43159`.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -2027,7 +2047,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0 e AIOS Briefing Audit/Readiness v0. O proximo corte recomendado e Adoption Dashboard maturity refinements para audit/readiness. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0, AIOS Briefing Audit/Readiness v0 e Adoption Dashboard Audit Maturity v0. O proximo corte recomendado e MCP/export polish para evidence packet Markdown e audit readiness read-only. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

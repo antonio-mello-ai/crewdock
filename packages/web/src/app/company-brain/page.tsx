@@ -1517,6 +1517,7 @@ export default function CompanyBrainPage() {
                               </p>
                               <StatusBadge value={project.stage} />
                               <StatusBadge value={project.healthStatus} />
+                              <StatusBadge value={project.auditReadiness.stage} />
                               {project.writebackMaturity.stage !== "none" ? (
                                 <StatusBadge value={project.writebackMaturity.stage} />
                               ) : null}
@@ -1563,8 +1564,28 @@ export default function CompanyBrainPage() {
                                 project.writebackMaturity.stalePreviewCount
                               }
                             />
+                            <MiniMetric
+                              label="audit"
+                              value={`${project.auditReadiness.score}%`}
+                            />
+                            <MiniMetric
+                              label="targets"
+                              value={project.auditReadiness.targetCount}
+                            />
+                            <MiniMetric
+                              label="gaps"
+                              value={
+                                project.auditReadiness.evidenceIntegrityGapCount +
+                                project.auditReadiness.remediationSuggestionCount +
+                                project.auditReadiness.previewBlockedCount +
+                                project.auditReadiness.proposalReviewNeedsActionCount
+                              }
+                            />
                           </div>
                         </div>
+                        <p className="mt-2 text-xs text-neutral-500">
+                          audit: {project.auditReadiness.nextAction}
+                        </p>
                         {project.writebackMaturity.latestExternalUrl ? (
                           <a
                             href={project.writebackMaturity.latestExternalUrl}
