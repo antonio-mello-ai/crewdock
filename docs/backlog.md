@@ -157,7 +157,11 @@ Status Production Operating Loop v0 em 2026-05-07: implementado e deployado runn
 
 Status AIOS GitHub Roadmap Reset em 2026-05-07: issues antigas `#1` a `#6` foram triadas como legado/icebox/superseded e fechadas como `not planned`, sem apagar contexto. Criada milestone `AIOS Execution Loop v0`, labels de produto/runtime e fila ativa `#25` a `#31`: `AIOS-CLEAN-00`, `AIOS-CLEAN-01`, `AIOS-EXEC-01` a `AIOS-EXEC-05`. Sync read-only de GitHub Issues em producao criou Source `AIOS GitHub Issues active roadmap` e WorkItems canonicos para as 7 issues. Registro em `docs/action/aios-github-roadmap-reset-2026-05-07.md`.
 
-Proximo corte planejado: consumir `#25 AIOS-CLEAN-00: Product Surface Split` via branch/PR, separando AIOS produto de Runtime Admin legado antes de iniciar features do Execution Command Center. Continuar automaticamente apenas para read-only/audit/docs/UI/MCP/dogfood; parar antes de novo executor real, novo alvo externo, secrets/permissoes ou qualquer mutacao fora da policy aprovada.
+Status AIOS-CLEAN-00 Product Surface Split em 2026-05-07: issue `#25` fechada com `/runtime` separado da entrada AIOS principal e Runtime Admin (Console/Terminal/Jobs/Schedules/Costs/Inbox/Settings) reagrupado fora do produto AIOS.
+
+Status AIOS-CLEAN-01 GitHub Pipeline Hygiene em 2026-05-07: issue `#26` consumida. Criado `docs/aios-issues-runbook.md` com convencoes de label/title/body, mapping issue->WorkItem, fluxo de consumo por agente e mutation policy. Issues fechadas legacy (`#7` a `#24`, waves de security/perf pre-AIOS) receberam label `legacy-runtime` para ficarem fora do roadmap atual mas pesquisaveis. Sync read-only do adapter `mcp__aios__sync_company_brain_github_issues` reconciliou `Source` `AIOS GitHub Issues active roadmap` e `WorkItems` para a fila ativa.
+
+Proximo corte planejado: consumir `#27 AIOS-EXEC-01: Execution Command Center v0` ou outra issue aberta da milestone `AIOS Execution Loop v0`. Continuar automaticamente apenas para read-only/audit/docs/UI/MCP/dogfood; parar antes de novo executor real, novo alvo externo, secrets/permissoes ou qualquer mutacao fora da policy aprovada.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -170,8 +174,8 @@ Proximo corte planejado: consumir `#25 AIOS-CLEAN-00: Product Surface Split` via
 - [x] **Demo/Readiness Cleanup v0** — reduzir friccoes do pack com proposals internas v0.2, Source Health menos ruidoso, alias top-level de replay, reconhecimento do design-partner pack e campo canonico `artifactType`
 - [x] **Operating Cycle Friction Closure v0** — corrigir briefing pos-cadence, `runs[].artifactId`, status agregado de Gate Closure/Operating Snapshot e semantica de Core Readiness antes de deployar o ciclo diario real
 - [x] **Production Operating Loop v0** — runner recorrente interno no daemon para executar watchers read-only due/stale sem sessao interativa aberta, com env config, lock, provenance, API/UI/MCP e dogfood local
-- [ ] **AIOS-CLEAN-00 Product Surface Split** — fazer AIOS Operating ser a entrada principal, preservar runtime antigo em `/runtime` e agrupar Console/Terminal/Jobs/Schedules/Costs/Inbox/Settings como Runtime Admin
-- [ ] **AIOS-CLEAN-01 GitHub Pipeline Hygiene** — manter issues GitHub como fila limpa e sincronizada ao Company Brain
+- [x] **AIOS-CLEAN-00 Product Surface Split** — fazer AIOS Operating ser a entrada principal, preservar runtime antigo em `/runtime` e agrupar Console/Terminal/Jobs/Schedules/Costs/Inbox/Settings como Runtime Admin
+- [x] **AIOS-CLEAN-01 GitHub Pipeline Hygiene** — manter issues GitHub como fila limpa e sincronizada ao Company Brain
 - [ ] **AIOS-EXEC-01 Execution Command Center v0** — recomendar proximo WorkItem e gerar prompt acionavel
 - [ ] **AIOS-EXEC-02 WorkItem to GitHub Issue Flow** — criar issue GitHub governada a partir de WorkItem/Guidance
 - [ ] **AIOS-EXEC-03 Agent Session Launcher** — gerar handoff/prompt por WorkItem e agente alvo
