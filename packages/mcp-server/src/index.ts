@@ -2060,6 +2060,77 @@ server.registerTool(
 );
 
 server.registerTool(
+  "route_company_brain_command",
+  {
+    title: "Route Company Brain command",
+    description:
+      "Convert a structured or natural-language request into a safe AIOS routing decision. Classifies area, intent, target object kind and risk class, then returns a decision (preview_only / created / blocked / needs_clarification / deferred_to_goal_decomposition) with rationale, suggested next action and optional clarifications. With dryRun=false (default true) and Risk A intents, can persist a native WorkItem or GuidanceItem with provenance company_brain:command_router. Risk C is always blocked. Risk B writeback is preview_only and goes through the existing ExternalActionProposal path. High-level outcomes (increase X, reduce X) are deferred to the Goal-to-Execution Superoptimizer (#39) instead of being flattened into one task.",
+    inputSchema: {
+      text: z.string().min(1),
+      intentHint: z
+        .enum([
+          "create_work_item",
+          "create_guidance",
+          "create_external_action_proposal",
+          "submit_session_result",
+          "route_to_goal_decomposition",
+          "create_github_issue_proposal",
+          "ask_clarification",
+          "noop",
+        ])
+        .optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      preferredTargetKind: z
+        .enum([
+          "work_item",
+          "guidance_item",
+          "external_action_proposal",
+          "session_result",
+          "goal_decomposition",
+          "github_issue_proposal",
+          "clarification",
+          "none",
+        ])
+        .optional(),
+      riskClassHint: z.enum(["A", "B", "C", "unknown"]).optional(),
+      dryRun: z.boolean().optional(),
+      actor: z.string().optional(),
+      visibility: z.enum(["public", "internal", "restricted"]).optional(),
+      workItemTitle: z.string().optional(),
+      workItemDescription: z.string().optional(),
+      guidanceTitle: z.string().optional(),
+      guidanceAction: z.string().optional(),
+      guidanceAudience: z.enum(["human", "team", "agent", "system"]).optional(),
+      goalSummary: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/command-router",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_operating_map",
   {
     title: "Get Company Operating Map",

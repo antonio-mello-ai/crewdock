@@ -18,6 +18,7 @@ import type {
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainGateClosureRitual,
   CompanyBrainNextWork,
+  CompanyBrainCommandRouterResult,
   CompanyOperatingMap,
   CompanyOperatingMapArea,
   CompanyOperatingMapAreaSlug,
@@ -28,6 +29,11 @@ import type {
   CompanyOperatingMapSourceSlice,
   CompanyOperatingMapTotals,
   CompanyOperatingMapWorkItemSlice,
+  CommandRouterClassification,
+  CommandRouterIntentKind,
+  CommandRouterRouting,
+  CommandRouterTargetKind,
+  RouteCompanyBrainCommandRequest,
   GuidanceItem,
   Signal,
   CompanyBrainOperatingCadence,
@@ -11155,6 +11161,480 @@ app.get("/next-work", (c) => {
 app.get("/operating-map", (c) => {
   const data = buildCompanyOperatingMap(listAll());
   return c.json({ data });
+});
+
+const AREA_KEYWORDS: Array<{ slug: CompanyOperatingMapAreaSlug; area: CompanyBrainArea; patterns: RegExp[] }> = [
+  {
+    slug: "development",
+    area: "development",
+    patterns: [
+      /\b(?:bug|fix|feature|api|daemon|deploy|build|test|pr|github|issue|code|refactor|ts|typescript)\b/i,
+    ],
+  },
+  {
+    slug: "strategy",
+    area: "strategy",
+    patterns: [/\b(?:priority|tradeoff|decision|roadmap|okr|goal|strategy)\b/i],
+  },
+  {
+    slug: "marketing",
+    area: "marketing",
+    patterns: [/\b(?:campaign|ad|landing|seo|content|brand|copy)\b/i],
+  },
+  {
+    slug: "sales",
+    area: "sales",
+    patterns: [/\b(?:lead|pipeline|deal|design partner|customer call|outbound|crm)\b/i],
+  },
+  {
+    slug: "operations",
+    area: "operations",
+    patterns: [
+      /\b(?:cadence|operating loop|infra|deploy|monitor|incident|status|cron|schedule)\b/i,
+    ],
+  },
+  {
+    slug: "finance",
+    area: "finance",
+    patterns: [/\b(?:cost|revenue|runway|billing|invoice|asaas|stripe|finance)\b/i],
+  },
+  {
+    slug: "support",
+    area: "customer",
+    patterns: [/\b(?:support|ticket|customer issue|complaint|onboarding|help)\b/i],
+  },
+  {
+    slug: "legal_compliance",
+    area: "unknown",
+    patterns: [/\b(?:lgpd|gdpr|privacy|legal|contract|compliance|terms|policy)\b/i],
+  },
+];
+
+const GOAL_PATTERNS: RegExp[] = [
+  /\bincrease\s+\w+/i,
+  /\breduce\s+\w+/i,
+  /\bimprove\s+\w+/i,
+  /\bgrow\s+\w+/i,
+  /\boptimize\s+\w+/i,
+  /\bretention\b/i,
+  /\bconversion\b/i,
+  /\brevenue\b/i,
+  /\bruntway\b/i,
+  /\blaunch\s+ready\b/i,
+];
+
+const PROPOSAL_PATTERNS: RegExp[] = [
+  /\b(?:open|create|post)\s+(?:a\s+)?github\s+issue\b/i,
+  /\bcomment\s+on\s+(?:github|issue|pr|pull request)\b/i,
+  /\b(?:add|apply|set)\s+label\b/i,
+  /\bset\s+(?:status|check)\b/i,
+  /\bslack\s+thread\s+reply\b/i,
+];
+
+const GUIDANCE_PATTERNS: RegExp[] = [
+  /\b(?:next step|follow[- ]up|action item|please review|reminder)\b/i,
+  /\b(?:human review|hitl)\b/i,
+];
+
+const SESSION_RESULT_PATTERNS: RegExp[] = [
+  /\b(?:session result|run result|finished session|run completed|pr opened|workspace finished)\b/i,
+];
+
+const CLARIFY_PATTERNS: RegExp[] = [
+  /^\?$/,
+  /\bwhat\s+should\b/i,
+  /\bnot\s+sure\b/i,
+];
+
+const RISK_C_PATTERNS: RegExp[] = [
+  /\bclose\s+(?:issue|pr|pull)/i,
+  /\breopen/i,
+  /\bmerge\b/i,
+  /\bdeploy\s+to\s+production/i,
+  /\bdelete\b/i,
+  /\bsend\s+(?:dm|email)/i,
+  /\binvoice\b/i,
+];
+
+function inferAreaFromText(
+  text: string
+): { slug: CompanyOperatingMapAreaSlug; area: CompanyBrainArea } | null {
+  for (const entry of AREA_KEYWORDS) {
+    if (entry.patterns.some((re) => re.test(text))) {
+      return { slug: entry.slug, area: entry.area };
+    }
+  }
+  return null;
+}
+
+function inferIntentFromText(
+  text: string
+): { intentKind: CommandRouterIntentKind; targetKind: CommandRouterTargetKind } {
+  if (CLARIFY_PATTERNS.some((re) => re.test(text))) {
+    return { intentKind: "ask_clarification", targetKind: "clarification" };
+  }
+  if (GOAL_PATTERNS.some((re) => re.test(text))) {
+    return { intentKind: "route_to_goal_decomposition", targetKind: "goal_decomposition" };
+  }
+  if (SESSION_RESULT_PATTERNS.some((re) => re.test(text))) {
+    return { intentKind: "submit_session_result", targetKind: "session_result" };
+  }
+  if (PROPOSAL_PATTERNS.some((re) => re.test(text))) {
+    if (/github\s+issue/i.test(text) && /(open|create|post)/i.test(text)) {
+      return {
+        intentKind: "create_github_issue_proposal",
+        targetKind: "github_issue_proposal",
+      };
+    }
+    return {
+      intentKind: "create_external_action_proposal",
+      targetKind: "external_action_proposal",
+    };
+  }
+  if (GUIDANCE_PATTERNS.some((re) => re.test(text))) {
+    return { intentKind: "create_guidance", targetKind: "guidance_item" };
+  }
+  return { intentKind: "create_work_item", targetKind: "work_item" };
+}
+
+function inferRiskClassFromText(text: string): RiskClass {
+  if (RISK_C_PATTERNS.some((re) => re.test(text))) return "C";
+  if (/\b(?:github|issue|comment|label|status check|slack)\b/i.test(text)) return "B";
+  return "A";
+}
+
+function buildCommandRouterClassification(
+  request: RouteCompanyBrainCommandRequest
+): CommandRouterClassification {
+  const text = (request.text ?? "").trim();
+  const inferredArea = inferAreaFromText(text);
+  let area: CompanyBrainArea = request.area ?? inferredArea?.area ?? "unknown";
+  let primaryAreaSlug: CompanyOperatingMapAreaSlug =
+    inferredArea?.slug ?? "development";
+  if (request.area && !inferredArea) {
+    const matchedSlug = COMPANY_OPERATING_MAP_AREAS.find((spec) =>
+      spec.primaryArea === request.area || spec.alternateAreas.includes(request.area as CompanyBrainArea)
+    );
+    primaryAreaSlug = matchedSlug?.slug ?? "development";
+  }
+
+  const intent = request.intentHint
+    ? {
+        intentKind: request.intentHint,
+        targetKind: ((): CommandRouterTargetKind => {
+          switch (request.intentHint) {
+            case "create_work_item":
+              return "work_item";
+            case "create_guidance":
+              return "guidance_item";
+            case "create_external_action_proposal":
+              return "external_action_proposal";
+            case "create_github_issue_proposal":
+              return "github_issue_proposal";
+            case "submit_session_result":
+              return "session_result";
+            case "route_to_goal_decomposition":
+              return "goal_decomposition";
+            case "ask_clarification":
+              return "clarification";
+            case "noop":
+              return "none";
+            default:
+              return "work_item";
+          }
+        })(),
+      }
+    : inferIntentFromText(text);
+
+  const riskClass: RiskClass = request.riskClassHint
+    ? request.riskClassHint
+    : inferRiskClassFromText(text);
+
+  let confidence = 0.7;
+  if (request.intentHint && request.area) confidence = 0.95;
+  else if (request.intentHint) confidence = 0.85;
+  else if (inferredArea) confidence = 0.75;
+  else confidence = 0.55;
+  if (text.length < 6) confidence = Math.min(confidence, 0.4);
+
+  return {
+    area,
+    intentKind: intent.intentKind,
+    targetKind: intent.targetKind,
+    riskClass,
+    confidence,
+    primaryAreaSlug,
+  };
+}
+
+function executeCommandRouterClassification(
+  request: RouteCompanyBrainCommandRequest,
+  classification: CommandRouterClassification,
+  timestamp: number
+): CommandRouterRouting {
+  const text = (request.text ?? "").trim();
+  const dryRun = request.dryRun !== false;
+  const visibility = request.visibility ?? "internal";
+  const rationale: string[] = [];
+  rationale.push(
+    `Routed to area=${classification.area} (slug=${classification.primaryAreaSlug}) with intent=${classification.intentKind} target=${classification.targetKind}; confidence=${classification.confidence.toFixed(2)}.`
+  );
+  if (request.intentHint) {
+    rationale.push(`Caller hint applied: intent=${request.intentHint}.`);
+  }
+  if (classification.riskClass === "C") {
+    return {
+      decision: "blocked",
+      rationale: [
+        ...rationale,
+        "Risk C requested action is blocked by Writeback Policy Matrix v0.",
+      ],
+      nextActionLabel: "Refactor request",
+      nextActionDetail:
+        "Risk C actions (close/reopen/merge/deploy/delete/sensitive comms) are blocked. Split the request into a Risk B path with HITL approval, preview and audit.",
+      policySummary:
+        "Risk C actions remain blocked in v0 governance.",
+    };
+  }
+
+  if (classification.intentKind === "ask_clarification" || text.length < 6) {
+    return {
+      decision: "needs_clarification",
+      rationale,
+      nextActionLabel: "Ask the requester for more detail",
+      nextActionDetail:
+        "The router needs at least area, target object kind and a clear verb (create, comment, label, schedule, evaluate).",
+      clarifications: [
+        {
+          question: "Which area should this run in?",
+          options: COMPANY_OPERATING_MAP_AREAS.map((spec) => spec.slug),
+        },
+        {
+          question: "What target object should AIOS create?",
+          options: [
+            "work_item",
+            "guidance_item",
+            "external_action_proposal",
+            "session_result",
+            "goal_decomposition",
+          ],
+        },
+      ],
+    };
+  }
+
+  if (classification.intentKind === "route_to_goal_decomposition") {
+    return {
+      decision: "deferred_to_goal_decomposition",
+      rationale: [
+        ...rationale,
+        "High-level outcome detected. Goal-to-Execution Superoptimizer (#39) owns decomposition into area metrics, work items, watchers and gates.",
+      ],
+      nextActionLabel: "Open #39 path",
+      nextActionDetail:
+        "Capture this goal as an OperatingGoal once AIOS-EXEC-08 lands. For now, open a tracking GitHub issue with prefix AIOS-EXEC-08 or add a backlog line.",
+      suggestedRoute: "/company-brain/operating#aios-exec-08",
+      policySummary:
+        "Goal-to-Execution Superoptimizer is the planned owner; this v0 router only flags it.",
+    };
+  }
+
+  if (classification.intentKind === "submit_session_result") {
+    return {
+      decision: "preview_only",
+      rationale: [
+        ...rationale,
+        "Session result intake exists at POST /api/company-brain/session-results.",
+      ],
+      nextActionLabel: "Submit via session-results endpoint",
+      nextActionDetail:
+        "Use mcp__aios__submit_company_brain_session_result or POST /api/company-brain/session-results with runnerType, outcome, summary and target WorkItem.",
+      suggestedRoute: "/company-brain/session-results",
+      policySummary:
+        "Routed read-only; session result intake is the existing AIOS-EXEC-04 path.",
+    };
+  }
+
+  if (classification.intentKind === "create_external_action_proposal") {
+    return {
+      decision: "preview_only",
+      rationale: [
+        ...rationale,
+        "External writeback flows through ExternalActionProposal + Writeback Policy Matrix.",
+      ],
+      nextActionLabel: "Open proposal preview",
+      nextActionDetail:
+        "Create the proposal via the existing /external-action-proposals path, then preview before approval and execute only when Risk B and allowlist gates pass.",
+      suggestedRoute: "/company-brain#external-action-proposals",
+      policySummary:
+        "Risk B writeback requires preview + HITL approval + Retry Safety. v0 router does not auto-create proposals.",
+    };
+  }
+
+  if (classification.intentKind === "create_github_issue_proposal") {
+    return {
+      decision: "preview_only",
+      rationale: [
+        ...rationale,
+        "GitHub issue create flow is the AIOS-EXEC-02 governed path.",
+      ],
+      nextActionLabel: "Use github_issue_create proposal",
+      nextActionDetail:
+        "Call mcp__aios__create_company_brain_github_issue_create_proposal from a WorkItem; preview before approval; execute only when allowlisted (Risk B).",
+      suggestedRoute: "/company-brain#github-issue-create",
+      policySummary:
+        "Repo allowlist + GITHUB_TOKEN + HITL approval gate execution.",
+    };
+  }
+
+  if (classification.intentKind === "create_guidance") {
+    if (dryRun) {
+      return {
+        decision: "preview_only",
+        rationale,
+        nextActionLabel: "Send dryRun=false to commit",
+        nextActionDetail:
+          "Set dryRun=false to persist a GuidanceItem with status=new, audience derived from request and provenance company_brain:command_router.",
+      };
+    }
+    const db = getDb();
+    const guidanceId = nanoid(12);
+    const guidanceTitle = (request.guidanceTitle ?? text).slice(0, 120);
+    const guidanceAction = (request.guidanceAction ?? text).slice(0, 1000);
+    const audience = request.guidanceAudience ?? "human";
+    const guidanceRow = {
+      id: guidanceId,
+      audience,
+      priorityId: null,
+      goalId: null,
+      findingId: null,
+      signalId: null,
+      workItemId: null,
+      workflowRunId: null,
+      area: classification.area,
+      title: guidanceTitle,
+      action: guidanceAction,
+      dueAt: null,
+      severity: "info" as const,
+      status: "new" as const,
+      feedbackStatus: "pending" as const,
+      feedbackNote: null,
+      feedbackAt: null,
+      generatedFrom: { commandRouter: { intentHint: request.intentHint ?? null, requestText: text } },
+      visibility,
+      provenance: {
+        createdFrom: "company_brain:command_router",
+        confidence: classification.confidence,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending" as const,
+        visibility,
+        notes: `actor=${request.actor ?? "unknown"}; intent=${classification.intentKind}; risk=${classification.riskClass}`,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbGuidanceItems).values(guidanceRow as never).run();
+    return {
+      decision: "created",
+      rationale: [...rationale, "GuidanceItem persisted (Risk A class)."],
+      nextActionLabel: "Review guidance",
+      nextActionDetail:
+        "Open Company Brain Guidance review queue to accept, reject or convert to WorkItem.",
+      createdGuidanceItemId: guidanceId,
+      suggestedRoute: "/company-brain#guidance",
+      policySummary: "Internal guidance only; no external mutation.",
+    };
+  }
+
+  if (classification.intentKind === "create_work_item") {
+    if (dryRun) {
+      return {
+        decision: "preview_only",
+        rationale,
+        nextActionLabel: "Send dryRun=false to commit",
+        nextActionDetail:
+          "Set dryRun=false to persist a native WorkItem (status=triage) with provenance company_brain:command_router.",
+      };
+    }
+    const db = getDb();
+    const workItemId = nanoid(12);
+    const workItemTitle = (request.workItemTitle ?? text).slice(0, 200);
+    const workItemDescription = request.workItemDescription ?? text;
+    const workItemRow = {
+      id: workItemId,
+      title: workItemTitle,
+      description: workItemDescription,
+      area: classification.area,
+      owner: request.actor ?? null,
+      ownerType: "human" as const,
+      status: "triage" as const,
+      priorityId: null,
+      goalId: null,
+      milestoneId: null,
+      externalProvider: null,
+      externalId: null,
+      externalUrl: null,
+      riskClass: classification.riskClass,
+      dueAt: null,
+      blockedReason: null,
+      labels: ["command_router"],
+      sourceId: null,
+      artifactId: null,
+      visibility,
+      provenance: {
+        createdFrom: "company_brain:command_router",
+        confidence: classification.confidence,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending" as const,
+        visibility,
+        notes: `actor=${request.actor ?? "unknown"}; intent=${classification.intentKind}; risk=${classification.riskClass}`,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbWorkItems).values(workItemRow as never).run();
+    return {
+      decision: "created",
+      rationale: [...rationale, "Native WorkItem persisted (Risk A class)."],
+      nextActionLabel: "Open WorkItem in Company Brain",
+      nextActionDetail:
+        "Visit /company-brain/operating to see the WorkItem in Next Work; or run the github_issue_create flow to mirror it externally.",
+      createdWorkItemId: workItemId,
+      suggestedRoute: "/company-brain/operating",
+      policySummary: "Internal native WorkItem only; no external mutation.",
+    };
+  }
+
+  return {
+    decision: "preview_only",
+    rationale,
+    nextActionLabel: "Refine request",
+    nextActionDetail: "No durable action recommended for this intent in v0.",
+  };
+}
+
+app.post("/command-router", async (c) => {
+  try {
+    const body = (await c.req
+      .json<RouteCompanyBrainCommandRequest>()
+      .catch(() => ({ text: "" } as RouteCompanyBrainCommandRequest))) as RouteCompanyBrainCommandRequest;
+    if (!body.text || !body.text.trim()) {
+      return c.json({ error: "validation", message: "text is required" }, 400);
+    }
+    const timestamp = now();
+    const classification = buildCommandRouterClassification(body);
+    const routing = executeCommandRouterClassification(body, classification, timestamp);
+    const result: CompanyBrainCommandRouterResult = {
+      generatedAt: timestamp,
+      request: body,
+      classification,
+      routing,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "command_router_failed", message }, 400);
+  }
 });
 
 const SESSION_RESULT_DEFAULT_SOURCE_REF = "aios:session-results";
