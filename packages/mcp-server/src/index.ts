@@ -2060,6 +2060,59 @@ server.registerTool(
 );
 
 server.registerTool(
+  "create_company_brain_github_issue_create_proposal",
+  {
+    title: "Create GitHub issue create proposal from WorkItem",
+    description:
+      "Generate a preview-only ExternalActionProposal that drafts a GitHub Issue from a Company Brain WorkItem. Returns the persisted proposal (Risk B, action_policy=request_human, executionStatus=blocked) ready for HITL review and preview. Does not call GitHub write APIs. v0 cut is preview-only; the real executor follows in a separate cut.",
+    inputSchema: {
+      workItemId: z.string().min(1),
+      repo: z.string().min(3),
+      title: z.string().optional(),
+      body: z.string().optional(),
+      labels: z.array(z.string()).optional(),
+      milestoneTitle: z.string().optional(),
+      milestoneNumber: z.number().int().optional(),
+      rationale: z.string().optional(),
+      guidanceItemId: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/external-action-proposals/from-work-item/github-issue-create",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "preview_company_brain_github_issue_create_proposal",
+  {
+    title: "Preview GitHub issue create proposal",
+    description:
+      "Dry-run a GitHub issue create ExternalActionProposal. Returns target repo, milestone, title, body with idempotency marker, labels, sourceWorkItemId, payload hash and execution-blocked state without calling GitHub write APIs. v0 cut is preview-only; real execution requires the executor cut, allowlist, HITL approval, retry safety and audit trail to be wired separately.",
+    inputSchema: {
+      id: z.string().min(1),
+      actor: z.string().optional(),
+    },
+  },
+  async ({ id, actor }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${id}/github-issue-create/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "preview_company_brain_github_label_proposal",
   {
     title: "Preview GitHub label proposal",

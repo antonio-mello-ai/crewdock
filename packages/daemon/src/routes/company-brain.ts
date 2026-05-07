@@ -58,9 +58,12 @@ import type {
   ExternalActionProposal,
   GitHubCommentWritebackResponse,
   GitHubCommentWritebackTarget,
+  GitHubIssueCreateProposalPreviewResponse,
+  GitHubIssueCreateTarget,
   GitHubLabelActionMode,
   GitHubLabelProposalPreviewResponse,
   GitHubLabelWritebackResponse,
+  GenerateGitHubIssueCreateProposalRequest,
   GitHubStatusCheckProposalPreviewResponse,
   GitHubStatusCheckWritebackResponse,
   GitHubStatusCheckTarget,
@@ -859,6 +862,10 @@ function isSlackThreadReplyAction(actionType: ExternalActionKind) {
   return actionType === "thread_reply" || actionType === "slack_thread_reply";
 }
 
+function isGitHubIssueCreateAction(actionType: ExternalActionKind) {
+  return actionType === "github_issue_create";
+}
+
 function encodeMarkerValue(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -1256,6 +1263,237 @@ function buildGitHubStatusCheckProposalPreview(
   };
 }
 
+function gitHubIssueCreateMarker(proposal: ExternalActionProposal) {
+  return `<!-- aios-issue-create proposal_id=${encodeMarkerValue(
+    proposal.id
+  )} idempotency_key=${encodeMarkerValue(proposal.idempotencyKey)} -->`;
+}
+
+function gitHubIssueCreatePayloadLabels(proposal: ExternalActionProposal) {
+  const labels = Array.isArray(proposal.payload.labels)
+    ? proposal.payload.labels
+    : [];
+  return uniqueStrings(
+    labels.flatMap((label) =>
+      typeof label === "string" ? label.split(",").map((item) => item.trim()) : []
+    )
+  );
+}
+
+function gitHubIssueCreateTarget(
+  proposal: ExternalActionProposal
+): GitHubIssueCreateTarget {
+  const repo = parseGitHubRepoName(payloadString(proposal.payload, ["repo"], "repo"));
+  const milestoneNumber = payloadNumber(proposal.payload, [
+    "milestoneNumber",
+    "milestone_number",
+  ]);
+  const milestoneTitle = payloadOptionalString(proposal.payload, [
+    "milestoneTitle",
+    "milestone_title",
+    "milestone",
+  ]);
+  return {
+    repo: repo.fullName,
+    owner: repo.owner,
+    name: repo.name,
+    milestoneNumber,
+    milestoneTitle,
+    url: `https://github.com/${repo.fullName}/issues`,
+  };
+}
+
+function gitHubIssueCreateAllowlist(): string[] {
+  const raw = process.env.AIOS_GITHUB_ISSUE_CREATE_ALLOWLIST ?? "";
+  return uniqueStrings(
+    raw
+      .split(/[\s,;]+/)
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+  );
+}
+
+function isGitHubIssueCreateRepoAllowlisted(repo: string) {
+  const allowlist = gitHubIssueCreateAllowlist();
+  if (!allowlist.length) return false;
+  return allowlist.includes(repo);
+}
+
+function buildGitHubIssueCreateProposalPreview(
+  proposal: ExternalActionProposal
+): Omit<GitHubIssueCreateProposalPreviewResponse, "proposal" | "policySummary"> {
+  if (!proposal.idempotencyKey?.trim()) {
+    throw new Error("idempotencyKey is required for GitHub issue create preview");
+  }
+  const target = gitHubIssueCreateTarget(proposal);
+  const title = payloadString(proposal.payload, ["title"], "title");
+  const bodyRaw = payloadString(proposal.payload, ["body"], "body");
+  const labels = gitHubIssueCreatePayloadLabels(proposal);
+  const marker = gitHubIssueCreateMarker(proposal);
+  const body = `${bodyRaw.trim()}\n\n${marker}`;
+  const sourceWorkItemId = payloadOptionalString(proposal.payload, [
+    "sourceWorkItemId",
+    "source_work_item_id",
+    "workItemId",
+  ]);
+  const sourceGuidanceItemId = payloadOptionalString(proposal.payload, [
+    "sourceGuidanceItemId",
+    "source_guidance_item_id",
+    "guidanceItemId",
+  ]);
+  const allowlisted = isGitHubIssueCreateRepoAllowlisted(target.repo);
+  const blockReasons: string[] = [];
+  if (proposal.riskClass !== "B") {
+    blockReasons.push("github_issue_create_requires_risk_b");
+  }
+  if (proposal.actionPolicy !== "writeback_allowed") {
+    blockReasons.push("github_issue_create_requires_writeback_allowed");
+  }
+  if (proposal.approvalStatus !== "approved") {
+    blockReasons.push("github_issue_create_requires_approval");
+  }
+  if (!allowlisted) {
+    blockReasons.push("github_issue_create_repo_not_allowlisted");
+  }
+  blockReasons.push("github_issue_create_executor_not_implemented_v0");
+  const executionBlocked = true;
+  return {
+    target,
+    title,
+    body,
+    labels,
+    marker,
+    idempotencyKey: proposal.idempotencyKey,
+    payloadHash: stablePayloadHash(proposal.payload),
+    riskRationale:
+      "Risk B WorkItem to GitHub Issue draft. v0 cut is preview-only; real executor follows AIOS-EXEC-02 v1 and requires explicit allowlist plus dogfood approval.",
+    sourceWorkItemId,
+    sourceGuidanceItemId,
+    dryRun: true,
+    status: "preview_only",
+    executionBlocked,
+    executionBlockReason: blockReasons[0] ?? null,
+    mutationAttempted: false,
+    externalId: proposal.externalId,
+    externalUrl: proposal.externalUrl,
+  };
+}
+
+function validateGitHubIssueCreateProposalPreview(proposal: ExternalActionProposal) {
+  if (proposal.destinationType !== "github") {
+    throw new Error("proposal destinationType must be github");
+  }
+  if (!isGitHubIssueCreateAction(proposal.actionType)) {
+    throw new Error("proposal actionType must be github_issue_create");
+  }
+  if (proposal.riskClass === "unknown") {
+    throw new Error(
+      "proposal riskClass must be classified before GitHub issue create preview"
+    );
+  }
+  if (
+    proposal.actionPolicy !== "request_human" &&
+    proposal.actionPolicy !== "writeback_allowed"
+  ) {
+    throw new Error(
+      "proposal actionPolicy must be request_human or writeback_allowed for GitHub issue create preview"
+    );
+  }
+  if (proposal.approvalStatus === "rejected") {
+    throw new Error("rejected GitHub issue create proposals require a new proposal");
+  }
+  if (proposal.executionStatus === "cancelled") {
+    throw new Error("cancelled GitHub issue create proposals require a new proposal");
+  }
+  return buildGitHubIssueCreateProposalPreview(proposal);
+}
+
+function buildGitHubIssueCreatePayloadFromWorkItem(
+  workItem: WorkItem,
+  options: {
+    repo: string;
+    titleOverride?: string | null;
+    bodyOverride?: string | null;
+    additionalLabels?: string[];
+    milestoneTitle?: string | null;
+    milestoneNumber?: number | null;
+    rationale?: string | null;
+  }
+): {
+  payload: Record<string, unknown>;
+  destinationRef: string;
+  idempotencyKey: string;
+  title: string;
+} {
+  const { repo } = options;
+  const title = (options.titleOverride ?? workItem.title).trim();
+  const labelSet = uniqueStrings([
+    ...(workItem.labels ?? []),
+    ...(options.additionalLabels ?? []),
+  ]);
+  const acceptanceCriteria = parseAcceptanceCriteria(workItem.description);
+  const bodyLines: string[] = [];
+  if (options.bodyOverride && options.bodyOverride.trim()) {
+    bodyLines.push(options.bodyOverride.trim());
+  } else {
+    bodyLines.push("## Context");
+    bodyLines.push(
+      `Generated from Company Brain WorkItem \`${workItem.id}\` (${workItem.area}, status=${workItem.status}).`
+    );
+    if (options.rationale && options.rationale.trim()) {
+      bodyLines.push("");
+      bodyLines.push(options.rationale.trim());
+    }
+    if (workItem.description && workItem.description.trim()) {
+      bodyLines.push("");
+      bodyLines.push("## Description");
+      bodyLines.push(workItem.description.trim());
+    }
+    if (acceptanceCriteria.length) {
+      bodyLines.push("");
+      bodyLines.push("## Acceptance Criteria");
+      for (const ac of acceptanceCriteria) {
+        bodyLines.push(`- ${ac}`);
+      }
+    }
+    bodyLines.push("");
+    bodyLines.push("## Provenance");
+    bodyLines.push(`- WorkItem: ${workItem.id}`);
+    if (workItem.sourceId) bodyLines.push(`- Source: ${workItem.sourceId}`);
+    if (workItem.artifactId) bodyLines.push(`- Artifact: ${workItem.artifactId}`);
+    if (workItem.priorityId) bodyLines.push(`- Priority: ${workItem.priorityId}`);
+    if (workItem.goalId) bodyLines.push(`- Goal: ${workItem.goalId}`);
+  }
+  const body = bodyLines.join("\n");
+  const idempotencyHash = createHash("sha256")
+    .update(repo)
+    .update("|")
+    .update(workItem.id)
+    .update("|")
+    .update(title)
+    .digest("hex")
+    .slice(0, 16);
+  const idempotencyKey = `aios:issue_create:${repo}:${workItem.id}:${idempotencyHash}`;
+  const payload: Record<string, unknown> = {
+    repo,
+    title,
+    body,
+    labels: labelSet,
+    sourceWorkItemId: workItem.id,
+  };
+  if (options.milestoneTitle) payload.milestoneTitle = options.milestoneTitle;
+  if (options.milestoneNumber !== null && options.milestoneNumber !== undefined) {
+    payload.milestoneNumber = options.milestoneNumber;
+  }
+  if (options.rationale) payload.rationale = options.rationale;
+  return {
+    payload,
+    destinationRef: repo,
+    idempotencyKey,
+    title,
+  };
+}
+
 function validateGitHubCommentWritebackProposal(proposal: ExternalActionProposal) {
   if (proposal.approvalStatus !== "approved") {
     throw new Error("proposal must be approved before GitHub writeback");
@@ -1469,6 +1707,12 @@ function previewEventForProposal(proposal: ExternalActionProposal) {
     isGitHubStatusCheckAction(proposal.actionType)
   ) {
     return "github_status_check_previewed";
+  }
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubIssueCreateAction(proposal.actionType)
+  ) {
+    return "github_issue_create_previewed";
   }
   if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
     return "slack_thread_reply_previewed";
@@ -15096,6 +15340,189 @@ app.post("/external-action-proposals/:id/github-label/execute", async (c) => {
       .where(eq(cbExternalActionProposals.id, id))
       .run();
     return c.json({ error: "execution_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/from-work-item/github-issue-create", async (c) => {
+  try {
+    const db = getDb();
+    const body = (await c.req
+      .json<GenerateGitHubIssueCreateProposalRequest>()
+      .catch(() => ({}))) as GenerateGitHubIssueCreateProposalRequest;
+    if (!body.workItemId?.trim()) {
+      return c.json({ error: "validation", message: "workItemId is required" }, 400);
+    }
+    const repoRef = body.repo?.trim();
+    if (!repoRef) {
+      return c.json({ error: "validation", message: "repo is required" }, 400);
+    }
+    const repo = parseGitHubRepoName(repoRef);
+    const workItemRow = db
+      .select()
+      .from(cbWorkItems)
+      .where(eq(cbWorkItems.id, body.workItemId.trim()))
+      .get();
+    if (!workItemRow) {
+      return c.json({ error: "not_found", message: "WorkItem not found" }, 404);
+    }
+    const workItem = workItemRow as unknown as WorkItem;
+    const generated = buildGitHubIssueCreatePayloadFromWorkItem(workItem, {
+      repo: repo.fullName,
+      titleOverride: body.title ?? null,
+      bodyOverride: body.body ?? null,
+      additionalLabels: body.labels ?? [],
+      milestoneTitle: body.milestoneTitle ?? null,
+      milestoneNumber: body.milestoneNumber ?? null,
+      rationale: body.rationale ?? null,
+    });
+    const existingByIdempotency = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.idempotencyKey, generated.idempotencyKey))
+      .get();
+    if (existingByIdempotency) {
+      const proposal = existingByIdempotency as unknown as ExternalActionProposal;
+      return c.json({ data: { proposal, reused: true } });
+    }
+    const timestamp = now();
+    const id = nanoid(12);
+    const auditTrail: ExternalActionAuditEvent[] = [
+      {
+        at: timestamp,
+        actor: null,
+        event: "proposal_created",
+        note: "GitHub issue create proposal generated from WorkItem (preview-only v0).",
+        metadata: {
+          workItemId: workItem.id,
+          repo: repo.fullName,
+          title: generated.title,
+          idempotencyKey: generated.idempotencyKey,
+        },
+      },
+    ];
+    const proposalRecord: ExternalActionProposal = {
+      id,
+      guidanceItemId: body.guidanceItemId ?? "",
+      signalId: null,
+      findingId: null,
+      workItemId: workItem.id,
+      workflowRunId: null,
+      title: `GitHub Issue: ${generated.title}`,
+      rationale: `Draft GitHub issue for WorkItem ${workItem.id} on ${repo.fullName} (preview-only v0).`,
+      destinationType: "github",
+      destinationRef: generated.destinationRef,
+      actionType: "github_issue_create",
+      payload: generated.payload,
+      riskClass: (body.riskClass ?? "B") as RiskClass,
+      actionPolicy: (body.actionPolicy ?? "request_human") as ActionPolicy,
+      policySummary:
+        "GitHub issue create proposal v0 is preview-only. Real executor (Risk B, allowlisted, HITL approval, idempotency check, audit trail) is intentionally not implemented in this cut.",
+      approvalStatus: "pending",
+      approvalRequired: true,
+      requestedBy: null,
+      approvedBy: null,
+      approvedAt: null,
+      rejectionReason: null,
+      executionStatus: "blocked",
+      externalId: null,
+      externalUrl: null,
+      errorSummary: null,
+      rollbackRef: null,
+      idempotencyKey: generated.idempotencyKey,
+      auditTrail,
+      visibility: (body.visibility ?? "internal") as Visibility,
+      provenance: {
+        createdFrom: "company_brain:work_item_to_github_issue",
+        sourceId: workItem.sourceId ?? undefined,
+        artifactId: workItem.artifactId ?? undefined,
+        confidence: 0.8,
+        extractedAt: timestamp,
+        humanReviewStatus: "pending",
+        visibility: "internal",
+        notes: `risk_class=${body.riskClass ?? "B"}; action_policy=${
+          body.actionPolicy ?? "request_human"
+        }; v0_preview_only=true`,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbExternalActionProposals).values(proposalRecord).run();
+    return c.json({ data: { proposal: proposalRecord, reused: false } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "proposal_failed", message }, 400);
+  }
+});
+
+app.post("/external-action-proposals/:id/github-issue-create/preview", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteExternalActionProposalRequest>()
+      .catch(() => ({}))) as ExecuteExternalActionProposalRequest;
+    const existing = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, id))
+      .get();
+    if (!existing) throw new Error("external action proposal not found");
+    const proposalIn = existing as unknown as ExternalActionProposal;
+    const preview = validateGitHubIssueCreateProposalPreview(proposalIn);
+    const actor = body.actor?.trim() || null;
+    const timestamp = now();
+    const auditTrail = appendAuditEvent(proposalIn.auditTrail ?? [], {
+      actor,
+      event: "github_issue_create_previewed",
+      note:
+        "Dry-run generated the GitHub issue draft without calling GitHub write APIs. v0 cut is preview-only; executor follows in a separate cut.",
+      metadata: {
+        request: {
+          proposalId: proposalIn.id,
+          repo: preview.target.repo,
+          title: preview.title,
+          labels: preview.labels,
+          milestoneTitle: preview.target.milestoneTitle,
+          milestoneNumber: preview.target.milestoneNumber,
+          riskClass: proposalIn.riskClass,
+          actionPolicy: proposalIn.actionPolicy,
+          idempotencyKey: proposalIn.idempotencyKey,
+          payloadHash: stablePayloadHash(proposalIn.payload),
+          sourceWorkItemId: preview.sourceWorkItemId,
+          sourceGuidanceItemId: preview.sourceGuidanceItemId,
+        },
+        response: {
+          dryRun: true,
+          previewOnly: true,
+          executionBlocked: preview.executionBlocked,
+          executionBlockReason: preview.executionBlockReason,
+        },
+      },
+    });
+    const update = {
+      executionStatus:
+        proposalIn.executionStatus === "blocked"
+          ? ("blocked" as const)
+          : ("dry_run" as const),
+      errorSummary: null,
+      auditTrail,
+      updatedAt: timestamp,
+    };
+    db.update(cbExternalActionProposals)
+      .set(update)
+      .where(eq(cbExternalActionProposals.id, id))
+      .run();
+    const proposal = { ...proposalIn, ...update } as ExternalActionProposal;
+    const result: GitHubIssueCreateProposalPreviewResponse = {
+      proposal,
+      ...preview,
+      policySummary:
+        "GitHub issue create proposal v0 is preview-only. Real executor (Risk B, allowlisted, HITL approval, idempotency check, audit trail) is intentionally not implemented in this cut.",
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "preview_failed", message }, 400);
   }
 });
 

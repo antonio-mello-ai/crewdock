@@ -416,6 +416,7 @@ export type ExternalActionKind =
   | "github_label"
   | "github_status"
   | "github_check"
+  | "github_issue_create"
   | "thread_reply"
   | "slack_thread_reply"
   | "draft"
@@ -1262,6 +1263,52 @@ export interface GitHubStatusCheckProposalPreviewResponse {
 
 export type GitHubStatusCheckWritebackResponse =
   GitHubStatusCheckProposalPreviewResponse;
+
+export interface GitHubIssueCreateTarget {
+  repo: string;
+  owner: string;
+  name: string;
+  milestoneNumber: number | null;
+  milestoneTitle: string | null;
+  url: string;
+}
+
+export interface GitHubIssueCreateProposalPreviewResponse {
+  proposal: ExternalActionProposal;
+  target: GitHubIssueCreateTarget;
+  title: string;
+  body: string;
+  labels: string[];
+  marker: string;
+  idempotencyKey: string;
+  payloadHash: string;
+  riskRationale: string;
+  sourceWorkItemId: string | null;
+  sourceGuidanceItemId: string | null;
+  dryRun: boolean;
+  status: "preview_only" | "dry_run" | "completed" | "already_completed" | "failed";
+  executionBlocked: boolean;
+  executionBlockReason: string | null;
+  mutationAttempted?: boolean;
+  externalId?: string | null;
+  externalUrl?: string | null;
+  policySummary: string;
+}
+
+export interface GenerateGitHubIssueCreateProposalRequest {
+  workItemId?: string | null;
+  guidanceItemId?: string | null;
+  repo?: string;
+  title?: string;
+  body?: string;
+  labels?: string[];
+  milestoneTitle?: string | null;
+  milestoneNumber?: number | null;
+  riskClass?: RiskClass;
+  actionPolicy?: ActionPolicy;
+  visibility?: Visibility;
+  rationale?: string;
+}
 
 export interface SlackThreadReplyWritebackTarget {
   channelId: string;
