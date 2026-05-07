@@ -399,6 +399,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_operating_snapshot",
+  {
+    title: "Get Company Brain operating snapshot",
+    description:
+      "Read-only compact daily operating surface for AIOS Briefing, Operating Cadence, Gate Closure Ritual, Source Health, Daily Agent Handoff and recent timeline events.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-snapshot"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_company_brain_operating_cadence",
   {
     title: "Run Company Brain operating cadence",
@@ -611,7 +627,7 @@ server.registerTool(
   },
   async () => {
     const result = await daemonFetch<{ data: unknown }>(
-      "/api/company-brain/external-action-proposals/preview-replay-simulator"
+      "/api/company-brain/preview-replay-simulator"
     );
     return formatJsonResult(result.data);
   }

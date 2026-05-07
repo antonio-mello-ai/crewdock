@@ -17,6 +17,7 @@ import type {
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainGateClosureRitual,
   CompanyBrainOperatingCadence,
+  CompanyBrainOperatingSnapshot,
   CompanyBrainReviewCohesion,
   CompanyBrainSavedAuditViews,
   CompanyBrainTimeline,
@@ -3821,6 +3822,18 @@ function buildSourceHealthReport(
     );
     const openGuidance = guidance.filter((item) => ["new", "open"].includes(item.status));
     const issueKinds = new Set<SourceHealthIssueKind>();
+    const sourceMetadata = metadataRecord(source.metadata);
+    const sourceAdapter = metadataString(sourceMetadata.adapter);
+    const evidenceOnlyAdapter = [
+      "github_pr_ci",
+      "github_notifications",
+      "slack_channel",
+    ].includes(sourceAdapter ?? "");
+    const evidenceOnlySource = source.sourceType === "runtime" || evidenceOnlyAdapter;
+    const expectsWorkItems =
+      metadataBoolean(sourceMetadata.expectsWorkItems) ?? !evidenceOnlySource;
+    const expectsSignals =
+      metadataBoolean(sourceMetadata.expectsSignals) ?? !evidenceOnlySource;
 
     let freshnessStatus: SourceFreshnessStatus = "fresh";
     if (source.syncError || source.healthStatus === "error") {
@@ -3838,8 +3851,8 @@ function buildSourceHealthReport(
     }
 
     if (!artifacts.length) issueKinds.add("no_artifacts");
-    if (!workItems.length) issueKinds.add("no_work_items");
-    if (!signals.length) issueKinds.add("no_signals");
+    if (expectsWorkItems && !workItems.length) issueKinds.add("no_work_items");
+    if (expectsSignals && !signals.length) issueKinds.add("no_signals");
     if (watchers.length > 0 && scheduledWatchers.length === 0) {
       issueKinds.add("watcher_cadence_missing");
     }
@@ -3981,6 +3994,16 @@ function buildCoreReadiness(args: {
   const hasWritebackDogfood =
     writebackSafetyDashboard.stats.completedExternalWriteCount > 0 ||
     writebackSafetyDashboard.stats.completedNoopCount > 0;
+  const hasDesignPartnerOperatingPack =
+    existsSync(resolve(process.cwd(), "docs/company-brain-design-partner-operating-pack.md")) ||
+    data.artifacts.some((artifact) => {
+      const provenance = metadataRecord(artifact.provenance);
+      return (
+        artifact.rawRef.includes("company-brain-design-partner-operating-pack") ||
+        artifact.contentRef?.includes("company-brain-design-partner-operating-pack") ||
+        metadataString(provenance.createdFrom)?.includes("design_partner_operating_pack")
+      );
+    });
 
   const modules: Module[] = [
     module({
@@ -4279,16 +4302,18 @@ function buildCoreReadiness(args: {
       requiresExternalMutation: false,
     });
   }
-  addGap({
-    id: "design_partner_operating_pack",
-    impact: "design_partner",
-    severity: "warn",
-    title: "Design-partner readiness needs a stable operating pack",
-    rationale:
-      "The core is dogfooded internally, but design partners need a repeatable onboarding story, data boundaries and runbook.",
-    nextAction: "Create a demo/runbook pack from the Felhen closed-loop dogfood path.",
-    requiresExternalMutation: false,
-  });
+  if (!hasDesignPartnerOperatingPack) {
+    addGap({
+      id: "design_partner_operating_pack",
+      impact: "design_partner",
+      severity: "warn",
+      title: "Design-partner readiness needs a stable operating pack",
+      rationale:
+        "The core is dogfooded internally, but design partners need a repeatable onboarding story, data boundaries and runbook.",
+      nextAction: "Create a demo/runbook pack from the Felhen closed-loop dogfood path.",
+      requiresExternalMutation: false,
+    });
+  }
   addGap({
     id: "stronger_writeback_requires_new_approval",
     impact: "requires_external_mutation",
@@ -4368,6 +4393,126 @@ function buildCoreReadiness(args: {
       lastScheduledRunAt: operatingCadence.stats.lastScheduledRunAt,
       nextScheduledRunAt: operatingCadence.stats.nextScheduledRunAt,
     },
+  };
+}
+
+function buildOperatingSnapshot(
+  data: ReturnType<typeof listAll>
+): CompanyBrainOperatingSnapshot {
+  const generatedAt = now();
+  const lastBriefing = buildLastBriefing(data);
+  const operatingCadence = buildOperatingCadence(data);
+  const gateClosureRitual = buildGateClosureRitual(data);
+  const sourceHealthReport = buildSourceHealthReport(data);
+  const timeline = buildCompanyBrainTimeline({ data, limit: 12 });
+  const latestAgentContext =
+    data.agentContexts
+      .filter(
+        (context) =>
+          context.provenance?.createdFrom === "company_brain:daily_agent_handoff"
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+  const latestCadenceRunAt =
+    operatingCadence.stats.lastScheduledRunAt ??
+    latestTimestamp(operatingCadence.watchers.map((watcher) => watcher.lastRunAt));
+  const latestGateActivityAt = latestTimestamp(
+    gateClosureRitual.items.map((item) => item.lastActivityAt ?? item.dueAt)
+  );
+  const latestSourceActivityAt = latestTimestamp(
+    sourceHealthReport.sources.map((source) => source.lastActivityAt)
+  );
+  const sourceHealthAlertCount =
+    sourceHealthReport.stats.errorCount +
+    sourceHealthReport.stats.staleCount +
+    sourceHealthReport.stats.watcherCadenceStaleCount +
+    sourceHealthReport.stats.sourceWithoutCadenceCount;
+  const briefingAlert =
+    lastBriefing?.nextSteps[0] ??
+    "Run watcher-aios-briefing-v0 to create the daily operating brief.";
+  const cadenceAlert =
+    operatingCadence.stats.staleCadenceCount || operatingCadence.stats.dueCadenceCount
+      ? `${operatingCadence.stats.staleCadenceCount} stale and ${operatingCadence.stats.dueCadenceCount} due watchers.`
+      : `${operatingCadence.stats.activeScheduledWatcherCount} scheduled watchers active.`;
+  const gateAlert = gateClosureRitual.stats.itemCount
+    ? `${gateClosureRitual.stats.itemCount} gate/SLA items need review.`
+    : "No gate/SLA closure items are open.";
+  const sourceAlert = sourceHealthAlertCount
+    ? `${sourceHealthAlertCount} source health alerts need review.`
+    : `${sourceHealthReport.stats.healthyCount}/${sourceHealthReport.stats.sourceCount} sources healthy/fresh.`;
+  const handoffAlert = latestAgentContext
+    ? `${latestAgentContext.title} is ready for ${latestAgentContext.targetAgent}.`
+    : "Generate a Daily Agent Handoff before starting a new agent session.";
+
+  return {
+    generatedAt,
+    cards: [
+      {
+        key: "aios_briefing",
+        title: "AIOS Briefing",
+        state: lastBriefing ? "ready" : "needs_run",
+        lastUpdatedAt: lastBriefing?.generatedAt ?? null,
+        mainAlert: briefingAlert,
+        primaryActionLabel: "Run briefing",
+        primaryActionKind: "run_briefing",
+      },
+      {
+        key: "operating_cadence",
+        title: "Operating Cadence",
+        state:
+          operatingCadence.stats.errorCadenceCount > 0
+            ? "error"
+            : operatingCadence.stats.staleCadenceCount ||
+                operatingCadence.stats.dueCadenceCount
+              ? "needs_run"
+              : "healthy",
+        lastUpdatedAt: latestCadenceRunAt ?? operatingCadence.generatedAt,
+        mainAlert: cadenceAlert,
+        primaryActionLabel: "Run Operating Cadence",
+        primaryActionKind: "run_operating_cadence",
+      },
+      {
+        key: "gate_closure_ritual",
+        title: "Gate Closure Ritual",
+        state: gateClosureRitual.stats.criticalCount
+          ? "critical"
+          : gateClosureRitual.stats.itemCount
+            ? "attention"
+            : "clear",
+        lastUpdatedAt: latestGateActivityAt ?? gateClosureRitual.generatedAt,
+        mainAlert: gateAlert,
+        primaryActionLabel: "Review gates",
+        primaryActionKind: "review_gate_closure",
+      },
+      {
+        key: "source_health",
+        title: "Source Health",
+        state: sourceHealthReport.stats.errorCount
+          ? "error"
+          : sourceHealthAlertCount
+            ? "attention"
+            : "healthy",
+        lastUpdatedAt: latestSourceActivityAt ?? sourceHealthReport.generatedAt,
+        mainAlert: sourceAlert,
+        primaryActionLabel: "Review sources",
+        primaryActionKind: "review_source_health",
+      },
+      {
+        key: "daily_agent_handoff",
+        title: "Daily Agent Handoff",
+        state: latestAgentContext ? "ready" : "missing",
+        lastUpdatedAt: latestAgentContext?.updatedAt ?? null,
+        mainAlert: handoffAlert,
+        primaryActionLabel: "Generate handoff",
+        primaryActionKind: "generate_daily_handoff",
+      },
+    ],
+    lastBriefing,
+    latestAgentContext,
+    operatingCadence,
+    gateClosureRitual,
+    sourceHealthReport,
+    timeline,
+    recentEvents: timeline.events.slice(0, 8),
   };
 }
 
@@ -9650,6 +9795,11 @@ app.get("/core-readiness", (c) => {
   return c.json({ data: coreReadiness });
 });
 
+app.get("/operating-snapshot", (c) => {
+  const data = buildOperatingSnapshot(listAll());
+  return c.json({ data });
+});
+
 app.get("/operating-cadence", (c) => {
   const data = buildOperatingCadence(listAll());
   return c.json({ data });
@@ -9895,6 +10045,11 @@ app.get("/writeback-policy-simulator", (c) => {
 });
 
 app.get("/external-action-proposals/preview-replay-simulator", (c) => {
+  const data = buildPreviewReplaySimulator(listAll());
+  return c.json({ data });
+});
+
+app.get("/preview-replay-simulator", (c) => {
   const data = buildPreviewReplaySimulator(listAll());
   return c.json({ data });
 });
@@ -10347,6 +10502,158 @@ app.post("/demo/felhen-v0-1", async (c) => {
       db.insert(cbGuidanceItems).values(guidanceItem).run();
     }
 
+    const demoExternalActionProposals: ExternalActionProposal[] = [];
+    const ensureDemoExternalActionProposal = (args: {
+      title: string;
+      rationale: string;
+      destinationRef: string;
+      payload: Record<string, unknown>;
+      riskClass: RiskClass;
+      policySummary: string;
+      approvalStatus: ExternalActionApprovalStatus;
+      approvalRequired: boolean;
+      executionStatus: ExternalActionExecutionStatus;
+      idempotencyKey: string;
+      auditEvents: ExternalActionAuditEvent[];
+    }) => {
+      const existing = db
+        .select()
+        .from(cbExternalActionProposals)
+        .where(eq(cbExternalActionProposals.idempotencyKey, args.idempotencyKey))
+        .get();
+      if (existing) {
+        demoExternalActionProposals.push(existing);
+        return existing;
+      }
+      const row: ExternalActionProposal = {
+        id: nanoid(12),
+        guidanceItemId: guidanceItem.id,
+        signalId: signal.id,
+        findingId: alignmentFinding.id,
+        workItemId: workItem.id,
+        workflowRunId: workflowRun.id,
+        title: args.title,
+        rationale: args.rationale,
+        destinationType: "internal",
+        destinationRef: args.destinationRef,
+        actionType: "draft",
+        payload: args.payload,
+        riskClass: args.riskClass,
+        actionPolicy: "observe_only",
+        policySummary: args.policySummary,
+        approvalStatus: args.approvalStatus,
+        approvalRequired: args.approvalRequired,
+        requestedBy: "demo-seed",
+        approvedBy: null,
+        approvedAt: null,
+        rejectionReason: null,
+        executionStatus: args.executionStatus,
+        externalId: null,
+        externalUrl: null,
+        errorSummary: null,
+        rollbackRef: null,
+        idempotencyKey: args.idempotencyKey,
+        auditTrail: args.auditEvents,
+        visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef: `${demoRef}/external-action-proposal/${args.idempotencyKey}`,
+          artifactId: artifact.id,
+          createdFrom: "demo:felhen-v0.2:external_action_proposal",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending" as const,
+          visibility,
+          notes: "internal_example=true; no_external_call=true",
+        },
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      db.insert(cbExternalActionProposals).values(row).run();
+      demoExternalActionProposals.push(row);
+      return row;
+    };
+    const riskAPayload = {
+      demo: "felhen-v0.2",
+      mode: "preview_only",
+      body: "Internal Risk A preview-only draft for demo readiness review.",
+      canonicalArtifactField: "artifactType",
+    };
+    ensureDemoExternalActionProposal({
+      title: "Felhen Demo v0.2 Risk A preview-only draft",
+      rationale:
+        "Demonstrate that low-risk internal AIOS suggestions can be inspected without any external writeback path.",
+      destinationRef: `${demoRef}/writeback/preview-only`,
+      payload: riskAPayload,
+      riskClass: "A",
+      policySummary:
+        "Risk A internal draft. Preview-only example; no external destination and no executor.",
+      approvalStatus: "blocked",
+      approvalRequired: false,
+      executionStatus: "blocked",
+      idempotencyKey: "demo:felhen-v0.2:risk-a-preview-only",
+      auditEvents: [
+        {
+          at: timestamp,
+          actor: "demo-seed",
+          event: "proposal_created",
+          note: "Demo Seed v0.2 created an internal Risk A preview-only proposal.",
+          metadata: {
+            demo: "felhen-v0.2",
+            mode: "preview_only",
+            payloadHash: stablePayloadHash(riskAPayload),
+            destinationRef: `${demoRef}/writeback/preview-only`,
+            idempotencyKey: "demo:felhen-v0.2:risk-a-preview-only",
+          },
+        },
+        {
+          at: timestamp,
+          actor: "demo-seed",
+          event: "internal_preview_only_recorded",
+          note: "No external writeback API is available or called for this example.",
+          metadata: {
+            executionBlocked: true,
+            status: "preview_only",
+          },
+        },
+      ],
+    });
+    const riskBPayload = {
+      demo: "felhen-v0.2",
+      mode: "pending_approval",
+      body: "Internal Risk B proposal that requires human approval before any future action.",
+      canonicalArtifactField: "artifactType",
+    };
+    ensureDemoExternalActionProposal({
+      title: "Felhen Demo v0.2 Risk B pending approval",
+      rationale:
+        "Demonstrate the governed queue state for a higher-risk internal proposal that still does not execute externally.",
+      destinationRef: `${demoRef}/writeback/pending-approval`,
+      payload: riskBPayload,
+      riskClass: "B",
+      policySummary:
+        "Risk B internal draft. Approval is required; no external destination and no executor in this demo seed.",
+      approvalStatus: "pending",
+      approvalRequired: true,
+      executionStatus: "not_started",
+      idempotencyKey: "demo:felhen-v0.2:risk-b-pending-approval",
+      auditEvents: [
+        {
+          at: timestamp,
+          actor: "demo-seed",
+          event: "proposal_created",
+          note: "Demo Seed v0.2 created an internal Risk B pending-approval proposal.",
+          metadata: {
+            demo: "felhen-v0.2",
+            mode: "pending_approval",
+            payloadHash: stablePayloadHash(riskBPayload),
+            destinationRef: `${demoRef}/writeback/pending-approval`,
+            idempotencyKey: "demo:felhen-v0.2:risk-b-pending-approval",
+          },
+        },
+      ],
+    });
+
     let improvementProposal =
       db
         .select()
@@ -10407,6 +10714,7 @@ app.post("/demo/felhen-v0-1", async (c) => {
           alignmentFinding,
           guidanceItem,
           improvementProposal,
+          externalActionProposals: demoExternalActionProposals,
           adoptionDashboard: buildAdoptionDashboard(data),
           sourceHealthReport: buildSourceHealthReport(data),
         },

@@ -2231,3 +2231,46 @@ Proximo passo recomendado:
 1. Rodar o pack em uma sessao real e coletar friccoes concretas.
 2. Ajustar briefing/adoption/dashboard/UI apenas com base nessa friccao.
 3. Parar antes de novo executor real, novo alvo externo, deploy, close/reopen/merge/delete ou qualquer mutacao externa nao aprovada.
+
+## Operating Surface v0 + Demo/Readiness Cleanup v0 - 2026-05-07
+
+Status: implementado e dogfooded em DB temporario. O corte permanece sem writeback externo, sem deploy, sem secrets novas e sem novo executor.
+
+Arquivos principais:
+
+- `packages/shared/src/types.ts`: adiciona `CompanyBrainOperatingSnapshot` e inclui `externalActionProposals` no retorno do demo seed.
+- `packages/daemon/src/routes/company-brain.ts`: adiciona builder/API `/operating-snapshot`, alias `/preview-replay-simulator`, propostas internas Demo Seed v0.2, heuristica de Source Health para runtime/read-only e reconhecimento do pack `design_partner_operating_pack`.
+- `packages/web/src/hooks/use-api.ts`: hooks `useCompanyBrainOperatingSnapshot` e `useRunCompanyBrainOperatingCadence`.
+- `packages/web/src/app/company-brain/operating/page.tsx`: nova superficie diaria com 5 cards, `Run Operating Cadence`, timeline recente e Copy/Download `.md` para Daily Agent Handoff.
+- `packages/web/src/app/company-brain/page.tsx`: link para a superficie Operating, mantendo a pagina atual como construtor/admin.
+- `packages/mcp-server/src/index.ts`: MCP read-only `get_company_brain_operating_snapshot` e uso do alias top-level de preview/replay.
+- `docs/company-brain-operating-cadence-runbook.md`: schema real do runner (`watcherRunId`, `artifactsCreated`, `signalsCreated`).
+- `docs/company-brain-artifact-field-canonical.md`: documenta `artifactType` como campo canonico.
+- `docs/action/company-brain-operating-surface-dogfood-2026-05-07.md`: evidencia do dogfood curto.
+
+Dogfood validado:
+
+- DB: `/tmp/aios-runtime-operating-surface-dogfood.sqlite`.
+- Daemon: `127.0.0.1:43172`.
+- Web dev: `127.0.0.1:43173`.
+- Demo Seed v0.2 criou duas `ExternalActionProposal` internas:
+  - Risk A preview-only: `approvalStatus=blocked`, `executionStatus=blocked`, `destinationType=internal`, `actionType=draft`.
+  - Risk B pending approval: `approvalStatus=pending`, `executionStatus=not_started`, `destinationType=internal`, `actionType=draft`.
+- Briefing: `artifactType=aios_briefing`, `sections=14`.
+- Daily Handoff: `status=ready`, `contentFormat=markdown`, `provenance.createdFrom=company_brain:daily_agent_handoff`.
+- Operating Cadence: `watcherRunsCreated=2`, `artifactsCreated=2`, runs `watcher-aios-briefing-v0` e `watcher-github-pr-ci-v0` completed.
+- Operating Snapshot: 5 cards retornados (`briefing=ready`, `cadence=healthy`, `gate=attention`, `source_health=healthy`, `handoff=ready`), `recentEvents=8`, `externalWriteEventCount=0`.
+- Source Health: `sourceWithoutWorkItemsCount=0` e `sourceWithoutSignalsCount=0` para runtime/PR-CI read-only.
+- Core Readiness: gap `design_partner_operating_pack` ausente; `designPartnerGapCount=0`.
+- Web: `GET /company-brain/operating` retornou 200.
+
+Validacao local ja executada antes do handoff:
+
+- `npx turbo build` passou e listou `/company-brain/operating` como rota static.
+
+Proximo passo recomendado:
+
+1. Usar `/company-brain/operating` como tela inicial da proxima sessao diaria AIOS.
+2. Coletar somente friccoes concretas de operacao antes de criar novas features.
+3. Continuar automaticamente para read-only/audit/docs/UI/MCP/dogfood temporario.
+4. Parar antes de novo executor real, novo alvo externo, deploy, secrets/permissoes, close/reopen/merge/delete ou qualquer mutacao externa fora da policy aprovada.

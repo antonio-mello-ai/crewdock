@@ -79,6 +79,41 @@ curl -sS http://127.0.0.1:43166/api/company-brain/summary | jq '{
 }'
 ```
 
+Resposta direta do runner:
+
+```bash
+curl -sS -X POST http://127.0.0.1:43166/api/company-brain/operating-cadence/run \
+  -H 'content-type: application/json' \
+  --data '{"mode":"all"}' | jq '{
+    scheduleId: .data.scheduleId,
+    scheduledAt: .data.scheduledAt,
+    artifactsCreated: .data.artifactsCreated,
+    signalsCreated: .data.signalsCreated,
+    watcherRunsCreated: .data.watcherRunsCreated,
+    runs: [
+      .data.runs[]
+      | {
+          watcherId,
+          status,
+          watcherRunId,
+          triggerRef,
+          artifactsCreated,
+          signalsCreated,
+          errorSummary
+        }
+    ]
+  }'
+```
+
+Campos canonicos do schema v0:
+
+- `runs[].watcherRunId`;
+- `runs[].artifactsCreated`;
+- `runs[].signalsCreated`;
+- `artifactsCreated`;
+- `signalsCreated`;
+- `watcherRunsCreated`.
+
 Aceite minimo:
 
 - `scheduledWatcherCount >= 2`;

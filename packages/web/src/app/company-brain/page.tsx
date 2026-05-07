@@ -2,6 +2,7 @@
 
 import { FormEvent, ReactNode, useMemo, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
   CheckCircle2,
   Database,
@@ -1435,6 +1436,15 @@ export default function CompanyBrainPage() {
           <p className="mt-1 text-sm text-neutral-500">
             Strategy, goals, evidence, work items, workflow runs and gates.
           </p>
+          <Button
+            className="mt-3"
+            size="sm"
+            variant="outline"
+            onClick={() => (window.location.href = "/company-brain/operating")}
+          >
+            <Activity className="size-4" />
+            Operating
+          </Button>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-12">
           <Metric icon={Database} label="Sources" value={summary?.stats.sourceCount ?? 0} />

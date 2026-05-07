@@ -25,6 +25,7 @@ import type {
   CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainWritebackEvidenceIntegrityGapsResponse,
   CompanyBrainWritebackEvidenceRemediationSuggestionsResponse,
+  CompanyBrainOperatingSnapshot,
   CompanyBrainSummary,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -53,6 +54,8 @@ import type {
   ImportSlackMessagesResponse,
   RunFelhenDemoRequest,
   RunFelhenDemoResponse,
+  RunOperatingCadenceRequest,
+  RunOperatingCadenceResponse,
   RunWatcherRequest,
   RunWatcherResponse,
   SyncGitHubIssuesRequest,
@@ -518,6 +521,30 @@ export function useCompanyBrainSummary() {
     queryKey: ["company-brain", "summary"],
     queryFn: () => api("/api/company-brain/summary"),
     refetchInterval: 10_000,
+  });
+}
+
+export function useCompanyBrainOperatingSnapshot() {
+  return useQuery<ApiResponse<CompanyBrainOperatingSnapshot>>({
+    queryKey: ["company-brain", "operating-snapshot"],
+    queryFn: () => api("/api/company-brain/operating-snapshot"),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useRunCompanyBrainOperatingCadence() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<RunOperatingCadenceResponse>,
+    Error,
+    RunOperatingCadenceRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/operating-cadence/run", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });
 }
 

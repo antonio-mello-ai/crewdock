@@ -615,6 +615,7 @@ export interface RunFelhenDemoResponse {
   alignmentFinding: AlignmentFinding;
   guidanceItem: GuidanceItem;
   improvementProposal: ImprovementProposal;
+  externalActionProposals: ExternalActionProposal[];
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
 }
@@ -2393,6 +2394,40 @@ export interface CompanyBrainTimeline {
     latestAt: number | null;
     earliestAt: number | null;
   };
+}
+
+export type CompanyBrainOperatingSnapshotCardKey =
+  | "aios_briefing"
+  | "operating_cadence"
+  | "gate_closure_ritual"
+  | "source_health"
+  | "daily_agent_handoff";
+
+export interface CompanyBrainOperatingSnapshotCard {
+  key: CompanyBrainOperatingSnapshotCardKey;
+  title: string;
+  state: string;
+  lastUpdatedAt: number | null;
+  mainAlert: string;
+  primaryActionLabel: string;
+  primaryActionKind:
+    | "run_briefing"
+    | "run_operating_cadence"
+    | "review_gate_closure"
+    | "review_source_health"
+    | "generate_daily_handoff";
+}
+
+export interface CompanyBrainOperatingSnapshot {
+  generatedAt: number;
+  cards: CompanyBrainOperatingSnapshotCard[];
+  lastBriefing: CompanyBrainBriefingSnapshot | null;
+  latestAgentContext: AgentContext | null;
+  operatingCadence: CompanyBrainOperatingCadence;
+  gateClosureRitual: CompanyBrainGateClosureRitual;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+  timeline: CompanyBrainTimeline;
+  recentEvents: CompanyBrainTimelineEvent[];
 }
 
 export type CompanyBrainSavedAuditViewSurface =
