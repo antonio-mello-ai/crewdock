@@ -231,5 +231,21 @@ Superficies novas/atualizadas:
 - `coreReadiness.operatingLoop`
 - MCP `get_company_brain_operating_loop`
 
-Aceite: loop ativo em producao, `staleCadenceCount=0`, `dueCadenceCount=0` e
-Core Readiness sem gap `stale_or_due_watcher_cadence`.
+Aceite concluido em producao:
+
+- `operatingLoop.enabled=true`;
+- `operatingLoop.status=idle`;
+- `operatingLoop.runCount=1`;
+- `watcher-github-pr-ci-v0` rodou automaticamente com
+  `triggerRef=schedule://production%3Acompany-brain-operating-loop/DB8t6HVmDsX-`;
+- `staleCadenceCount=0`;
+- `dueCadenceCount=0`;
+- Core Readiness `dailyUseBlockingGapCount=0`;
+- `dailyGaps=[]`;
+- Operating Snapshot `overallStatus=healthy`, `5/5 operating cards ready`.
+- Segundo tick confirmado sem sessao interativa:
+  - `tickCount=2`;
+  - `runCount=1`;
+  - `skippedTickCount=1`;
+  - `lastDueWatcherIds=[]`;
+  - `lastErrorSummary=null`.

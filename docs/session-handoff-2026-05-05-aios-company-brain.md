@@ -2449,3 +2449,62 @@ Proximo passo imediato:
    - `GET https://api.felhen.ai/api/company-brain/core-readiness`;
    - `GET https://api.felhen.ai/api/company-brain/operating-snapshot`;
    - `staleCadenceCount=0` e `dueCadenceCount=0` apos o loop executar.
+
+### Deploy e validacao de producao
+
+Status: concluido.
+
+- Commit deployado: `d82710b`.
+- CT165: `git pull --ff-only` e `npx turbo build --filter=@aios/daemon --force` passaram.
+- `.env.prod` recebeu apenas configs nao-secretas do loop:
+  - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_ENABLED=true`;
+  - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_CHECK_INTERVAL_MS=300000`;
+  - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_INITIAL_DELAY_MS=5000`;
+  - `AIOS_COMPANY_BRAIN_OPERATING_LOOP_SCHEDULE_ID=production:company-brain-operating-loop`;
+  - `AIOS_OPERATING_CADENCE_GITHUB_REPO=antonio-mello-ai/crewdock`.
+- `aios-daemon.service` reiniciado e `active`.
+- Cloudflare Pages publicado: `https://b83e7c9b.crewdock.pages.dev`.
+- `GET https://api.felhen.ai/api/health` -> `200`.
+- `GET https://ai.felhen.ai/company-brain/operating` -> `200 text/html`, chunk `app/company-brain/operating/page-fc99e8c3f829ce3c.js`.
+
+Evidencia do loop real:
+
+- `operatingLoop.enabled=true`;
+- `operatingLoop.status=idle`;
+- `operatingLoop.tickCount=1`;
+- `operatingLoop.runCount=1`;
+- `operatingLoop.lastErrorSummary=null`;
+- `operatingLoop.scheduleId=production:company-brain-operating-loop`;
+- `operatingLoop.lastDueWatcherIds=[watcher-github-pr-ci-v0]`;
+- `lastRun.watcherRunsCreated=1`;
+- `lastRun.artifactsCreated=1`;
+- `watcher-github-pr-ci-v0` completed:
+  - `watcherRunId=DB8t6HVmDsX-`;
+  - `artifactId=KX7Ujpfv80MO`;
+  - `triggerRef=schedule://production%3Acompany-brain-operating-loop/DB8t6HVmDsX-`.
+
+Operating Cadence/Core Readiness/Snapshot reais:
+
+- `activeScheduledWatcherCount=2`;
+- `staleCadenceCount=0`;
+- `dueCadenceCount=0`;
+- `errorCadenceCount=0`;
+- `dailyUseBlockingGapCount=0`;
+- `dailyGaps=[]`;
+- Operating Snapshot `overallStatus=healthy`;
+- `summary=5/5 operating cards ready; 0 attention; 0 critical; 0 errors; 0 missing.`;
+- Daily Agent Handoff `Ry3RMiKMNQ2q` aparece ready.
+
+Segundo tick recorrente:
+
+- `operatingLoop.tickCount=2`;
+- `operatingLoop.runCount=1`;
+- `operatingLoop.skippedTickCount=1`;
+- `operatingLoop.status=idle`;
+- `operatingLoop.lastDueWatcherIds=[]`;
+- `operatingLoop.lastErrorSummary=null`;
+- `operatingLoop.nextTickAt` atualizado para o proximo intervalo de 5 minutos.
+
+Residual:
+
+1. O status `overallStatus=demo_not_ready` de Core Readiness nao e mais daily-use blocker; ele vem do fallback de readiness, enquanto `demoGapCount=0` e `dailyUseBlockingGapCount=0`.
