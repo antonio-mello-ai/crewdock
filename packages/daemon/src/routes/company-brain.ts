@@ -2690,6 +2690,8 @@ const briefingSectionKeys: CompanyBrainBriefingSection["key"][] = [
   "unlinked_work",
   "gates_sla",
   "writeback_safety",
+  "audit_readiness",
+  "execution_readiness",
   "next_steps",
 ];
 
@@ -2872,6 +2874,38 @@ function buildBriefingSections(args: {
   const integritySummary = writebackSafetyDashboard.evidenceIntegritySummary;
   const remediationSummary =
     writebackSafetyDashboard.evidenceRemediationSummary;
+  const proposalTargetReview = buildWritebackProposalTargetReview({
+    data,
+    generatedAt,
+    limit: 100,
+  });
+  const evidenceGraph = buildCompanyBrainEvidenceGraph({ data, limit: 250 });
+  const timeline = buildCompanyBrainTimeline({ data, limit: 100 });
+  const savedAuditViews = buildCompanyBrainSavedAuditViews(data);
+  const policySimulator = buildWritebackPolicySimulator();
+  const previewReplaySimulator = buildPreviewReplaySimulator(data);
+  const priorityAuditViews = savedAuditViews.views.filter((view) =>
+    ["critical", "warn"].includes(view.reviewPriority)
+  );
+  const proposalReviewItemsNeedingAction = proposalTargetReview.items.filter((item) =>
+    [
+      "ready_to_execute",
+      "needs_preview",
+      "needs_reapproval",
+      "retryable_failed",
+      "unsafe_failed",
+      "payload_mismatch",
+      "destination_mismatch",
+      "blocked",
+    ].includes(item.reviewStatus)
+  );
+  const previewReplayItemsNeedingAction = previewReplaySimulator.items.filter(
+    (item) =>
+      item.preview.executionBlocked ||
+      item.replay.manualRetryRequiresRationale ||
+      item.replay.terminalState ||
+      !item.preview.available
+  );
 
   const sections: CompanyBrainBriefingSection[] = [
     {
@@ -3078,6 +3112,60 @@ function buildBriefingSections(args: {
         ),
       ]),
     },
+    {
+      key: "audit_readiness",
+      title: "Audit Readiness",
+      items: limitOrNone([
+        `${proposalTargetReview.stats.proposalCount} proposals across ${proposalTargetReview.stats.targetCount} targets; ${proposalTargetReview.stats.needsReviewCount} need review; ${proposalTargetReview.stats.blockedCount} blocked; ${proposalTargetReview.stats.integrityGapCount} integrity gaps.`,
+        `${evidenceGraph.stats.nodeCount} evidence graph nodes; ${evidenceGraph.stats.edgeCount} edges; ${evidenceGraph.stats.orphanNodeCount} orphan nodes.`,
+        `${timeline.stats.eventCount} timeline events; ${timeline.stats.externalWriteEventCount} external write events; latest=${timeline.stats.latestAt ? new Date(timeline.stats.latestAt).toISOString() : "none"}.`,
+        `${savedAuditViews.stats.viewCount} saved audit views; ${savedAuditViews.stats.criticalCount} critical; ${savedAuditViews.stats.warnCount} warn.`,
+        ...priorityAuditViews.slice(0, 4).map((view) =>
+          formatEntityLine({
+            prefix: view.surface,
+            title: view.title,
+            status: view.reviewPriority,
+            detail: `${view.itemCount} items; export ${view.exportUrl}`,
+          })
+        ),
+        ...proposalReviewItemsNeedingAction.slice(0, 4).map((item) =>
+          formatEntityLine({
+            prefix: "proposal_review",
+            title: item.title,
+            status: item.reviewStatus,
+            detail: item.nextAction,
+          })
+        ),
+      ]),
+    },
+    {
+      key: "execution_readiness",
+      title: "Execution Readiness",
+      items: limitOrNone([
+        `${policySimulator.stats.executableCaseCount} executable policy cases; ${policySimulator.stats.previewOnlyCaseCount} preview-only; ${policySimulator.stats.blockedCaseCount} blocked; ${policySimulator.stats.humanApprovalRequiredCount} require HITL.`,
+        `${previewReplaySimulator.stats.previewAvailableCount}/${previewReplaySimulator.stats.proposalCount} proposals have local preview simulators; ${previewReplaySimulator.stats.previewBlockedCount} previews blocked; ${previewReplaySimulator.stats.terminalStateCount} terminal states.`,
+        `${previewReplaySimulator.stats.duplicatePreventedCount} duplicate/replay protections visible; ${previewReplaySimulator.stats.failedRetryNeedsRationaleCount} failed retries require rationale; ${previewReplaySimulator.stats.safeToExecuteWithoutNewApprovalCount} safe-to-execute-without-new-approval.`,
+        ...policySimulator.cases
+          .filter((item) => item.executionBlocked || item.previewOnly)
+          .slice(0, 4)
+          .map((item) =>
+            formatEntityLine({
+              prefix: item.previewOnly ? "preview_only" : "blocked",
+              title: item.title,
+              status: item.input.actionType,
+              detail: item.rationale,
+            })
+          ),
+        ...previewReplayItemsNeedingAction.slice(0, 4).map((item) =>
+          formatEntityLine({
+            prefix: "replay",
+            title: item.title,
+            status: item.reviewStatus,
+            detail: item.replay.reason,
+          })
+        ),
+      ]),
+    },
   ];
 
   const nextSteps = uniqueStrings([
@@ -3122,6 +3210,21 @@ function buildBriefingSections(args: {
       : "",
     remediationSummary.total
       ? `Use ${remediationSummary.total} read-only remediation suggestions to repair evidence packets.`
+      : "",
+    proposalTargetReview.stats.needsReviewCount
+      ? `Use proposal/target review for ${proposalTargetReview.stats.needsReviewCount} writeback readiness items.`
+      : "",
+    evidenceGraph.stats.orphanNodeCount
+      ? `Inspect ${evidenceGraph.stats.orphanNodeCount} orphan evidence graph nodes before expanding automation.`
+      : "",
+    savedAuditViews.stats.criticalCount || savedAuditViews.stats.warnCount
+      ? `Open saved audit views for ${savedAuditViews.stats.criticalCount + savedAuditViews.stats.warnCount} prioritized audit slices.`
+      : "",
+    previewReplaySimulator.stats.failedRetryNeedsRationaleCount
+      ? `Require manual retry rationale for ${previewReplaySimulator.stats.failedRetryNeedsRationaleCount} failed writeback proposals.`
+      : "",
+    policySimulator.stats.blockedCaseCount
+      ? "Keep policy simulator blocked cases preview/read-only until a new executor is explicitly approved."
       : "",
     relevantGaps.length
       ? "Run review cohesion before expanding adapters."
@@ -3430,6 +3533,14 @@ function runAiosBriefingWatcher(args: {
         writebackSafetyDashboard.evidenceIntegritySummary,
       writebackEvidenceRemediationSummary:
         writebackSafetyDashboard.evidenceRemediationSummary,
+      writebackProposalTargetReviewStats: buildWritebackProposalTargetReview({
+        data,
+      }).stats,
+      evidenceGraphStats: buildCompanyBrainEvidenceGraph({ data }).stats,
+      timelineStats: buildCompanyBrainTimeline({ data }).stats,
+      savedAuditViewStats: buildCompanyBrainSavedAuditViews(data).stats,
+      writebackPolicySimulatorStats: buildWritebackPolicySimulator().stats,
+      previewReplaySimulatorStats: buildPreviewReplaySimulator(data).stats,
       generatedAt: startedAt,
     },
   };

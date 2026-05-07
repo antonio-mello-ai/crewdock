@@ -1772,6 +1772,8 @@ export interface CompanyBrainBriefingSection {
     | "unlinked_work"
     | "gates_sla"
     | "writeback_safety"
+    | "audit_readiness"
+    | "execution_readiness"
     | "next_steps";
   title: string;
   items: string[];

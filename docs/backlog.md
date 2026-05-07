@@ -129,7 +129,9 @@ Status Preview/Replay Simulator v0 em 2026-05-06: criado `previewReplaySimulator
 
 Status Markdown Evidence Packet Export v0 em 2026-05-06: Evidence Packet agora pode ser exportado como Markdown via API `format=markdown` e UI, com proposta, hashes/destinos, eventos de approval/preview/execution, links de evidence, gaps/remediation, GitHub status evidence e audit trail. Sem novas mutacoes.
 
-Proximo corte planejado: AIOS briefing improvements para audit/readiness, sem mutacao externa.
+Status AIOS Briefing Audit/Readiness v0 em 2026-05-06: briefing interno ganhou secoes `audit_readiness` e `execution_readiness`, consolidando proposal/target review, evidence graph, timeline, saved audit views, policy simulator e preview/replay simulator. Metadata do artifact registra stats desses subsistemas e a UI mostra todas as secoes do briefing. Sem novas mutacoes.
+
+Proximo corte planejado: Adoption Dashboard maturity refinements para audit/readiness, sem mutacao externa.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -181,6 +183,7 @@ Proximo corte planejado: AIOS briefing improvements para audit/readiness, sem mu
 - [x] **Writeback policy simulator v0** — matriz read-only de policy/risk/action com gates, preview-only, executor availability, blocked actions, API/UI/MCP
 - [x] **Preview/replay simulator v0** — analise read-only de previews locais, idempotency, terminal state, retry safety e replay bloqueado para proposals existentes
 - [x] **Markdown evidence packet export v0** — exportar evidence packet como Markdown auditavel por API/UI com eventos, hashes, refs, GitHub status evidence, gaps e audit trail
+- [x] **AIOS briefing audit/readiness v0** — briefing operacional mostra proposal/target review, graph/timeline, saved views, policy simulator e preview/replay readiness
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

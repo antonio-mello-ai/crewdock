@@ -1888,6 +1888,27 @@ Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-exe
 - Secao `GitHub Status` preservou repo `antonio-mello-ai/felhen`, SHA `b9e1057f44988555227ae8031cd48325fb6efc71`, context `aios/dogfood-status`, state `success`, `repoPrivate=true` e status id `47036420104`.
 - Porta do daemon foi encerrada apos o teste e nao restou listener em `43157`.
 
+## Slice AIOS Briefing Audit/Readiness v0
+
+Objetivo: transformar o AIOS Briefing em pulso operacional de audit/readiness, nao apenas resumo de entidades.
+
+Implementado em 2026-05-06:
+
+1. Tipos e parser de briefing aceitam as secoes `audit_readiness` e `execution_readiness`.
+2. `buildBriefingSections` consolida proposal/target review, evidence graph, timeline, saved audit views, policy simulator e preview/replay simulator.
+3. `audit_readiness` mostra proposals/targets, items que precisam review, bloqueios, integrity gaps, tamanho do evidence graph, timeline de audit e saved views priorizadas.
+4. `execution_readiness` mostra casos executaveis/preview-only/bloqueados da policy, coverage de preview/replay, estados terminais, protecoes de duplicacao e retries que precisam rationale.
+5. Metadata do artifact de briefing agora grava stats de proposal/target review, evidence graph, timeline, saved audit views, policy simulator e preview/replay.
+6. UI `/company-brain` removeu o limite fixo de nove secoes e passa a mostrar todas as secoes do briefing.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43158`:
+
+- Watcher `watcher-aios-briefing-v0` gerou run `svOgSHd3ekI4` e artifact `GOgYJWxbnDDm`.
+- Summary retornou secoes `audit_readiness` e `execution_readiness` junto das secoes existentes.
+- `audit_readiness` mostrou `1 proposals across 1 targets`, `17 evidence graph nodes`, `25 timeline events` e `6 saved audit views`.
+- `execution_readiness` mostrou `4 executable policy cases`, `1 preview-only`, `2 blocked`, `1/1 proposals have local preview simulators` e replay terminal bloqueado para proposal completada.
+- Porta do daemon foi encerrada apos o teste e nao restou listener em `43158`.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -2006,7 +2027,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0 e Markdown Evidence Packet Export v0. O proximo corte recomendado e AIOS briefing improvements para audit/readiness. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0 e AIOS Briefing Audit/Readiness v0. O proximo corte recomendado e Adoption Dashboard maturity refinements para audit/readiness. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;
