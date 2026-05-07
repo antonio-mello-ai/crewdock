@@ -19,6 +19,7 @@ import {
   PanelLeft,
   Menu,
   X,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -50,6 +51,7 @@ const navItems = [
       { href: "/schedules", label: "Schedules", icon: Clock },
       { href: "/costs", label: "Costs", icon: DollarSign },
       { href: "/inbox", label: "Inbox", icon: Inbox },
+      { href: "/agents", label: "Agents", icon: Bot },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },
