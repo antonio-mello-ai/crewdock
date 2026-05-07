@@ -2131,6 +2131,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "evaluate_company_brain_agent_run",
+  {
+    title: "Evaluate a Company Brain agent/session run",
+    description:
+      "Read a session_result Artifact (from AIOS-EXEC-04 intake) and produce an Agent Run Evaluation: classification (success / partial / failed_context / failed_tool / failed_policy / failed_execution / failed_validation / needs_human), rationale, evidence summary, generated Signal and Guidance candidates, and a suggested ImprovementProposal flag when repeated failures of the same kind hit the same WorkItem. Compatible with manual session result intake or future Symphony/Codex runner output. Does not auto-rollback, does not auto-launch agents and does not mutate external systems.",
+    inputSchema: {
+      sessionResultArtifactId: z.string().optional(),
+      workItemId: z.string().optional(),
+      reviewer: z.string().optional(),
+      visibility: z.enum(["public", "internal", "restricted"]).optional(),
+      treatPartialAsFailure: z.boolean().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-run-evaluations",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "decompose_company_brain_operating_goal",
   {
     title: "Decompose a Company Brain operating goal",
