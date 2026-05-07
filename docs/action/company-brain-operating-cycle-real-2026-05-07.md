@@ -295,3 +295,60 @@ Proximo passo apos commit/push:
 - validar `GET https://api.felhen.ai/api/health`;
 - validar `GET https://api.felhen.ai/api/company-brain/operating-snapshot`;
 - validar `GET https://ai.felhen.ai/company-brain/operating`.
+
+## Deploy CT165 + ciclo real persistido
+
+Status: concluido em 2026-05-07.
+
+Commits publicados:
+
+- `05699e6` `docs: record company brain operating cycle dogfood`
+- `c8f62c9` `fix: harden company brain operating cycle`
+- `e518f3d` `fix: allow github pr ci watcher retry`
+
+Deploy:
+
+- CT165 fast-forward ate `e518f3d`.
+- `npx turbo build --filter=@aios/daemon --force` passou no CT165.
+- `aios-daemon` reiniciado e ativo.
+- Cloudflare Pages publicado a partir de `packages/web/out`.
+
+Validacao externa:
+
+- `GET https://api.felhen.ai/api/health` -> `200`, `{"status":"ok"}`.
+- `GET https://api.felhen.ai/api/company-brain/operating-snapshot` -> `200`.
+- `GET https://ai.felhen.ai/company-brain/operating` -> `200 text/html`.
+
+Dogfood em DB persistente do CT165:
+
+- Primeiro run real com `antonio-mello-ai/felhen` registrou falha read-only do GitHub PR/CI watcher por `404` de API GitHub no repo privado. Nao houve writeback externo.
+- O erro revelou um gap operacional pequeno: watcher read-only em `status=error` nao aceitava retry pelo proprio endpoint.
+- Fix aplicado em `e518f3d`: GitHub PR/CI watcher pode rodar quando `status=active` ou `status=error`; sucesso volta para `active`.
+- Rerun real com `antonio-mello-ai/crewdock`:
+  - `watcherRunsCreated=2`
+  - `artifactsCreated=2`
+  - `runs[0].watcherId=watcher-github-pr-ci-v0`
+  - `runs[0].status=completed`
+  - `runs[0].artifactId=0O-L_teH6XME`
+  - `runs[1].watcherId=watcher-aios-briefing-v0`
+  - `runs[1].status=completed`
+  - `runs[1].artifactId=EjpCHihR3cUG`
+  - `activeScheduledWatcherCount=2`
+  - `staleCadenceCount=0`
+  - `dueCadenceCount=0`
+  - `errorCadenceCount=0`
+
+Snapshot real apos rerun:
+
+- `overallStatus=attention`
+- `summary=4/5 operating cards ready; 0 attention; 0 critical; 0 errors; 1 missing.`
+- `operating_cadence.state=healthy`
+- `gate_closure_ritual.state=clear`
+- `source_health.state=healthy`
+- `daily_agent_handoff.state=missing`
+
+Briefing real apos rerun:
+
+- `2/2 scheduled watchers active; 6 scheduled runs; 0 manual runs.`
+- `0 stale cadence watchers; 0 due`
+- Ultimos scheduled runs de PR/CI e briefing estao `completed` e apontam para `schedule://production:operating-cycle-2026-05-07-retry-ok`.

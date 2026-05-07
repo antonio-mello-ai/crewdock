@@ -2331,3 +2331,60 @@ Proximo passo recomendado:
    - `GET https://api.felhen.ai/api/health`;
    - `GET https://api.felhen.ai/api/company-brain/operating-snapshot`;
    - `GET https://ai.felhen.ai/company-brain/operating`.
+
+## Operating Cycle Production Deploy - 2026-05-07
+
+Status: deploy concluido e ciclo real persistido.
+
+Commits publicados em `main`:
+
+- `05699e6` `docs: record company brain operating cycle dogfood`
+- `c8f62c9` `fix: harden company brain operating cycle`
+- `e518f3d` `fix: allow github pr ci watcher retry`
+
+Deploy executado:
+
+- CT165 fast-forward ate `e518f3d`.
+- `npx turbo build --filter=@aios/daemon --force` passou no CT165.
+- `systemctl restart aios-daemon` executado; servico ficou `active`.
+- Cloudflare Pages publicado para o projeto `crewdock`; deploy URL retornada: `https://4d90ffda.crewdock.pages.dev`.
+
+Validacao externa:
+
+- `GET https://api.felhen.ai/api/health` -> `200`, `{"status":"ok"}`.
+- `GET https://api.felhen.ai/api/company-brain/operating-snapshot` -> `200`, com `overallStatus`, `summary`, `totals` e `operatingCadence.stats`.
+- `GET https://ai.felhen.ai/company-brain/operating` -> `200 text/html`, carregando chunk `app/company-brain/operating/page`.
+
+Dogfood real:
+
+- Primeiro run com `antonio-mello-ai/felhen` falhou somente em leitura GitHub PR/CI (`404` da API para repo privado), sem writeback externo.
+- Isso revelou gap de retry: watcher em `status=error` nao podia rerodar.
+- `e518f3d` ajustou o GitHub PR/CI watcher para aceitar retry em `active` ou `error`; sucesso segue voltando o watcher para `active`.
+- Rerun real com `antonio-mello-ai/crewdock`:
+  - `watcher-github-pr-ci-v0`: `completed`, `watcherRunId=hEfStW4sLBaK`, `artifactId=0O-L_teH6XME`;
+  - `watcher-aios-briefing-v0`: `completed`, `watcherRunId=l8Y9-Lj3k_ep`, `artifactId=EjpCHihR3cUG`;
+  - `activeScheduledWatcherCount=2`;
+  - `staleCadenceCount=0`;
+  - `dueCadenceCount=0`;
+  - `errorCadenceCount=0`;
+  - `scheduledRunCount=6`.
+
+Snapshot real apos deploy:
+
+- `overallStatus=attention`;
+- `summary=4/5 operating cards ready; 0 attention; 0 critical; 0 errors; 1 missing.`;
+- `operating_cadence.state=healthy`;
+- `gate_closure_ritual.state=clear`;
+- `source_health.state=healthy`;
+- `daily_agent_handoff.state=missing`.
+
+Briefing real apos deploy:
+
+- `2/2 scheduled watchers active; 6 scheduled runs; 0 manual runs.`;
+- `0 stale cadence watchers; 0 due`;
+- ultimos scheduled runs de PR/CI e briefing estao `completed` com provenance `schedule://production:operating-cycle-2026-05-07-retry-ok`.
+
+Residual objetivo:
+
+1. Gerar Daily Agent Handoff em producao antes da proxima sessao diaria.
+2. Revisar se o token GitHub usado pelo daemon deve ou nao ter leitura do repo privado `antonio-mello-ai/felhen`; hoje `crewdock` funciona para o watcher read-only, enquanto `felhen` retornou `404`.
