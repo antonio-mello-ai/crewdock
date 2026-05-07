@@ -1335,6 +1335,21 @@ export interface GenerateAgentContextRequest {
   visibility?: Visibility;
 }
 
+export interface GenerateDailyAgentHandoffRequest {
+  title?: string;
+  targetAgent?: string;
+  visibility?: Visibility;
+}
+
+export interface GenerateDailyAgentHandoffResponse {
+  agentContext: AgentContext;
+  briefing: CompanyBrainBriefingSnapshot | null;
+  gateClosureRitual: CompanyBrainGateClosureRitual;
+  operatingCadence: CompanyBrainOperatingCadence;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+  openGuidanceCount: number;
+}
+
 export interface ImprovementProposal {
   id: string;
   title: string;

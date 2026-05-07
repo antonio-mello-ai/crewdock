@@ -122,13 +122,13 @@ Faltam:
 
 Operating Cadence v0 esta implementado internamente e dogfooded em DB temporario, sem instalar timer de producao.
 
-Gate Closure Ritual v0 esta implementado internamente e dogfooded em DB temporario.
+Gate Closure Ritual v0 e AgentContext Daily Handoff v0 estao implementados internamente e dogfooded em DB temporario.
 
-O proximo corte mais importante e **AgentContext Daily Handoff v0**:
+O proximo corte mais importante e **Design Partner Operating Pack v0**:
 
-1. gerar contexto diario de agente a partir de briefing, gate closure, operating cadence, source health e open guidance;
-2. separar contexto para operador humano vs agente implementador;
-3. expor em API/UI/MCP e no briefing;
-4. manter tudo interno/read-only, sem auto-apply e sem writeback externo novo.
+1. consolidar demo seed, runbooks e fronteiras de dados em um pacote reproduzivel;
+2. documentar quais fontes entram, quais writebacks continuam bloqueados e como resetar o dogfood;
+3. criar narrativa curta de demo interna/design partner;
+4. manter tudo documental/read-only, sem nova mutacao externa.
 
 Nao avancar para novo executor externo antes desse corte.

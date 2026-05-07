@@ -69,6 +69,8 @@ import type {
   ExtractSignalGuidanceRequest,
   GuidanceAudience,
   GenerateAgentContextRequest,
+  GenerateDailyAgentHandoffRequest,
+  GenerateDailyAgentHandoffResponse,
   ImportLocalDocsRequest,
   ImportSlackMessagesRequest,
   Provenance,
@@ -2607,6 +2609,94 @@ function buildAgentContextContent(args: {
       lines.push(bullet(`${artifact.title} [${artifact.rawRef}]`, artifact.summary));
     }
   }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function buildDailyAgentHandoffContent(args: {
+  title: string;
+  targetAgent: string;
+  generatedAt: number;
+  briefing: CompanyBrainBriefingSnapshot | null;
+  gateClosureRitual: CompanyBrainGateClosureRitual;
+  operatingCadence: CompanyBrainOperatingCadence;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+  guidanceItems: Array<typeof cbGuidanceItems.$inferSelect>;
+  decisions: Array<typeof cbDecisions.$inferSelect>;
+}) {
+  const lines = [
+    `# ${args.title}`,
+    "",
+    `Target agent: ${args.targetAgent}`,
+    `Generated at: ${new Date(args.generatedAt).toISOString()}`,
+    "",
+    "## Operating Contract",
+    "- Use Company Brain records as source of truth for this session.",
+    "- Preserve provenance for any new evidence, work item, signal or guidance.",
+    "- Do not execute external writeback unless an approved proposal and policy gate explicitly allow it.",
+    "- Keep close/reopen/merge/deploy/delete/permissions/DM/email/billing actions blocked.",
+    "",
+    "## Daily State",
+    bullet(
+      "Operating cadence",
+      `${args.operatingCadence.stats.activeScheduledWatcherCount}/${args.operatingCadence.stats.scheduledWatcherCount} scheduled watchers active; stale=${args.operatingCadence.stats.staleCadenceCount}; due=${args.operatingCadence.stats.dueCadenceCount}`
+    ),
+    bullet(
+      "Gate closure",
+      `${args.gateClosureRitual.stats.itemCount} items; critical=${args.gateClosureRitual.stats.criticalCount}; pending gates=${args.gateClosureRitual.stats.pendingGateCount}; SLA risk=${args.gateClosureRitual.stats.slaAtRiskCount + args.gateClosureRitual.stats.slaBreachedCount}`
+    ),
+    bullet(
+      "Source health",
+      `${args.sourceHealthReport.stats.healthyCount}/${args.sourceHealthReport.stats.sourceCount} healthy; stale=${args.sourceHealthReport.stats.staleCount}; errors=${args.sourceHealthReport.stats.errorCount}`
+    ),
+    bullet(
+      "Latest briefing",
+      args.briefing
+        ? `${args.briefing.title} (${new Date(args.briefing.generatedAt).toISOString()})`
+        : "No briefing artifact available"
+    ),
+  ];
+
+  if (args.gateClosureRitual.items.length) {
+    lines.push("", "## Gate Closure Focus");
+    for (const item of args.gateClosureRitual.items.slice(0, 8)) {
+      lines.push(
+        bullet(
+          `${item.kind}: ${item.title} (${item.status}/${item.severity})`,
+          item.recommendedAction
+        )
+      );
+    }
+  }
+
+  if (args.guidanceItems.length) {
+    lines.push("", "## Open Guidance");
+    for (const item of args.guidanceItems.slice(0, 8)) {
+      lines.push(bullet(`${item.title} (${item.status}/${item.feedbackStatus})`, item.action));
+    }
+  }
+
+  if (args.decisions.length) {
+    lines.push("", "## Pending Decisions");
+    for (const decision of args.decisions.slice(0, 6)) {
+      lines.push(bullet(`${decision.title} (${decision.status})`, decision.rationale));
+    }
+  }
+
+  if (args.briefing?.nextSteps.length) {
+    lines.push("", "## Briefing Next Steps");
+    for (const step of args.briefing.nextSteps.slice(0, 8)) {
+      lines.push(`- ${step}`);
+    }
+  }
+
+  lines.push(
+    "",
+    "## Session Exit Criteria",
+    "- Update durable docs/handoff for any material state change.",
+    "- Run relevant validation before commit.",
+    "- Leave blocked external mutations documented rather than implicit."
+  );
 
   return `${lines.join("\n")}\n`;
 }
@@ -14690,6 +14780,115 @@ app.post("/agent-contexts/generate", async (c) => {
     };
     db.insert(cbAgentContexts).values(row).run();
     return c.json({ data: row }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "generate_failed", message }, 400);
+  }
+});
+
+app.post("/agent-contexts/daily-handoff", async (c) => {
+  try {
+    const body = (await c.req
+      .json<GenerateDailyAgentHandoffRequest>()
+      .catch(() => ({}))) as GenerateDailyAgentHandoffRequest;
+    const db = getDb();
+    const timestamp = now();
+    const data = listAll();
+    const briefing = buildLastBriefing(data);
+    const gateClosureRitual = buildGateClosureRitual(data);
+    const operatingCadence = buildOperatingCadence(data);
+    const sourceHealthReport = buildSourceHealthReport(data);
+    const guidanceItems = data.guidanceItems.filter((item) =>
+      ["new", "open"].includes(item.status)
+    );
+    const decisions = data.decisions.filter((decision) => decision.status === "proposed");
+    const targetAgent = body.targetAgent?.trim() || "codex";
+    const title =
+      body.title ??
+      `Daily Agent Handoff ${new Date(timestamp).toISOString().slice(0, 10)}`;
+
+    const sourceArtifactIds = briefing?.artifactId ? [briefing.artifactId] : [];
+    const guidanceItemIds = guidanceItems.slice(0, 8).map((item) => item.id);
+    const workItemIds = uniqueStrings(
+      gateClosureRitual.items
+        .map((item) => item.workItemId)
+        .filter((id): id is string => !!id)
+    ).slice(0, 8);
+    const priorityIds = uniqueStrings(
+      gateClosureRitual.items
+        .map((item) => item.priorityId)
+        .filter((id): id is string => !!id)
+    ).slice(0, 8);
+    const goalIds = uniqueStrings(
+      gateClosureRitual.items
+        .map((item) => item.goalId)
+        .filter((id): id is string => !!id)
+    ).slice(0, 8);
+    const decisionIds = decisions.slice(0, 6).map((decision) => decision.id);
+    const sourceKnowledgeIds = [
+      ...sourceArtifactIds.map((id) => `artifact:${id}`),
+      ...guidanceItemIds.map((id) => `guidance:${id}`),
+      ...workItemIds.map((id) => `work_item:${id}`),
+      ...priorityIds.map((id) => `priority:${id}`),
+      ...goalIds.map((id) => `goal:${id}`),
+      ...decisionIds.map((id) => `decision:${id}`),
+      "summary:operating_cadence",
+      "summary:gate_closure_ritual",
+      "summary:source_health",
+    ];
+    const content = buildDailyAgentHandoffContent({
+      title,
+      targetAgent,
+      generatedAt: timestamp,
+      briefing,
+      gateClosureRitual,
+      operatingCadence,
+      sourceHealthReport,
+      guidanceItems,
+      decisions,
+    });
+
+    const row = {
+      id: nanoid(12),
+      title,
+      targetAgent,
+      contextType: "briefing" as const,
+      sourceKnowledgeIds,
+      sourceArtifactIds,
+      decisionIds,
+      guidanceItemIds,
+      workItemIds,
+      priorityIds,
+      goalIds,
+      content,
+      contentFormat: "markdown",
+      status: "ready" as const,
+      validationStatus: "needs_review" as const,
+      visibility: body.visibility ?? "internal",
+      provenance: {
+        rawRef: briefing?.rawRef ?? "aios://company-brain/daily-handoff",
+        artifactId: briefing?.artifactId,
+        createdFrom: "company_brain:daily_agent_handoff",
+        confidence: 0.9,
+        extractedAt: timestamp,
+        humanReviewStatus: "needs_review" as const,
+        visibility: body.visibility ?? "internal",
+        notes:
+          "derived_from=briefing,gate_closure,operating_cadence,source_health,open_guidance",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbAgentContexts).values(row).run();
+    const response: GenerateDailyAgentHandoffResponse = {
+      agentContext: row,
+      briefing,
+      gateClosureRitual,
+      operatingCadence,
+      sourceHealthReport,
+      openGuidanceCount: guidanceItems.length,
+    };
+    return c.json({ data: response }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "generate_failed", message }, 400);

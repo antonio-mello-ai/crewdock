@@ -47,6 +47,8 @@ import type {
   ExtractSignalGuidanceRequest,
   ExtractSignalGuidanceResponse,
   GenerateAgentContextRequest,
+  GenerateDailyAgentHandoffRequest,
+  GenerateDailyAgentHandoffResponse,
   ImportSlackMessagesRequest,
   ImportSlackMessagesResponse,
   RunFelhenDemoRequest,
@@ -784,6 +786,22 @@ export function useGenerateCompanyBrainAgentContext() {
   return useMutation<ApiResponse<AgentContext>, Error, GenerateAgentContextRequest>({
     mutationFn: (body) =>
       api("/api/company-brain/agent-contexts/generate", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useGenerateCompanyBrainDailyAgentHandoff() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GenerateDailyAgentHandoffResponse>,
+    Error,
+    GenerateDailyAgentHandoffRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/agent-contexts/daily-handoff", {
         method: "POST",
         body: JSON.stringify(body),
       }),

@@ -2170,3 +2170,35 @@ Proximo corte recomendado:
 1. **AgentContext Daily Handoff v0**: gerar contexto diario para agentes a partir de briefing, gate closure, open guidance, operating cadence e source health.
 2. **Design Partner Operating Pack v0**: empacotar demo/runbook/fronteiras de dados.
 3. Parar antes de novo executor real, novo alvo externo, deploy, close/reopen/merge/delete ou qualquer mutacao externa nao aprovada.
+
+## AgentContext Daily Handoff v0 - 2026-05-06
+
+Status: implementado e dogfooded em DB temporario. O corte cria contexto interno para agentes e nao roda agente, nao aplica patch, nao cria proposal e nao faz writeback.
+
+Arquivos principais:
+
+- `packages/shared/src/types.ts`: adiciona request/response `GenerateDailyAgentHandoff`.
+- `packages/daemon/src/routes/company-brain.ts`: adiciona `buildDailyAgentHandoffContent` e API `POST /agent-contexts/daily-handoff`.
+- `packages/web/src/hooks/use-api.ts`: hook `useGenerateCompanyBrainDailyAgentHandoff`.
+- `packages/web/src/app/company-brain/page.tsx`: botao `Daily Handoff` na secao `Agent Contexts`.
+- `packages/mcp-server/src/index.ts`: MCP `generate_company_brain_daily_agent_handoff`.
+- `docs/company-brain-agentcontext-daily-handoff-runbook.md`: runbook de validacao e fronteiras.
+
+Dogfood validado:
+
+- DB: `/tmp/aios-runtime-agent-handoff-dogfood.sqlite`.
+- Daemon: `127.0.0.1:43168`.
+- Seed: `POST /api/company-brain/demo/felhen-v0-1`.
+- Briefing: `POST /api/company-brain/watchers/watcher-aios-briefing-v0/run`.
+- Handoff: `POST /api/company-brain/agent-contexts/daily-handoff`.
+- AgentContext criado: `Jo54ubw-2noR`.
+- Status: `ready`, `validationStatus=needs_review`.
+- `sourceKnowledgeIds=8`, com artifact de briefing, work item, goal e summaries derivados.
+- Summary validou `agentContextCount=1` e `readyAgentContextCount=1`.
+- Provenance: `createdFrom=company_brain:daily_agent_handoff`.
+
+Proximo corte recomendado:
+
+1. **Design Partner Operating Pack v0**: consolidar demo seed, runbooks, fronteiras de dados e narrativa reproduzivel.
+2. Depois avaliar polish de daily ops/adoption apenas a partir de friccao real.
+3. Parar antes de novo executor real, novo alvo externo, deploy, close/reopen/merge/delete ou qualquer mutacao externa nao aprovada.

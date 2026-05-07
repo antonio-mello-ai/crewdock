@@ -1476,6 +1476,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "generate_company_brain_daily_agent_handoff",
+  {
+    title: "Generate Company Brain daily agent handoff",
+    description:
+      "Create a ready/needs-review AgentContext for a daily AIOS agent session from briefing, gate closure ritual, operating cadence, source health and open guidance. Does not run an agent or mutate external systems.",
+    inputSchema: {
+      title: z.string().optional(),
+      targetAgent: z.string().default("codex"),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-contexts/daily-handoff",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "update_company_brain_guidance_item",
   {
     title: "Update Company Brain guidance feedback",

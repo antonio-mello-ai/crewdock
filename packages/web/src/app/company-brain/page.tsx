@@ -44,6 +44,7 @@ import {
   useExtractCompanyBrainArtifactInsights,
   useExtractCompanyBrainSignalGuidance,
   useGenerateCompanyBrainAgentContext,
+  useGenerateCompanyBrainDailyAgentHandoff,
   useGetCompanyBrainWritebackEvidencePacket,
   useImportCompanyBrainSlackMessages,
   useRunCompanyBrainWatcher,
@@ -374,6 +375,7 @@ export default function CompanyBrainPage() {
   const executeSlackThreadReplyWriteback =
     useExecuteCompanyBrainSlackThreadReplyWriteback();
   const generateAgentContext = useGenerateCompanyBrainAgentContext();
+  const generateDailyAgentHandoff = useGenerateCompanyBrainDailyAgentHandoff();
   const createImprovementProposal = useCreateCompanyBrainImprovementProposal();
   const updateImprovementProposal = useUpdateCompanyBrainImprovementProposal();
   const updateDecision = useUpdateCompanyBrainDecision();
@@ -1106,6 +1108,13 @@ export default function CompanyBrainPage() {
     runWatcher.mutate({
       watcherId: "watcher-aios-briefing-v0",
       body: {},
+    });
+  };
+
+  const handleGenerateDailyAgentHandoff = () => {
+    generateDailyAgentHandoff.mutate({
+      targetAgent: "codex",
+      visibility: "internal",
     });
   };
 
@@ -6297,11 +6306,26 @@ export default function CompanyBrainPage() {
 
           <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
             <div className="border-b border-neutral-800/50 px-5 py-4">
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-neutral-500" />
-                <h2 className="text-sm font-semibold text-neutral-200">
-                  Agent Contexts
-                </h2>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Agent Contexts
+                  </h2>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleGenerateDailyAgentHandoff}
+                  disabled={generateDailyAgentHandoff.isPending}
+                >
+                  {generateDailyAgentHandoff.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileText className="h-4 w-4" />
+                  )}
+                  Daily Handoff
+                </Button>
               </div>
             </div>
             <div className="divide-y divide-neutral-800/40">
