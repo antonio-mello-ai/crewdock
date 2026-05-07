@@ -135,6 +135,24 @@ totals.activeWorkItemCount = 5
 Esse smoke confirma que item historico fora do ultimo sync `open` segue
 pesquisavel, mas nao entra na fila recomendada.
 
+Cenario com Source historico ja existente:
+
+```
+Daemon local: 127.0.0.1:43188
+Source antigo criado com metadata adapter=github_issues e repo=antonio-mello-ai/crewdock.
+WorkItem stale manual criado: antonio-mello-ai/crewdock#25, status=triage.
+Sync real GitHub Issues state=open reutilizou o Source antigo.
+
+GET /api/company-brain/next-work
+->
+recommended.workItem.externalId = "antonio-mello-ai/crewdock#28"
+candidatesConsidered = 4
+totals.activeWorkItemCount = 4
+```
+
+Esse smoke cobre o caso encontrado em producao: historico de issues antigas
+preservado no Company Brain, sem contaminar a fila operacional atual.
+
 ## Validacao
 
 - `git diff --check` clean.

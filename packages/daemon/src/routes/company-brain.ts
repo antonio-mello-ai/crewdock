@@ -4677,12 +4677,25 @@ function isVisibleInLatestGitHubIssueSync(
   workItem: WorkItem,
   data: ReturnType<typeof listAll>
 ) {
-  if (workItem.externalProvider !== "github" || !workItem.sourceId || !workItem.externalId) {
+  if (workItem.externalProvider !== "github" || !workItem.externalId) {
     return true;
   }
-  const source = data.sources.find((item) => item.id === workItem.sourceId);
+  const repo = workItem.externalId.match(/^([^#]+)#\d+$/)?.[1] ?? null;
+  const matchingSources = data.sources
+    .filter((source) => {
+      const metadata = metadataRecord(source.metadata);
+      return (
+        metadataString(metadata.adapter) === "github_issues" &&
+        metadataString(metadata.lastSyncState) === "open" &&
+        (!repo || metadataString(metadata.repo) === repo) &&
+        metadataStringArray(metadata.lastIssueExternalIds).length > 0
+      );
+    })
+    .sort((a, b) => (b.lastSyncAt ?? 0) - (a.lastSyncAt ?? 0));
+  const source =
+    matchingSources[0] ??
+    (workItem.sourceId ? data.sources.find((item) => item.id === workItem.sourceId) : null);
   const metadata = metadataRecord(source?.metadata);
-  if (metadataString(metadata.adapter) !== "github_issues") return true;
   if (metadataString(metadata.lastSyncState) !== "open") return true;
   const lastOpenIssueExternalIds = metadataStringArray(metadata.lastIssueExternalIds);
   if (!lastOpenIssueExternalIds.length) return true;
@@ -12077,6 +12090,22 @@ app.post("/adapters/github/issues/sync", async (c) => {
       ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
       : null;
     if (body.sourceId && !source) throw new Error("sourceId not found");
+    if (!source) {
+      source =
+        db
+          .select()
+          .from(cbSources)
+          .all()
+          .filter((candidate) => {
+            const metadata = metadataRecord(candidate.metadata);
+            return (
+              candidate.sourceType === "github_issue" &&
+              metadataString(metadata.adapter) === "github_issues" &&
+              metadataString(metadata.repo) === repo.fullName
+            );
+          })
+          .sort((a, b) => (b.lastSyncAt ?? 0) - (a.lastSyncAt ?? 0))[0] ?? null;
+    }
     if (!source) {
       source = {
         id: nanoid(12),

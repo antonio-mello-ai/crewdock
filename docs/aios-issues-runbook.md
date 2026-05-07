@@ -108,8 +108,9 @@ Comportamento:
 - Sync cria/deduplica e atualiza `Artifact`/`WorkItem` quando a issue aparece no
   resultado do adapter.
 - Quando rodado com `state=open`, o Source registra `lastIssueExternalIds`; o
-  `Next Work` usa essa lista para nao recomendar issues que sairam da fila ativa
-  desde o ultimo sync aberto.
+  `Next Work` usa o ultimo sync aberto do repo para nao recomendar issues que
+  sairam da fila ativa, mesmo quando historico antigo ainda aponta para um
+  Source anterior.
 - Sync nao apaga `WorkItem` quando a issue some do filtro. Items historicos
   seguem pesquisaveis, mas ficam fora da recomendacao de proximo trabalho quando
   nao aparecem no ultimo sync `open`.
