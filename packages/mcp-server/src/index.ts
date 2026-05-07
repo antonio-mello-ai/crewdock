@@ -442,6 +442,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_gate_closure_ritual",
+  {
+    title: "Get Company Brain gate closure ritual",
+    description:
+      "Read-only daily ritual for pending/blocked/failed workflow gates and workflow/goal SLA risk. Returns recommended internal actions without mutating workflow state or writing externally.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/gate-closure-ritual"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_writeback_safety_dashboard",
   {
     title: "Get Company Brain writeback safety dashboard",

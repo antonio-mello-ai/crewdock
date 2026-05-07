@@ -15,6 +15,7 @@ import type {
   CompanyBrainCoreReadiness,
   CompanyBrainEvidenceGraph,
   CompanyBrainEvidenceGraphNodeKind,
+  CompanyBrainGateClosureRitual,
   CompanyBrainOperatingCadence,
   CompanyBrainReviewCohesion,
   CompanyBrainSavedAuditViews,
@@ -3537,6 +3538,136 @@ function buildOperatingCadence(
   };
 }
 
+function buildGateClosureRitual(
+  data: ReturnType<typeof listAll>
+): CompanyBrainGateClosureRitual {
+  const generatedAt = now();
+  const workItemById = new Map(data.workItems.map((item) => [item.id, item]));
+  const items: CompanyBrainGateClosureRitual["items"] = [];
+  const addItem = (item: CompanyBrainGateClosureRitual["items"][number]) => {
+    if (!items.some((candidate) => candidate.id === item.id)) items.push(item);
+  };
+
+  for (const run of data.workflowRuns) {
+    const workItem = run.workItemId ? workItemById.get(run.workItemId) ?? null : null;
+    if (["pending", "blocked", "failed"].includes(run.gateStatus)) {
+      const status: CompanyBrainGateClosureRitual["items"][number]["status"] =
+        run.gateStatus === "blocked"
+          ? "blocked"
+          : run.gateStatus === "failed"
+            ? "failed"
+            : "ready_for_review";
+      addItem({
+        id: `workflow_gate:${run.id}`,
+        kind: "workflow_gate",
+        status,
+        severity: run.gateStatus === "pending" ? "warn" : "critical",
+        area: run.workflowArea,
+        title: run.title,
+        targetType: "workflow_run",
+        targetId: run.id,
+        workItemId: run.workItemId,
+        priorityId: workItem?.priorityId ?? null,
+        goalId: workItem?.goalId ?? null,
+        owner: run.owner,
+        gateStatus: run.gateStatus,
+        slaStatus: run.slaStatus,
+        dueAt: workItem?.dueAt ?? null,
+        lastActivityAt: run.updatedAt,
+        rationale: `Workflow gate is ${run.gateStatus}.`,
+        recommendedAction:
+          run.gateStatus === "pending"
+            ? "Review required evidence and decide whether the next workflow step can start."
+            : "Resolve or explicitly escalate the blocked/failed gate before opening new work.",
+      });
+    }
+
+    if (["at_risk", "breached"].includes(run.slaStatus)) {
+      addItem({
+        id: `workflow_sla:${run.id}`,
+        kind: "workflow_sla",
+        status: run.slaStatus === "breached" ? "breached" : "at_risk",
+        severity: run.slaStatus === "breached" ? "critical" : "warn",
+        area: run.workflowArea,
+        title: run.title,
+        targetType: "workflow_run",
+        targetId: run.id,
+        workItemId: run.workItemId,
+        priorityId: workItem?.priorityId ?? null,
+        goalId: workItem?.goalId ?? null,
+        owner: run.owner,
+        gateStatus: run.gateStatus,
+        slaStatus: run.slaStatus,
+        dueAt: workItem?.dueAt ?? null,
+        lastActivityAt: run.updatedAt,
+        rationale: `Workflow SLA is ${run.slaStatus}.`,
+        recommendedAction:
+          "Reconfirm owner, due date and next evidence needed to recover the workflow SLA.",
+      });
+    }
+  }
+
+  for (const goal of data.goals) {
+    if (!["at_risk", "breached"].includes(goal.slaStatus)) continue;
+    addItem({
+      id: `goal_sla:${goal.id}`,
+      kind: "goal_sla",
+      status: goal.slaStatus === "breached" ? "breached" : "at_risk",
+      severity: goal.slaStatus === "breached" ? "critical" : "warn",
+      area: goal.area,
+      title: goal.title,
+      targetType: "goal",
+      targetId: goal.id,
+      workItemId: null,
+      priorityId: goal.priorityId,
+      goalId: goal.id,
+      owner: goal.owner,
+      gateStatus: null,
+      slaStatus: goal.slaStatus,
+      dueAt: goal.dueAt,
+      lastActivityAt: goal.updatedAt,
+      rationale: `Goal SLA is ${goal.slaStatus}.`,
+      recommendedAction:
+        "Use the daily gate ritual to decide whether the goal needs replan, scope trim or escalation.",
+    });
+  }
+
+  items.sort((a, b) => {
+    const severityRank = { critical: 2, warn: 1, info: 0 };
+    const severityDelta = severityRank[b.severity] - severityRank[a.severity];
+    if (severityDelta !== 0) return severityDelta;
+    return (b.lastActivityAt ?? 0) - (a.lastActivityAt ?? 0);
+  });
+
+  return {
+    generatedAt,
+    items,
+    stats: {
+      itemCount: items.length,
+      criticalCount: items.filter((item) => item.severity === "critical").length,
+      warnCount: items.filter((item) => item.severity === "warn").length,
+      workflowGateCount: items.filter((item) => item.kind === "workflow_gate").length,
+      workflowSlaCount: items.filter((item) => item.kind === "workflow_sla").length,
+      goalSlaCount: items.filter((item) => item.kind === "goal_sla").length,
+      pendingGateCount: items.filter(
+        (item) => item.kind === "workflow_gate" && item.gateStatus === "pending"
+      ).length,
+      blockedGateCount: items.filter(
+        (item) => item.kind === "workflow_gate" && item.gateStatus === "blocked"
+      ).length,
+      failedGateCount: items.filter(
+        (item) => item.kind === "workflow_gate" && item.gateStatus === "failed"
+      ).length,
+      slaAtRiskCount: items.filter((item) => item.slaStatus === "at_risk").length,
+      slaBreachedCount: items.filter((item) => item.slaStatus === "breached")
+        .length,
+      dailyClosureReadyCount: items.filter(
+        (item) => item.status === "ready_for_review"
+      ).length,
+    },
+  };
+}
+
 function buildSourceHealthReport(
   data: ReturnType<typeof listAll>
 ): CompanyBrainSourceHealthReport {
@@ -3716,6 +3847,7 @@ function buildCoreReadiness(args: {
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
   operatingCadence: CompanyBrainOperatingCadence;
+  gateClosureRitual: CompanyBrainGateClosureRitual;
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
   evidenceGraph: CompanyBrainEvidenceGraph;
   timeline: CompanyBrainTimeline;
@@ -3729,6 +3861,7 @@ function buildCoreReadiness(args: {
     adoptionDashboard,
     sourceHealthReport,
     operatingCadence,
+    gateClosureRitual,
     writebackSafetyDashboard,
     evidenceGraph,
     timeline,
@@ -3826,11 +3959,14 @@ function buildCoreReadiness(args: {
         `${data.workItems.length} work items`,
         `${data.workflowRuns.length} workflow runs`,
         `${adoptionDashboard.stats.pendingGateCount} pending gates`,
+        `${gateClosureRitual.stats.itemCount} gate closure ritual items`,
       ],
-      gaps: adoptionDashboard.stats.pendingGateCount
-        ? ["Pending gates still need daily operating closure."]
+      gaps: gateClosureRitual.stats.itemCount
+        ? [`${gateClosureRitual.stats.itemCount} gates/SLA items need daily closure ritual.`]
         : [],
-      nextAction: "Use workflow gates as the daily closure checklist.",
+      nextAction: gateClosureRitual.stats.itemCount
+        ? "Run Gate Closure Ritual before starting new work."
+        : "Keep workflow gates reviewed during the daily briefing.",
     }),
     module({
       key: "watchers",
@@ -4030,14 +4166,15 @@ function buildCoreReadiness(args: {
       requiresExternalMutation: false,
     });
   }
-  if (adoptionDashboard.stats.pendingGateCount > 0) {
+  if (gateClosureRitual.stats.itemCount > 0) {
     addGap({
       id: "pending_workflow_gates",
       impact: "daily_use",
-      severity: "warn",
-      title: "Pending workflow gates need daily closure discipline",
-      rationale: `${adoptionDashboard.stats.pendingGateCount} workflow gates are pending.`,
-      nextAction: "Use workflow runs as the closure checklist before adding stronger automation.",
+      severity: gateClosureRitual.stats.criticalCount ? "critical" : "warn",
+      title: "Gates and SLA items need daily closure discipline",
+      rationale: `${gateClosureRitual.stats.itemCount} workflow/goal items are in the gate closure ritual.`,
+      nextAction:
+        "Review Gate Closure Ritual before starting new work or expanding automation.",
       requiresExternalMutation: false,
     });
   }
@@ -4151,6 +4288,7 @@ const briefingSectionKeys: CompanyBrainBriefingSection["key"][] = [
   "findings",
   "source_health",
   "operating_cadence",
+  "gate_closure",
   "adoption_dashboard",
   "unlinked_work",
   "gates_sla",
@@ -4271,6 +4409,7 @@ function buildBriefingSections(args: {
   const { data, adoptionDashboard, sourceHealthReport, generatedAt } = args;
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const operatingCadence = buildOperatingCadence(data);
+  const gateClosureRitual = buildGateClosureRitual(data);
   const weekAgo = generatedAt - 7 * 24 * 60 * 60 * 1000;
   const relevantHealthSources = sourceHealthReport.sources.filter(
     (source) => source.sourceId !== AIOS_BRIEFING_SOURCE_ID
@@ -4489,6 +4628,21 @@ function buildBriefingSections(args: {
       ]),
     },
     {
+      key: "gate_closure",
+      title: "Gate Closure Ritual",
+      items: limitOrNone([
+        `${gateClosureRitual.stats.itemCount} ritual items; ${gateClosureRitual.stats.criticalCount} critical; ${gateClosureRitual.stats.pendingGateCount} pending gates; ${gateClosureRitual.stats.slaAtRiskCount} SLA at risk; ${gateClosureRitual.stats.slaBreachedCount} breached.`,
+        ...gateClosureRitual.items.slice(0, 6).map((item) =>
+          formatEntityLine({
+            prefix: item.kind,
+            title: item.title,
+            status: item.status,
+            detail: item.recommendedAction,
+          })
+        ),
+      ]),
+    },
+    {
       key: "adoption_dashboard",
       title: "Adoption Dashboard",
       items: [
@@ -4681,6 +4835,9 @@ function buildBriefingSections(args: {
       : "",
     cadenceWatchersNeedingAttention.length
       ? `Run ${cadenceWatchersNeedingAttention.length} due/stale scheduled watchers.`
+      : "",
+    gateClosureRitual.stats.itemCount
+      ? `Run Gate Closure Ritual for ${gateClosureRitual.stats.itemCount} gates/SLA items.`
       : "",
     unlinkedWorkItems.length
       ? `Link ${unlinkedWorkItems.length} work items to priority or goal.`
@@ -9249,6 +9406,7 @@ app.get("/summary", (c) => {
   const adoptionDashboard = buildAdoptionDashboard(data);
   const sourceHealthReport = buildSourceHealthReport(data);
   const operatingCadence = buildOperatingCadence(data);
+  const gateClosureRitual = buildGateClosureRitual(data);
   const lastBriefing = buildLastBriefing(data);
   const reviewCohesion = buildReviewCohesion(data);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
@@ -9263,6 +9421,7 @@ app.get("/summary", (c) => {
     adoptionDashboard,
     sourceHealthReport,
     operatingCadence,
+    gateClosureRitual,
     writebackSafetyDashboard,
     evidenceGraph,
     timeline,
@@ -9302,6 +9461,7 @@ app.get("/summary", (c) => {
       adoptionDashboard,
       sourceHealthReport,
       operatingCadence,
+      gateClosureRitual,
       lastBriefing,
       reviewCohesion,
       writebackSafetyDashboard,
@@ -9375,6 +9535,7 @@ app.get("/core-readiness", (c) => {
   const adoptionDashboard = buildAdoptionDashboard(data);
   const sourceHealthReport = buildSourceHealthReport(data);
   const operatingCadence = buildOperatingCadence(data);
+  const gateClosureRitual = buildGateClosureRitual(data);
   const lastBriefing = buildLastBriefing(data);
   const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
   const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
@@ -9387,6 +9548,7 @@ app.get("/core-readiness", (c) => {
     adoptionDashboard,
     sourceHealthReport,
     operatingCadence,
+    gateClosureRitual,
     writebackSafetyDashboard,
     evidenceGraph,
     timeline,
@@ -9400,6 +9562,11 @@ app.get("/core-readiness", (c) => {
 
 app.get("/operating-cadence", (c) => {
   const data = buildOperatingCadence(listAll());
+  return c.json({ data });
+});
+
+app.get("/gate-closure-ritual", (c) => {
+  const data = buildGateClosureRitual(listAll());
   return c.json({ data });
 });
 

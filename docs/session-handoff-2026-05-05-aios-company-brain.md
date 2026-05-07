@@ -2142,3 +2142,31 @@ Proximo corte recomendado:
 1. **Gate Closure Ritual v0**: visao/ritual diario para gates pendentes, SLA em risco e workflow runs parados, refletido no briefing/core readiness, sem writeback externo.
 2. **AgentContext Daily Handoff v0**: gerar contexto diario para agentes iniciarem alinhados ao Company Brain.
 3. **Design Partner Operating Pack v0**: runbook, fronteiras de dados, narrativa reproduzivel e demo seed.
+
+## Gate Closure Ritual v0 - 2026-05-06
+
+Status: implementado e dogfooded em DB temporario. O corte e read-only e nao altera WorkflowRun/Goal nem escreve em sistemas externos.
+
+Arquivos principais:
+
+- `packages/shared/src/types.ts`: adiciona `CompanyBrainGateClosureRitual`, `GateClosureRitualItem` e status/kinds do ritual.
+- `packages/daemon/src/routes/company-brain.ts`: adiciona `buildGateClosureRitual`, API `GET /gate-closure-ritual`, summary `gateClosureRitual`, secao `gate_closure` no briefing e Core Readiness usando o ritual para gaps diarios.
+- `packages/web/src/app/company-brain/page.tsx`: secao `Gate Closure Ritual` com contadores e top itens.
+- `packages/mcp-server/src/index.ts`: MCP `get_company_brain_gate_closure_ritual`.
+- `docs/company-brain-gate-closure-ritual-runbook.md`: runbook de uso/validacao.
+
+Dogfood validado:
+
+- DB: `/tmp/aios-runtime-gate-closure-dogfood.sqlite`.
+- Daemon: `127.0.0.1:43167`.
+- Seed: `POST /api/company-brain/demo/felhen-v0-1`.
+- API: `GET /api/company-brain/gate-closure-ritual`.
+- Resultado: `itemCount=1`, `workflowGateCount=1`, `pendingGateCount=1`, `dailyClosureReadyCount=1`.
+- Primeiro item: `kind=workflow_gate`, `status=ready_for_review`, `severity=warn`, `recommendedAction=Review required evidence and decide whether the next workflow step can start.`
+- Briefing: run manual de `watcher-aios-briefing-v0` gerou secao `gate_closure`.
+
+Proximo corte recomendado:
+
+1. **AgentContext Daily Handoff v0**: gerar contexto diario para agentes a partir de briefing, gate closure, open guidance, operating cadence e source health.
+2. **Design Partner Operating Pack v0**: empacotar demo/runbook/fronteiras de dados.
+3. Parar antes de novo executor real, novo alvo externo, deploy, close/reopen/merge/delete ou qualquer mutacao externa nao aprovada.

@@ -1860,6 +1860,58 @@ export interface CompanyBrainOperatingCadence {
   };
 }
 
+export type GateClosureRitualItemKind =
+  | "workflow_gate"
+  | "workflow_sla"
+  | "goal_sla";
+
+export type GateClosureRitualItemStatus =
+  | "ready_for_review"
+  | "blocked"
+  | "failed"
+  | "at_risk"
+  | "breached";
+
+export interface GateClosureRitualItem {
+  id: string;
+  kind: GateClosureRitualItemKind;
+  status: GateClosureRitualItemStatus;
+  severity: SignalSeverity;
+  area: CompanyBrainArea;
+  title: string;
+  targetType: "workflow_run" | "goal";
+  targetId: string;
+  workItemId: string | null;
+  priorityId: string | null;
+  goalId: string | null;
+  owner: string | null;
+  gateStatus: GateStatus | null;
+  slaStatus: SlaStatus | null;
+  dueAt: number | null;
+  lastActivityAt: number | null;
+  rationale: string;
+  recommendedAction: string;
+}
+
+export interface CompanyBrainGateClosureRitual {
+  generatedAt: number;
+  items: GateClosureRitualItem[];
+  stats: {
+    itemCount: number;
+    criticalCount: number;
+    warnCount: number;
+    workflowGateCount: number;
+    workflowSlaCount: number;
+    goalSlaCount: number;
+    pendingGateCount: number;
+    blockedGateCount: number;
+    failedGateCount: number;
+    slaAtRiskCount: number;
+    slaBreachedCount: number;
+    dailyClosureReadyCount: number;
+  };
+}
+
 export interface RunOperatingCadenceRequest {
   mode?: "due" | "all";
   watcherIds?: string[];
@@ -1897,6 +1949,7 @@ export interface CompanyBrainBriefingSection {
     | "findings"
     | "source_health"
     | "operating_cadence"
+    | "gate_closure"
     | "adoption_dashboard"
     | "unlinked_work"
     | "gates_sla"
@@ -2875,6 +2928,7 @@ export interface CompanyBrainSummary {
   adoptionDashboard: CompanyBrainAdoptionDashboard;
   sourceHealthReport: CompanyBrainSourceHealthReport;
   operatingCadence: CompanyBrainOperatingCadence;
+  gateClosureRitual: CompanyBrainGateClosureRitual;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   reviewCohesion: CompanyBrainReviewCohesion;
   writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;

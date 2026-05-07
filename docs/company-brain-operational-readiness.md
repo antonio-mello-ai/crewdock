@@ -122,11 +122,13 @@ Faltam:
 
 Operating Cadence v0 esta implementado internamente e dogfooded em DB temporario, sem instalar timer de producao.
 
-O proximo corte mais importante e **Gate Closure Ritual v0**:
+Gate Closure Ritual v0 esta implementado internamente e dogfooded em DB temporario.
 
-1. criar uma visao/ritual diario para gates pendentes, SLA em risco e workflow runs parados;
-2. gerar guidance ou checklist interno para fechamento;
-3. refletir o ritual no AIOS Briefing e Core Readiness;
-4. manter tudo read-only/observe-only, sem writeback externo novo.
+O proximo corte mais importante e **AgentContext Daily Handoff v0**:
+
+1. gerar contexto diario de agente a partir de briefing, gate closure, operating cadence, source health e open guidance;
+2. separar contexto para operador humano vs agente implementador;
+3. expor em API/UI/MCP e no briefing;
+4. manter tudo interno/read-only, sem auto-apply e sem writeback externo novo.
 
 Nao avancar para novo executor externo antes desse corte.

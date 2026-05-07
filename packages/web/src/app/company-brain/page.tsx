@@ -311,7 +311,13 @@ function StatusBadge({ value }: { value: string }) {
     value === "watcher_cadence_stale" ||
     value === "watcher_cadence_missing" ||
     value === "due" ||
-    value === "stale"
+    value === "stale" ||
+    value === "workflow_gate" ||
+    value === "workflow_sla" ||
+    value === "goal_sla" ||
+    value === "ready_for_review" ||
+    value === "at_risk" ||
+    value === "breached"
       ? "border-amber-800/60 bg-amber-950/30 text-amber-300"
       : value === "done" ||
           value === "completed" ||
@@ -415,6 +421,7 @@ export default function CompanyBrainPage() {
   const previewReplaySimulator = summary?.previewReplaySimulator;
   const coreReadiness = summary?.coreReadiness;
   const operatingCadence = summary?.operatingCadence;
+  const gateClosureRitual = summary?.gateClosureRitual;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -1616,6 +1623,64 @@ export default function CompanyBrainPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {gateClosureRitual ? (
+            <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <Workflow className="h-4 w-4 text-neutral-500" />
+                  <h2 className="text-sm font-semibold text-neutral-200">
+                    Gate Closure Ritual
+                  </h2>
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  <MiniMetric label="items" value={gateClosureRitual.stats.itemCount} />
+                  <MiniMetric
+                    label="critical"
+                    value={gateClosureRitual.stats.criticalCount}
+                  />
+                  <MiniMetric
+                    label="pending gates"
+                    value={gateClosureRitual.stats.pendingGateCount}
+                  />
+                  <MiniMetric
+                    label="blocked"
+                    value={gateClosureRitual.stats.blockedGateCount}
+                  />
+                  <MiniMetric
+                    label="at risk"
+                    value={gateClosureRitual.stats.slaAtRiskCount}
+                  />
+                  <MiniMetric
+                    label="breached"
+                    value={gateClosureRitual.stats.slaBreachedCount}
+                  />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {gateClosureRitual.items.slice(0, 6).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded border border-neutral-800/50 px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-medium text-neutral-200">
+                          {item.title}
+                        </p>
+                        <StatusBadge value={item.kind} />
+                        <StatusBadge value={item.status} />
+                        <StatusBadge value={item.severity} />
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-neutral-500">
+                        {item.recommendedAction}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
