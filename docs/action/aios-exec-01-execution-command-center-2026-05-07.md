@@ -108,6 +108,33 @@ candidatesConsidered = 0
 totals = { activeWorkItemCount: 0, blockedWorkItemCount: 0, doneWorkItemCount: 0 }
 ```
 
+Cenario com WorkItem historico fechado ainda presente no Company Brain:
+
+```
+Daemon local: 127.0.0.1:43187
+Sync real GitHub Issues state=open:
+lastIssueExternalIds = [
+  "antonio-mello-ai/crewdock#31",
+  "antonio-mello-ai/crewdock#30",
+  "antonio-mello-ai/crewdock#29",
+  "antonio-mello-ai/crewdock#28",
+  "antonio-mello-ai/crewdock#27"
+]
+
+WorkItem stale manual criado:
+externalId = "antonio-mello-ai/crewdock#25"
+status = "triage"
+
+GET /api/company-brain/next-work
+->
+recommended.workItem.externalId = "antonio-mello-ai/crewdock#27"
+candidatesConsidered = 5
+totals.activeWorkItemCount = 6
+```
+
+Esse smoke confirma que item historico fora do ultimo sync `open` segue
+pesquisavel, mas nao entra na fila recomendada.
+
 ## Validacao
 
 - `git diff --check` clean.
@@ -124,8 +151,11 @@ explicita do usuario. Pos-deploy, validar:
 - `GET https://api.felhen.ai/api/company-brain/next-work` -> shape acima.
 - `GET https://api.felhen.ai/api/company-brain/operating-snapshot` deve incluir
   `nextWork`.
+- Rodar sync GitHub Issues `state=open` antes da checagem visual para atualizar
+  `Source.metadata.lastIssueExternalIds`.
 - `https://ai.felhen.ai/company-brain/operating` mostra a secao Next Work com
-  o WorkItem recomendado da fila real (issues `#26`-`#31` espelhadas).
+  o WorkItem recomendado da fila real aberta, sem recomendar issues ja fechadas
+  que permanecem no Company Brain como historico.
 - `mcp__aios__get_company_brain_next_work` em producao retorna recommendation
   consistente.
 
@@ -142,6 +172,10 @@ explicita do usuario. Pos-deploy, validar:
   caem na fila pelo prefixo, mas o agent prompt nao mostra priority/goal.
   Em v1 o adapter pode preencher esses campos por convencao (todas issues
   da milestone ativa => `priorityId` da milestone).
+- **Friccao fechada neste PR**: WorkItems historicos de issues fechadas podiam
+  continuar como `triage` no Company Brain. O adapter agora atualiza issues
+  vistas no sync e grava `lastIssueExternalIds` no Source; o `Next Work` usa a
+  lista do ultimo sync `open` para nao recomendar itens que sairam da fila ativa.
 - **Friccao**: parse de Acceptance Criteria depende do body seguir
   `## Acceptance Criteria`. Issues abertas no GitHub seguem essa
   convencao via runbook; issues legacy importadas podem nao ter, e

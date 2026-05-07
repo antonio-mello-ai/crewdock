@@ -1445,6 +1445,12 @@ function metadataBoolean(value: unknown) {
   return typeof value === "boolean" ? value : null;
 }
 
+function metadataStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : [];
+}
+
 function latestAuditEvent(proposal: ExternalActionProposal, eventName: string) {
   return [...proposal.auditTrail]
     .reverse()
@@ -4667,6 +4673,22 @@ function buildNextWorkAgentPrompt(args: {
   return `${lines.join("\n")}\n`;
 }
 
+function isVisibleInLatestGitHubIssueSync(
+  workItem: WorkItem,
+  data: ReturnType<typeof listAll>
+) {
+  if (workItem.externalProvider !== "github" || !workItem.sourceId || !workItem.externalId) {
+    return true;
+  }
+  const source = data.sources.find((item) => item.id === workItem.sourceId);
+  const metadata = metadataRecord(source?.metadata);
+  if (metadataString(metadata.adapter) !== "github_issues") return true;
+  if (metadataString(metadata.lastSyncState) !== "open") return true;
+  const lastOpenIssueExternalIds = metadataStringArray(metadata.lastIssueExternalIds);
+  if (!lastOpenIssueExternalIds.length) return true;
+  return lastOpenIssueExternalIds.includes(workItem.externalId);
+}
+
 function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
   const generatedAt = now();
   const workItems = data.workItems as WorkItem[];
@@ -4682,7 +4704,8 @@ function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
   const candidates = workItems.filter(
     (item) =>
       NEXT_WORK_ACTIVE_STATUSES.includes(item.status) &&
-      !item.blockedReason
+      !item.blockedReason &&
+      isVisibleInLatestGitHubIssueSync(item, data)
   );
   if (!candidates.length) {
     const reason =
@@ -12084,21 +12107,38 @@ app.post("/adapters/github/issues/sync", async (c) => {
     const existingArtifacts = db.select().from(cbArtifacts).all();
     const existingWorkItems = db.select().from(cbWorkItems).all();
     const artifactsCreated = [];
+    const artifactsUpdated = [];
     const workItemsCreated = [];
+    const workItemsUpdated = [];
+    const syncState = body.state ?? "open";
+    const issueExternalIds = issues.map((issue) => `${repo.fullName}#${issue.number}`);
 
     for (const issue of issues) {
       const rawRef = issue.html_url;
+      const issueLabels = issue.labels.map((label) => label.name);
+      const issuePayload = JSON.stringify({
+        id: issue.id,
+        number: issue.number,
+        title: issue.title,
+        state: issue.state,
+        body: issue.body,
+        labels: issueLabels,
+        updated_at: issue.updated_at,
+      });
+      const issueMetadata = {
+        adapter: "github_issues",
+        readOnly: true,
+        repo: repo.fullName,
+        githubIssueId: issue.id,
+        number: issue.number,
+        state: issue.state,
+        labels: issueLabels,
+        createdAt: issue.created_at,
+        updatedAt: issue.updated_at,
+        closedAt: issue.closed_at,
+      };
       let artifact = existingArtifacts.find((item) => item.rawRef === rawRef);
       if (!artifact) {
-        const issuePayload = JSON.stringify({
-          id: issue.id,
-          number: issue.number,
-          title: issue.title,
-          state: issue.state,
-          body: issue.body,
-          labels: issue.labels.map((label) => label.name),
-          updated_at: issue.updated_at,
-        });
         artifact = {
           id: nanoid(12),
           sourceId: source.id,
@@ -12125,22 +12165,59 @@ app.post("/adapters/github/issues/sync", async (c) => {
           },
           humanReviewStatus: "pending" as const,
           confidence: 1,
-          metadata: {
-            adapter: "github_issues",
-            readOnly: true,
-            repo: repo.fullName,
-            githubIssueId: issue.id,
-            number: issue.number,
-            state: issue.state,
-            labels: issue.labels.map((label) => label.name),
-            createdAt: issue.created_at,
-            updatedAt: issue.updated_at,
-            closedAt: issue.closed_at,
-          },
+          metadata: issueMetadata,
         };
         db.insert(cbArtifacts).values(artifact).run();
         existingArtifacts.push(artifact);
         artifactsCreated.push(artifact);
+      } else {
+        const refreshedArtifact = {
+          ...artifact,
+          sourceId: source.id,
+          area: body.area ?? source.area,
+          title: `#${issue.number} ${issue.title}`,
+          summary: issue.body?.trim().slice(0, 500) ?? null,
+          contentRef: issue.url,
+          author: issue.user?.login ?? null,
+          occurredAt: Date.parse(issue.updated_at || issue.created_at),
+          ingestedAt: timestamp,
+          hash: stableHash(issuePayload),
+          visibility: body.visibility ?? source.visibility,
+          provenance: {
+            ...metadataRecord(artifact.provenance),
+            sourceId: source.id,
+            rawRef,
+            createdFrom: "adapter:github_issues",
+            confidence: 1,
+            extractedAt: timestamp,
+            humanReviewStatus: artifact.humanReviewStatus,
+            visibility: body.visibility ?? source.visibility,
+            notes: "read_only=true; refreshed=true",
+          },
+          metadata: {
+            ...metadataRecord(artifact.metadata),
+            ...issueMetadata,
+          },
+        };
+        db.update(cbArtifacts)
+          .set({
+            sourceId: refreshedArtifact.sourceId,
+            area: refreshedArtifact.area,
+            title: refreshedArtifact.title,
+            summary: refreshedArtifact.summary,
+            contentRef: refreshedArtifact.contentRef,
+            author: refreshedArtifact.author,
+            occurredAt: refreshedArtifact.occurredAt,
+            ingestedAt: refreshedArtifact.ingestedAt,
+            hash: refreshedArtifact.hash,
+            visibility: refreshedArtifact.visibility,
+            provenance: refreshedArtifact.provenance,
+            metadata: refreshedArtifact.metadata,
+          })
+          .where(eq(cbArtifacts.id, artifact.id))
+          .run();
+        artifact = refreshedArtifact;
+        artifactsUpdated.push(artifact);
       }
 
       if (body.createWorkItems ?? true) {
@@ -12149,6 +12226,12 @@ app.post("/adapters/github/issues/sync", async (c) => {
           (item) =>
             item.externalProvider === "github" && item.externalId === externalId
         );
+        const refreshedStatus =
+          issue.state === "closed"
+            ? ("done" as const)
+            : existing && ["done", "cancelled"].includes(existing.status)
+              ? ("triage" as const)
+              : (existing?.status ?? ("triage" as const));
         if (!existing) {
           const workItem = {
             id: nanoid(12),
@@ -12167,7 +12250,7 @@ app.post("/adapters/github/issues/sync", async (c) => {
             riskClass: "unknown" as const,
             dueAt: null,
             blockedReason: null,
-            labels: ["github_issue", ...issue.labels.map((label) => label.name)],
+            labels: ["github_issue", ...issueLabels],
             sourceId: source.id,
             artifactId: artifact.id,
             visibility: body.visibility ?? source.visibility,
@@ -12200,15 +12283,75 @@ app.post("/adapters/github/issues/sync", async (c) => {
               createdAt: timestamp,
             })
             .run();
+        } else {
+          const refreshedWorkItem = {
+            ...existing,
+            title: `#${issue.number} ${issue.title}`,
+            description: issue.body?.trim().slice(0, 1000) ?? null,
+            area: body.area ?? existing.area,
+            owner: body.owner ?? existing.owner,
+            ownerType: body.owner ? ("human" as const) : existing.ownerType,
+            status: refreshedStatus,
+            externalUrl: rawRef,
+            labels: ["github_issue", ...issueLabels],
+            sourceId: source.id,
+            artifactId: artifact.id,
+            visibility: body.visibility ?? existing.visibility,
+            provenance: {
+              ...metadataRecord(existing.provenance),
+              sourceId: source.id,
+              rawRef,
+              artifactId: artifact.id,
+              createdFrom: "adapter:github_issues:work_item",
+              confidence: 1,
+              extractedAt: timestamp,
+              humanReviewStatus:
+                existing.provenance?.humanReviewStatus ?? ("pending" as const),
+              visibility: body.visibility ?? existing.visibility,
+              notes: "read_only=true; refreshed=true",
+            },
+            updatedAt: timestamp,
+          };
+          db.update(cbWorkItems)
+            .set({
+              title: refreshedWorkItem.title,
+              description: refreshedWorkItem.description,
+              area: refreshedWorkItem.area,
+              owner: refreshedWorkItem.owner,
+              ownerType: refreshedWorkItem.ownerType,
+              status: refreshedWorkItem.status,
+              externalUrl: refreshedWorkItem.externalUrl,
+              labels: refreshedWorkItem.labels,
+              sourceId: refreshedWorkItem.sourceId,
+              artifactId: refreshedWorkItem.artifactId,
+              visibility: refreshedWorkItem.visibility,
+              provenance: refreshedWorkItem.provenance,
+              updatedAt: refreshedWorkItem.updatedAt,
+            })
+            .where(eq(cbWorkItems.id, existing.id))
+            .run();
+          Object.assign(existing, refreshedWorkItem);
+          workItemsUpdated.push(refreshedWorkItem);
         }
       }
     }
 
+    const sourceMetadata = metadataRecord(source.metadata);
     const updatedSource = {
       ...source,
       lastSyncAt: timestamp,
       healthStatus: "healthy" as const,
       syncError: null,
+      metadata: {
+        ...sourceMetadata,
+        adapter: "github_issues",
+        repo: repo.fullName,
+        readOnly: true,
+        lastSyncState: syncState,
+        lastIssueExternalIds: issueExternalIds,
+        lastIssueNumbers: issues.map((issue) => issue.number),
+        lastIssuesSeen: issues.length,
+      },
       updatedAt: timestamp,
     };
     db.update(cbSources)
@@ -12216,6 +12359,7 @@ app.post("/adapters/github/issues/sync", async (c) => {
         lastSyncAt: updatedSource.lastSyncAt,
         healthStatus: updatedSource.healthStatus,
         syncError: updatedSource.syncError,
+        metadata: updatedSource.metadata,
         updatedAt: updatedSource.updatedAt,
       })
       .where(eq(cbSources.id, source.id))
@@ -12226,7 +12370,9 @@ app.post("/adapters/github/issues/sync", async (c) => {
         data: {
           source: updatedSource,
           artifactsCreated,
+          artifactsUpdated,
           workItemsCreated,
+          workItemsUpdated,
           issuesSeen: issues.length,
         },
       },
