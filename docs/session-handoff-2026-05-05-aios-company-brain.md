@@ -1868,6 +1868,26 @@ Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-exe
 - Replay retornou `terminalState=true`, `safeToExecuteWithoutNewApproval=false`, `automaticWriteRetryAllowed=false` e reason `Terminal or externally completed proposal; do not replay write execution.`
 - External refs preservados: `externalId=47036420104` e externalUrl do commit `b9e1057...`.
 
+## Slice Markdown Evidence Packet Export v0
+
+Objetivo: permitir export humano/auditavel do evidence packet completo em Markdown, mantendo o endpoint read-only e sem qualquer nova mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. Endpoint `GET /api/company-brain/external-action-proposals/:id/evidence-packet` aceita `format=markdown` ou `markdown=1`.
+2. A resposta Markdown usa `Content-Type: text/markdown; charset=utf-8` e `Content-Disposition` com filename `aios-writeback-evidence-<proposalId>.md`.
+3. O export inclui proposta, risk/policy/status, target, payload hashes, destination refs, external refs, approval/preview/execution events, evidence links, integrity gaps, remediation suggestions, GitHub status evidence e audit trail.
+4. UI `/company-brain` adiciona link `Export Markdown` no packet carregado, ao lado do export JSON existente.
+5. Export JSON existente com `download=1` foi preservado.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43157`:
+
+- Proposal `35xo7wHd9CBV` retornou Markdown 200 OK com `content-type: text/markdown; charset=utf-8`.
+- Header `content-disposition` retornou `attachment; filename=aios-writeback-evidence-35xo7wHd9CBV.md`.
+- Markdown incluiu `External ID: 47036420104`, payload hash `6737a218dba45d17e183f92ede73276af44a215f00a7e1444ac32558bc3de48f` e eventos `approved`, `github_status_check_previewed` e `github_status_set`.
+- Secao `GitHub Status` preservou repo `antonio-mello-ai/felhen`, SHA `b9e1057f44988555227ae8031cd48325fb6efc71`, context `aios/dogfood-status`, state `success`, `repoPrivate=true` e status id `47036420104`.
+- Porta do daemon foi encerrada apos o teste e nao restou listener em `43157`.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -1986,7 +2006,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0 e Preview/Replay Simulator v0. O proximo corte recomendado e Markdown evidence packet export v0 e melhorias de briefing para audit/readiness. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0 e Markdown Evidence Packet Export v0. O proximo corte recomendado e AIOS briefing improvements para audit/readiness. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

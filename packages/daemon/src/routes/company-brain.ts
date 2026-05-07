@@ -5424,6 +5424,90 @@ function buildWritebackEvidencePacket(
   };
 }
 
+function markdownLineValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "none";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "none";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function writebackEvidencePacketMarkdown(packet: WritebackEvidencePacket) {
+  const proposal = packet.proposal;
+  const lines = [
+    `# AIOS Writeback Evidence Packet: ${proposal.title}`,
+    "",
+    "## Proposal",
+    "",
+    `- Proposal ID: ${proposal.id}`,
+    `- Destination: ${proposal.destinationType}/${proposal.actionType}`,
+    `- Risk / policy: ${proposal.riskClass} / ${proposal.actionPolicy}`,
+    `- Approval status: ${proposal.approvalStatus}`,
+    `- Execution status: ${proposal.executionStatus}`,
+    `- Review status: ${packet.executionReview.status}`,
+    `- Target: ${markdownLineValue(packet.auditReview.targetSummary ?? proposal.destinationRef)}`,
+    `- Idempotency key: ${proposal.idempotencyKey}`,
+    "",
+    "## Hashes And Refs",
+    "",
+    `- Payload hash approved: ${markdownLineValue(packet.payloadHashes.approved)}`,
+    `- Payload hash preview: ${markdownLineValue(packet.payloadHashes.preview)}`,
+    `- Payload hash current: ${packet.payloadHashes.current}`,
+    `- Destination approved: ${markdownLineValue(packet.destinationRefs.approved)}`,
+    `- Destination preview: ${markdownLineValue(packet.destinationRefs.preview)}`,
+    `- Destination current: ${markdownLineValue(packet.destinationRefs.current)}`,
+    `- External ID: ${markdownLineValue(packet.externalRefs.externalId)}`,
+    `- External URL: ${markdownLineValue(packet.externalRefs.externalUrl)}`,
+    "",
+    "## Events",
+    "",
+    `- Approval event: ${markdownLineValue(packet.approvalEvent?.event)} at ${markdownLineValue(packet.approvalEvent?.at)}`,
+    `- Preview event: ${markdownLineValue(packet.previewEvent?.event)} at ${markdownLineValue(packet.previewEvent?.at)}`,
+    `- Execution event: ${markdownLineValue(packet.executionEvent?.event)} at ${markdownLineValue(packet.executionEvent?.at)}`,
+    `- Audit events: ${packet.auditTrail.length}`,
+    "",
+    "## Evidence Links",
+    "",
+    `- Guidance: ${markdownLineValue(packet.guidanceItem?.id)} ${packet.guidanceItem?.title ?? ""}`.trim(),
+    `- Signal: ${markdownLineValue(packet.signal?.id)} ${packet.signal?.summary ?? ""}`.trim(),
+    `- Finding: ${markdownLineValue(packet.alignmentFinding?.id)} ${packet.alignmentFinding?.classification ?? ""}`.trim(),
+    `- Work item: ${markdownLineValue(packet.workItem?.id)} ${packet.workItem?.title ?? ""}`.trim(),
+    `- Workflow run: ${markdownLineValue(packet.workflowRun?.id)} ${packet.workflowRun?.title ?? ""}`.trim(),
+    "",
+    "## Integrity",
+    "",
+    `- Integrity gaps: ${packet.integrityGaps.length}`,
+    `- Remediation suggestions: ${packet.remediationSuggestions.length}`,
+    `- Block reasons: ${markdownLineValue(packet.auditReview.blockReasons)}`,
+    "",
+  ];
+  if (packet.githubStatus) {
+    lines.push(
+      "## GitHub Status",
+      "",
+      `- Repo: ${markdownLineValue(packet.githubStatus.repo)}`,
+      `- SHA: ${markdownLineValue(packet.githubStatus.sha)}`,
+      `- Context: ${markdownLineValue(packet.githubStatus.context)}`,
+      `- State: ${markdownLineValue(packet.githubStatus.state)}`,
+      `- Status ID: ${markdownLineValue(packet.githubStatus.statusId)}`,
+      `- Repo private: ${markdownLineValue(packet.githubStatus.repoPrivate)}`,
+      `- Existing statuses read: ${markdownLineValue(packet.githubStatus.existingStatusesRead)}`,
+      `- Duplicate detected: ${markdownLineValue(packet.githubStatus.duplicateDetected)}`,
+      ""
+    );
+  }
+  lines.push("## Audit Trail", "");
+  for (const event of packet.auditTrail.slice(0, 50)) {
+    lines.push(
+      `- ${event.at}: ${event.event} by ${event.actor ?? "system"} - ${event.note ?? "no note"}`
+    );
+  }
+  if (packet.auditTrail.length > 50) {
+    lines.push(`- ${packet.auditTrail.length - 50} additional events omitted.`);
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
 function buildWritebackEvidencePacketIndex(
   data: ReturnType<typeof listAll>,
   reviews: Map<
@@ -11190,6 +11274,15 @@ app.get("/external-action-proposals/:id/evidence-packet", (c) => {
     );
   }
   const packet = buildWritebackEvidencePacket(proposal);
+  const format = c.req.query("format")?.trim().toLowerCase() ?? "";
+  if (format === "markdown" || c.req.query("markdown") === "1") {
+    return new Response(writebackEvidencePacketMarkdown(packet), {
+      headers: {
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Disposition": `attachment; filename=aios-writeback-evidence-${proposal.id}.md`,
+      },
+    });
+  }
   if (c.req.query("download") === "1") {
     return new Response(JSON.stringify(packet, null, 2), {
       headers: {

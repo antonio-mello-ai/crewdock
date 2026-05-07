@@ -21,6 +21,7 @@ import {
   companyBrainDaemonApiUrl,
   companyBrainWritebackAuditTrailCsvUrl,
   companyBrainWritebackEvidencePacketJsonUrl,
+  companyBrainWritebackEvidencePacketMarkdownUrl,
   type CompanyBrainWritebackAuditTrailFilters,
   type CompanyBrainWritebackEvidenceIntegrityGapFilters,
   type CompanyBrainWritebackEvidenceRemediationFilters,
@@ -3610,6 +3611,15 @@ export default function CompanyBrainPage() {
                     >
                       <Download className="h-3.5 w-3.5" />
                       Export evidence JSON
+                    </a>
+                    <a
+                      href={companyBrainWritebackEvidencePacketMarkdownUrl(
+                        getWritebackEvidencePacket.data.data.proposal.id
+                      )}
+                      className="ml-3 mt-2 inline-flex items-center gap-2 text-xs text-neutral-400 underline-offset-4 hover:underline"
+                    >
+                      <FileText className="h-3.5 w-3.5" />
+                      Export Markdown
                     </a>
                   </div>
                 ) : null}
