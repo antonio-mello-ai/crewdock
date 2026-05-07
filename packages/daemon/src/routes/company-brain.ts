@@ -12,6 +12,7 @@ import type {
   CompanyBrainAdoptionDashboard,
   CompanyBrainBriefingSection,
   CompanyBrainBriefingSnapshot,
+  CompanyBrainCoreReadiness,
   CompanyBrainEvidenceGraph,
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainReviewCohesion,
@@ -2858,6 +2859,401 @@ function buildSourceHealthReport(
       ).length,
           sourceWithoutSignalsCount: sources.filter((source) =>
         source.issueKinds.includes("no_signals")
+      ).length,
+    },
+  };
+}
+
+function buildCoreReadiness(args: {
+  data: ReturnType<typeof listAll>;
+  adoptionDashboard: CompanyBrainAdoptionDashboard;
+  sourceHealthReport: CompanyBrainSourceHealthReport;
+  writebackSafetyDashboard: CompanyBrainWritebackSafetyDashboard;
+  evidenceGraph: CompanyBrainEvidenceGraph;
+  timeline: CompanyBrainTimeline;
+  savedAuditViews: CompanyBrainSavedAuditViews;
+  writebackPolicySimulator: CompanyBrainWritebackPolicySimulator;
+  previewReplaySimulator: WritebackPreviewReplaySimulator;
+  lastBriefing: CompanyBrainBriefingSnapshot | null;
+}): CompanyBrainCoreReadiness {
+  const {
+    data,
+    adoptionDashboard,
+    sourceHealthReport,
+    writebackSafetyDashboard,
+    evidenceGraph,
+    timeline,
+    savedAuditViews,
+    writebackPolicySimulator,
+    previewReplaySimulator,
+    lastBriefing,
+  } = args;
+  const generatedAt = now();
+  type Module = CompanyBrainCoreReadiness["modules"][number];
+  type ModuleStatus = Module["statuses"][number];
+  type Gap = CompanyBrainCoreReadiness["gaps"][number];
+
+  const module = (item: Module): Module => ({
+    ...item,
+    statuses: uniqueStrings(item.statuses) as ModuleStatus[],
+  });
+  const evidencePacketCount = writebackSafetyDashboard.evidencePacketIndex.length;
+  const automatedWatcherCount = data.watchers.filter((watcher) =>
+    ["schedule", "polling", "webhook", "event"].includes(watcher.triggerType)
+  ).length;
+  const hasClosedLoop =
+    data.signals.length > 0 &&
+    data.alignmentFindings.length > 0 &&
+    data.guidanceItems.length > 0;
+  const hasStrategyRuntime = data.priorities.length > 0 && data.goals.length > 0;
+  const hasWorkRuntime = data.workItems.length > 0 && data.workflowRuns.length > 0;
+  const hasWritebackDogfood =
+    writebackSafetyDashboard.stats.completedExternalWriteCount > 0 ||
+    writebackSafetyDashboard.stats.completedNoopCount > 0;
+
+  const modules: Module[] = [
+    module({
+      key: "company_brain_schema",
+      title: "Company Brain schema",
+      statuses: ["operational", "dogfooded"],
+      summary:
+        "Horizontal schema exists for sources, artifacts, strategy, goals, work, workflows, closed-loop objects and governed writeback.",
+      evidence: [
+        `${data.sources.length} sources`,
+        `${data.artifacts.length} artifacts`,
+        `${data.workflowBlueprints.length} workflow blueprints`,
+        `${data.externalActionProposals.length} external action proposals`,
+      ],
+      gaps: [],
+      nextAction: "Keep schema evolution additive and tied to dogfood gaps.",
+    }),
+    module({
+      key: "source_registry",
+      title: "Source Registry",
+      statuses: data.sources.length ? ["operational", "dogfooded"] : ["missing"],
+      summary: "Sources are first-class records with area, source type, owner, health and provenance boundaries.",
+      evidence: [
+        `${data.sources.length} registered sources`,
+        `${sourceHealthReport.stats.healthyCount} healthy/fresh sources`,
+        `${sourceHealthReport.stats.staleCount} stale sources`,
+      ],
+      gaps: automatedWatcherCount ? [] : ["No automated watcher cadence is configured in this dogfood DB."],
+      nextAction: automatedWatcherCount
+        ? "Use source health to drive daily operating review."
+        : "Schedule or poll the highest-value internal sources before design-partner use.",
+    }),
+    module({
+      key: "artifact_store",
+      title: "Artifact Store",
+      statuses: data.artifacts.length ? ["operational", "dogfooded"] : ["missing"],
+      summary: "Artifacts capture raw evidence with source, raw_ref, hashes, visibility and provenance.",
+      evidence: [
+        `${data.artifacts.length} artifacts`,
+        `${data.artifactLinks.length} artifact links`,
+      ],
+      gaps: [],
+      nextAction: "Keep new adapters writing artifacts before higher-order objects.",
+    }),
+    module({
+      key: "strategy_goals_tradeoffs",
+      title: "Strategy/Goals/Tradeoffs",
+      statuses: hasStrategyRuntime ? ["operational", "dogfooded"] : ["operational"],
+      summary: "Strategy, goals, milestones, decisions and tradeoffs are modeled as runtime entities.",
+      evidence: [
+        `${data.priorities.length} priorities`,
+        `${data.goals.length} goals`,
+        `${data.decisions.length} decisions`,
+        `${data.strategyTradeoffs.length} tradeoffs`,
+      ],
+      gaps: data.strategyTradeoffs.length ? [] : ["Tradeoffs are supported but need more real operating examples."],
+      nextAction: "Use real strategy review artifacts to populate tradeoffs and decisions.",
+    }),
+    module({
+      key: "workflows",
+      title: "WorkItems/WorkflowRuns",
+      statuses: hasWorkRuntime ? ["operational", "dogfooded"] : ["operational"],
+      summary: "Canonical WorkItems and WorkflowRuns connect external work to internal gates, SLA and evidence.",
+      evidence: [
+        `${data.workItems.length} work items`,
+        `${data.workflowRuns.length} workflow runs`,
+        `${adoptionDashboard.stats.pendingGateCount} pending gates`,
+      ],
+      gaps: adoptionDashboard.stats.pendingGateCount
+        ? ["Pending gates still need daily operating closure."]
+        : [],
+      nextAction: "Use workflow gates as the daily closure checklist.",
+    }),
+    module({
+      key: "watchers",
+      title: "Watchers",
+      statuses: [
+        "operational",
+        ...(data.watcherRuns.length ? (["dogfooded"] as ModuleStatus[]) : []),
+        "read_only_only",
+        ...(automatedWatcherCount ? [] : (["needs_real_adapter"] as ModuleStatus[])),
+      ],
+      summary: "Watchers can observe sources and produce internal evidence without external writeback.",
+      evidence: [
+        `${data.watchers.length} watchers`,
+        `${data.watcherRuns.length} watcher runs`,
+        `${automatedWatcherCount} automated cadence watchers`,
+      ],
+      gaps: automatedWatcherCount ? [] : ["Current readiness still relies on manual watcher runs for dogfood cadence."],
+      nextAction: "Add schedule/polling cadence for briefing and key source watchers.",
+    }),
+    module({
+      key: "closed_loop",
+      title: "Signals/Findings/Guidance",
+      statuses: hasClosedLoop ? ["operational", "dogfooded"] : ["operational"],
+      summary: "The internal loop can classify evidence and produce guidance with feedback state.",
+      evidence: [
+        `${data.signals.length} signals`,
+        `${data.alignmentFindings.length} findings`,
+        `${data.guidanceItems.length} guidance items`,
+        `${data.guidanceItems.filter((item) => ["new", "open"].includes(item.status)).length} open guidance`,
+      ],
+      gaps: hasClosedLoop ? [] : ["Closed-loop objects exist but need a complete current dogfood chain."],
+      nextAction: "Keep every new real source producing at least one signal/finding/guidance chain.",
+    }),
+    module({
+      key: "agent_context_improvement",
+      title: "AgentContext/ImprovementProposal",
+      statuses: [
+        "operational",
+        ...(data.agentContexts.length || data.improvementProposals.length
+          ? (["dogfooded"] as ModuleStatus[])
+          : []),
+        "read_only_only",
+      ],
+      summary: "Approved knowledge can become AgentContext and internal ImprovementProposal records without auto-apply.",
+      evidence: [
+        `${data.agentContexts.length} agent contexts`,
+        `${data.improvementProposals.length} improvement proposals`,
+      ],
+      gaps: data.agentContexts.length ? [] : ["AgentContext still needs repeated daily-use generation."],
+      nextAction: "Generate contexts from accepted guidance before handoffs and agent sessions.",
+    }),
+    module({
+      key: "source_health",
+      title: "Source Health",
+      statuses: ["operational", "dogfooded", "read_only_only"],
+      summary: "Source Health reports freshness, sync errors, volumes and watcher activity.",
+      evidence: [
+        `${sourceHealthReport.sources.length} source health rows`,
+        `${sourceHealthReport.stats.errorCount} errors`,
+        `${sourceHealthReport.stats.staleCount} stale sources`,
+      ],
+      gaps: [],
+      nextAction: "Use Source Health as the first daily triage screen.",
+    }),
+    module({
+      key: "adoption_dashboard",
+      title: "Adoption Dashboard",
+      statuses: ["operational", "dogfooded", "read_only_only"],
+      summary: "Adoption Dashboard shows closed-loop stage, writeback maturity and audit readiness per project/source.",
+      evidence: [
+        `${adoptionDashboard.stats.projectCount} projects`,
+        `${adoptionDashboard.stats.closedLoopProjectCount} closed-loop projects`,
+        `${adoptionDashboard.stats.auditReadyProjectCount} audit-ready projects`,
+      ],
+      gaps: adoptionDashboard.stats.auditNeedsAttentionProjectCount
+        ? [`${adoptionDashboard.stats.auditNeedsAttentionProjectCount} projects need audit readiness review.`]
+        : [],
+      nextAction: "Use audit readiness to choose the next daily operating gap.",
+    }),
+    module({
+      key: "writeback_governance",
+      title: "Writeback Governance",
+      statuses: [
+        "operational",
+        ...(data.externalActionProposals.length ? (["dogfooded"] as ModuleStatus[]) : []),
+        "blocked_by_policy",
+      ],
+      summary: "ExternalActionProposal, HITL, preview gates, retry safety and audit trail govern writeback.",
+      evidence: [
+        `${data.externalActionProposals.length} proposals`,
+        `${writebackSafetyDashboard.stats.completedExternalWriteCount} completed external writes`,
+        `${writebackSafetyDashboard.stats.blockedProposalCount} blocked proposals`,
+      ],
+      gaps: ["Stronger external mutations remain blocked until explicitly approved."],
+      nextAction: "Keep GitHub/Slack writes limited to approved Risk B paths.",
+    }),
+    module({
+      key: "evidence_packets",
+      title: "Evidence Packets",
+      statuses: evidencePacketCount
+        ? ["operational", "dogfooded", "read_only_only"]
+        : ["operational", "read_only_only"],
+      summary: "Evidence packets export proposal, guidance, hashes, refs, events, gaps and audit trail.",
+      evidence: [
+        `${evidencePacketCount} indexed packets`,
+        `${writebackSafetyDashboard.evidenceIntegritySummary.total} integrity gaps`,
+      ],
+      gaps: [],
+      nextAction: "Attach evidence packet exports to review handoffs when writeback is discussed.",
+    }),
+    module({
+      key: "audit_timeline_graph",
+      title: "Audit/Timeline/Graph",
+      statuses: ["operational", "dogfooded", "read_only_only"],
+      summary: "Graph, timeline, saved audit views, policy simulator and replay simulator expose provenance and safety.",
+      evidence: [
+        `${evidenceGraph.stats.nodeCount} graph nodes`,
+        `${timeline.stats.eventCount} timeline events`,
+        `${savedAuditViews.stats.viewCount} saved audit views`,
+        `${writebackPolicySimulator.stats.caseCount} policy simulation cases`,
+        `${previewReplaySimulator.stats.proposalCount} replay-simulated proposals`,
+      ],
+      gaps: [],
+      nextAction: "Use graph/timeline when debugging provenance or target history.",
+    }),
+    module({
+      key: "briefing",
+      title: "Briefing",
+      statuses: lastBriefing
+        ? ["operational", "dogfooded", "read_only_only"]
+        : ["operational", "read_only_only"],
+      summary: "AIOS Briefing summarizes operational, writeback safety, audit readiness and execution readiness state.",
+      evidence: [
+        lastBriefing ? `latest artifact ${lastBriefing.artifactId}` : "no briefing artifact yet",
+        `${lastBriefing?.sections.length ?? 0} sections`,
+      ],
+      gaps: lastBriefing ? [] : ["Briefing watcher needs a run in the current DB."],
+      nextAction: "Run briefing at the beginning/end of daily AIOS operating sessions.",
+    }),
+    module({
+      key: "mcp_coverage",
+      title: "MCP coverage",
+      statuses: ["operational", "dogfooded"],
+      summary: "MCP exposes summary, briefing, adapters, review, writeback governance, audit, graph, timeline and packet exports.",
+      evidence: [
+        "Company Brain summary/read tools available",
+        "MCP Markdown evidence export dogfooded",
+        "Writeback execute tools remain gated",
+      ],
+      gaps: [],
+      nextAction: "Keep MCP tools aligned with each new API surface.",
+    }),
+  ];
+
+  const gaps: Gap[] = [];
+  const addGap = (gap: Gap) => gaps.push(gap);
+  if (!automatedWatcherCount) {
+    addGap({
+      id: "daily_cadence_watchers",
+      impact: "daily_use",
+      severity: "warn",
+      title: "Daily use still needs scheduled/polling watcher cadence",
+      rationale:
+        "The core is usable interactively, but daily operating value depends on automatic briefing/source watcher runs.",
+      nextAction: "Schedule the briefing watcher and one high-signal GitHub/Slack/source watcher.",
+      requiresExternalMutation: false,
+    });
+  }
+  if (adoptionDashboard.stats.pendingGateCount > 0) {
+    addGap({
+      id: "pending_workflow_gates",
+      impact: "daily_use",
+      severity: "warn",
+      title: "Pending workflow gates need daily closure discipline",
+      rationale: `${adoptionDashboard.stats.pendingGateCount} workflow gates are pending.`,
+      nextAction: "Use workflow runs as the closure checklist before adding stronger automation.",
+      requiresExternalMutation: false,
+    });
+  }
+  if (!lastBriefing) {
+    addGap({
+      id: "missing_briefing_artifact",
+      impact: "demo",
+      severity: "warn",
+      title: "Demo needs a latest AIOS briefing artifact",
+      rationale: "The briefing module is implemented, but no latest briefing exists in this DB.",
+      nextAction: "Run watcher-aios-briefing-v0 before demos.",
+      requiresExternalMutation: false,
+    });
+  }
+  addGap({
+    id: "design_partner_operating_pack",
+    impact: "design_partner",
+    severity: "warn",
+    title: "Design-partner readiness needs a stable operating pack",
+    rationale:
+      "The core is dogfooded internally, but design partners need a repeatable onboarding story, data boundaries and runbook.",
+    nextAction: "Create a demo/runbook pack from the Felhen closed-loop dogfood path.",
+    requiresExternalMutation: false,
+  });
+  addGap({
+    id: "stronger_writeback_requires_new_approval",
+    impact: "requires_external_mutation",
+    severity: "info",
+    title: "Stronger writeback remains intentionally blocked",
+    rationale:
+      "Check-run real execution, assign/unassign, notification read and status-changing actions require explicit target/policy approval.",
+    nextAction: "Approve one controlled target and one Risk B action before adding any new executor.",
+    requiresExternalMutation: true,
+  });
+  addGap({
+    id: "ui_role_polish",
+    impact: "polish",
+    severity: "info",
+    title: "UI can be refined into role-specific daily views",
+    rationale:
+      "The Company Brain page is feature-complete enough for internal use, but still dense for repeated non-builder operation.",
+    nextAction: "Only polish after daily dogfood reveals concrete friction.",
+    requiresExternalMutation: false,
+  });
+
+  const hasRequiredInternalLoop =
+    hasStrategyRuntime &&
+    hasWorkRuntime &&
+    hasClosedLoop &&
+    data.sources.length > 0 &&
+    data.artifacts.length > 0 &&
+    data.watcherRuns.length > 0 &&
+    adoptionDashboard.stats.closedLoopProjectCount > 0 &&
+    evidencePacketCount > 0 &&
+    hasWritebackDogfood;
+  const overallStatus: CompanyBrainCoreReadiness["overallStatus"] =
+    hasRequiredInternalLoop && lastBriefing
+      ? "internal_closed_loop_ready"
+      : hasRequiredInternalLoop
+        ? "demo_ready"
+        : modules.some((item) => item.statuses.includes("missing"))
+          ? "needs_foundation_work"
+          : "design_partner_not_ready";
+
+  return {
+    generatedAt,
+    overallStatus,
+    modules,
+    gaps,
+    stats: {
+      moduleCount: modules.length,
+      operationalCount: modules.filter((item) => item.statuses.includes("operational"))
+        .length,
+      dogfoodedCount: modules.filter((item) => item.statuses.includes("dogfooded"))
+        .length,
+      readOnlyOnlyCount: modules.filter((item) =>
+        item.statuses.includes("read_only_only")
+      ).length,
+      previewOnlyCount: modules.filter((item) => item.statuses.includes("preview_only"))
+        .length,
+      needsRealAdapterCount: modules.filter((item) =>
+        item.statuses.includes("needs_real_adapter")
+      ).length,
+      blockedByPolicyCount: modules.filter((item) =>
+        item.statuses.includes("blocked_by_policy")
+      ).length,
+      missingCount: modules.filter((item) => item.statuses.includes("missing"))
+        .length,
+      dailyUseBlockingGapCount: gaps.filter((gap) => gap.impact === "daily_use")
+        .length,
+      demoGapCount: gaps.filter((gap) => gap.impact === "demo").length,
+      designPartnerGapCount: gaps.filter((gap) => gap.impact === "design_partner")
+        .length,
+      polishGapCount: gaps.filter((gap) => gap.impact === "polish").length,
+      externalMutationGapCount: gaps.filter(
+        (gap) => gap.impact === "requires_external_mutation"
       ).length,
     },
   };
@@ -7913,6 +8309,18 @@ app.get("/summary", (c) => {
   const savedAuditViews = buildCompanyBrainSavedAuditViews(data);
   const writebackPolicySimulator = buildWritebackPolicySimulator();
   const previewReplaySimulator = buildPreviewReplaySimulator(data);
+  const coreReadiness = buildCoreReadiness({
+    data,
+    adoptionDashboard,
+    sourceHealthReport,
+    writebackSafetyDashboard,
+    evidenceGraph,
+    timeline,
+    savedAuditViews,
+    writebackPolicySimulator,
+    previewReplaySimulator,
+    lastBriefing,
+  });
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -7952,6 +8360,7 @@ app.get("/summary", (c) => {
       savedAuditViews,
       writebackPolicySimulator,
       previewReplaySimulator,
+      coreReadiness,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -8008,6 +8417,32 @@ app.get("/summary", (c) => {
       },
     },
   });
+});
+
+app.get("/core-readiness", (c) => {
+  const data = listAll();
+  const adoptionDashboard = buildAdoptionDashboard(data);
+  const sourceHealthReport = buildSourceHealthReport(data);
+  const lastBriefing = buildLastBriefing(data);
+  const writebackSafetyDashboard = buildWritebackSafetyDashboard(data);
+  const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
+  const timeline = buildCompanyBrainTimeline({ data });
+  const savedAuditViews = buildCompanyBrainSavedAuditViews(data);
+  const writebackPolicySimulator = buildWritebackPolicySimulator();
+  const previewReplaySimulator = buildPreviewReplaySimulator(data);
+  const coreReadiness = buildCoreReadiness({
+    data,
+    adoptionDashboard,
+    sourceHealthReport,
+    writebackSafetyDashboard,
+    evidenceGraph,
+    timeline,
+    savedAuditViews,
+    writebackPolicySimulator,
+    previewReplaySimulator,
+    lastBriefing,
+  });
+  return c.json({ data: coreReadiness });
 });
 
 app.get("/writeback-safety-dashboard", (c) => {

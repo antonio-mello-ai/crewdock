@@ -307,7 +307,7 @@ server.registerTool(
   {
     title: "Get Company Brain summary",
     description:
-      "List the current AIOS Company Brain kernel: latest briefing, review cohesion queue, sources, source health, artifacts, extractors, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
+      "List the current AIOS Company Brain kernel: core readiness, latest briefing, review cohesion queue, sources, source health, artifacts, extractors, decisions, strategy tradeoffs, signals, alignment findings, guidance, agent contexts, improvement proposals, adoption dashboard, priorities, goals, work items, workflow runs, gates and unlinked work.",
     inputSchema: {},
   },
   async () => {
@@ -361,6 +361,22 @@ server.registerTool(
   async () => {
     const result = await daemonFetch<{ data: unknown }>(
       "/api/company-brain/adoption-dashboard"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_core_readiness",
+  {
+    title: "Get Company Brain core operational readiness",
+    description:
+      "Read-only AIOS core readiness report by module, including operational/dogfooded/read-only/preview-only/policy-blocked classification and gaps for daily use, demo, design partner, polish and external mutation.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/core-readiness"
     );
     return formatJsonResult(result.data);
   }

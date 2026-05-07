@@ -2684,6 +2684,68 @@ export interface CompanyBrainWritebackSafetyDashboard {
   };
 }
 
+export type CoreReadinessModuleStatus =
+  | "operational"
+  | "dogfooded"
+  | "read_only_only"
+  | "preview_only"
+  | "needs_real_adapter"
+  | "blocked_by_policy"
+  | "missing";
+
+export type CoreReadinessGapImpact =
+  | "daily_use"
+  | "demo"
+  | "design_partner"
+  | "polish"
+  | "requires_external_mutation";
+
+export interface CoreReadinessModule {
+  key: string;
+  title: string;
+  statuses: CoreReadinessModuleStatus[];
+  summary: string;
+  evidence: string[];
+  gaps: string[];
+  nextAction: string;
+}
+
+export interface CoreReadinessGap {
+  id: string;
+  impact: CoreReadinessGapImpact;
+  severity: SignalSeverity;
+  title: string;
+  rationale: string;
+  nextAction: string;
+  requiresExternalMutation: boolean;
+}
+
+export interface CompanyBrainCoreReadiness {
+  generatedAt: number;
+  overallStatus:
+    | "internal_closed_loop_ready"
+    | "demo_ready"
+    | "design_partner_not_ready"
+    | "needs_foundation_work";
+  modules: CoreReadinessModule[];
+  gaps: CoreReadinessGap[];
+  stats: {
+    moduleCount: number;
+    operationalCount: number;
+    dogfoodedCount: number;
+    readOnlyOnlyCount: number;
+    previewOnlyCount: number;
+    needsRealAdapterCount: number;
+    blockedByPolicyCount: number;
+    missingCount: number;
+    dailyUseBlockingGapCount: number;
+    demoGapCount: number;
+    designPartnerGapCount: number;
+    polishGapCount: number;
+    externalMutationGapCount: number;
+  };
+}
+
 export interface CompanyBrainSummary {
   sources: Source[];
   artifacts: Artifact[];
@@ -2716,6 +2778,7 @@ export interface CompanyBrainSummary {
   savedAuditViews: CompanyBrainSavedAuditViews;
   writebackPolicySimulator: CompanyBrainWritebackPolicySimulator;
   previewReplaySimulator: WritebackPreviewReplaySimulator;
+  coreReadiness: CompanyBrainCoreReadiness;
   stats: {
     sourceCount: number;
     artifactCount: number;

@@ -1946,6 +1946,36 @@ Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-exe
 - Resultado continha `# AIOS Writeback Evidence Packet`, status id `47036420104`, payload hash `6737a218dba45d17e183f92ede73276af44a215f00a7e1444ac32558bc3de48f` e evento `github_status_set`.
 - Porta do daemon foi encerrada apos o teste e nao restou listener em `43160`.
 
+## Slice AIOS Core Operational Readiness v0
+
+Objetivo: consolidar se o AIOS Core esta minimamente utilizavel como closed loop interno e separar gaps reais de uso diario, demo, design partner, polish e mutacao externa.
+
+Implementado em 2026-05-06:
+
+1. Novo tipo `CompanyBrainCoreReadiness` em shared types.
+2. Summary ganhou `coreReadiness`.
+3. API read-only `/api/company-brain/core-readiness`.
+4. MCP ganhou `get_company_brain_core_readiness`.
+5. UI `/company-brain` ganhou bloco `Core Readiness` com overall status, contadores, modulos e gaps reais.
+6. Documento `docs/company-brain-operational-readiness.md` versiona o veredito, tabela de modulos, gaps e proximo corte recomendado.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43161`:
+
+- API `/core-readiness` retornou `overallStatus=internal_closed_loop_ready`.
+- Stats: `moduleCount=15`, `operationalCount=15`, `dogfoodedCount=15`, `missingCount=0`, `readOnlyOnlyCount=7`, `needsRealAdapterCount=1`, `blockedByPolicyCount=1`.
+- Gaps: `dailyUseBlockingGapCount=2`, `demoGapCount=0`, `designPartnerGapCount=1`, `polishGapCount=1`, `externalMutationGapCount=1`.
+- Summary incluiu `coreReadiness` com `moduleCount=15`.
+- Cliente MCP local chamou `get_company_brain_core_readiness` e confirmou `overallStatus=internal_closed_loop_ready`, `moduleCount=15`, `dailyUseBlockingGapCount=2` e modulo `watchers`.
+- Porta do daemon foi encerrada apos o teste e nao restou listener em `43161`.
+
+Veredito operacional:
+
+- O core ja esta pronto para uso interno como closed loop assistido.
+- Ainda falta Operating Cadence v0 para uso diario fluido.
+- Demo interna esta pronta com briefing recente.
+- Design partner readiness ainda precisa operating pack/runbook.
+- Qualquer writeback mais forte continua exigindo aprovacao explicita de novo alvo/acao.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -2064,7 +2094,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0, AIOS Briefing Audit/Readiness v0, Adoption Dashboard Audit Maturity v0 e MCP Markdown Evidence Export v0. Fila read-only principal concluida; pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0, Preview/Replay Simulator v0, Markdown Evidence Packet Export v0, AIOS Briefing Audit/Readiness v0, Adoption Dashboard Audit Maturity v0, MCP Markdown Evidence Export v0 e AIOS Core Operational Readiness v0. Proximo corte recomendado: Operating Cadence v0, com watchers read-only agendados/polling e sem nova mutacao externa. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

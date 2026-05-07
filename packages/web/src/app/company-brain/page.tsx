@@ -408,6 +408,7 @@ export default function CompanyBrainPage() {
   const savedAuditViews = summary?.savedAuditViews;
   const writebackPolicySimulator = summary?.writebackPolicySimulator;
   const previewReplaySimulator = summary?.previewReplaySimulator;
+  const coreReadiness = summary?.coreReadiness;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -1476,6 +1477,90 @@ export default function CompanyBrainPage() {
         </div>
       ) : (
         <div className="space-y-8">
+          {coreReadiness ? (
+            <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
+              <div className="border-b border-neutral-800/50 px-5 py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-neutral-500" />
+                    <h2 className="text-sm font-semibold text-neutral-200">
+                      Core Readiness
+                    </h2>
+                  </div>
+                  <StatusBadge value={coreReadiness.overallStatus} />
+                </div>
+              </div>
+              <div className="grid gap-0 lg:grid-cols-[1.35fr_0.65fr]">
+                <div className="border-neutral-800/50 px-5 py-4 lg:border-r">
+                  <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                    <MiniMetric label="modules" value={coreReadiness.stats.moduleCount} />
+                    <MiniMetric
+                      label="operational"
+                      value={coreReadiness.stats.operationalCount}
+                    />
+                    <MiniMetric
+                      label="dogfooded"
+                      value={coreReadiness.stats.dogfoodedCount}
+                    />
+                    <MiniMetric
+                      label="daily gaps"
+                      value={coreReadiness.stats.dailyUseBlockingGapCount}
+                    />
+                    <MiniMetric
+                      label="partner gaps"
+                      value={coreReadiness.stats.designPartnerGapCount}
+                    />
+                    <MiniMetric
+                      label="policy"
+                      value={coreReadiness.stats.blockedByPolicyCount}
+                    />
+                  </div>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {coreReadiness.modules.slice(0, 6).map((module) => (
+                      <div
+                        key={module.key}
+                        className="rounded border border-neutral-800/50 px-3 py-3"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-xs font-medium text-neutral-200">
+                            {module.title}
+                          </p>
+                          {module.statuses.slice(0, 3).map((status) => (
+                            <StatusBadge key={status} value={status} />
+                          ))}
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-neutral-500">
+                          {module.nextAction}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="px-5 py-4">
+                  <p className="text-xs font-medium uppercase text-neutral-500">
+                    Real Gaps
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    {coreReadiness.gaps.slice(0, 5).map((gap) => (
+                      <div key={gap.id} className="rounded border border-neutral-800/50 p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StatusBadge value={gap.impact} />
+                          <StatusBadge value={gap.severity} />
+                        </div>
+                        <p className="mt-2 text-xs font-medium text-neutral-300">
+                          {gap.title}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-neutral-500">
+                          {gap.nextAction}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
           {adoptionDashboard ? (
             <section className="rounded-lg border border-neutral-800/60 bg-neutral-900/30">
               <div className="border-b border-neutral-800/50 px-5 py-4">
