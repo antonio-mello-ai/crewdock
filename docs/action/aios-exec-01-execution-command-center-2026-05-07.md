@@ -162,20 +162,19 @@ preservado no Company Brain, sem contaminar a fila operacional atual.
 
 ## Production smoke
 
-Production smoke (item do Acceptance Criteria) fica pendente ate o deploy do
-PR para CT165 + Cloudflare Pages. Esta sessao nao deploya por instrucao
-explicita do usuario. Pos-deploy, validar:
+Production smoke concluido apos merge/deploy do PR:
 
-- `GET https://api.felhen.ai/api/company-brain/next-work` -> shape acima.
-- `GET https://api.felhen.ai/api/company-brain/operating-snapshot` deve incluir
-  `nextWork`.
-- Rodar sync GitHub Issues `state=open` antes da checagem visual para atualizar
-  `Source.metadata.lastIssueExternalIds`.
-- `https://ai.felhen.ai/company-brain/operating` mostra a secao Next Work com
-  o WorkItem recomendado da fila real aberta, sem recomendar issues ja fechadas
-  que permanecem no Company Brain como historico.
-- `mcp__aios__get_company_brain_next_work` em producao retorna recommendation
-  consistente.
+- CT165 atualizado para commit `e71b54b`; `aios-daemon` ativo.
+- Cloudflare Pages publicado em `https://8c872710.crewdock.pages.dev`; dominio
+  canonico `https://ai.felhen.ai/company-brain/operating` respondeu HTTP 200.
+- `GET https://api.felhen.ai/api/health` respondeu HTTP 200.
+- Sync GitHub Issues `state=open` em producao retornou `issuesSeen=4` e
+  `lastIssueExternalIds=#31,#30,#29,#28`.
+- `GET https://api.felhen.ai/api/company-brain/next-work` retornou
+  `recommended.workItem.externalId=antonio-mello-ai/crewdock#28`,
+  `candidatesConsidered=4` e `activeWorkItemCount=4`.
+- `GET https://api.felhen.ai/api/company-brain/operating-snapshot` retornou
+  `overallStatus=healthy` e `nextWork.recommended.workItem.externalId=#28`.
 
 ## Decisoes / friccoes
 
@@ -201,7 +200,6 @@ explicita do usuario. Pos-deploy, validar:
 
 ## Proximos passos
 
-- Deployar PR para CT165 + Pages, rodar production smoke acima.
 - Consumir `#28 AIOS-EXEC-02: WorkItem to GitHub Issue Flow`. Esse corte
   cria/abre issue GitHub a partir de WorkItem ou Guidance e e o caminho
   inverso do sync atual.
