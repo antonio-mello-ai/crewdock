@@ -579,6 +579,10 @@ export function companyBrainWritebackAuditTrailCsvUrl(
   )}`;
 }
 
+export function companyBrainDaemonApiUrl(path: string) {
+  return `${DAEMON_URL}${path}`;
+}
+
 export function useRunFelhenDemo() {
   const qc = useQueryClient();
   return useMutation<ApiResponse<RunFelhenDemoResponse>, Error, RunFelhenDemoRequest>({

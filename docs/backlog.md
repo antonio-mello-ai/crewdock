@@ -121,7 +121,9 @@ Status Evidence/Provenance Graph v0 em 2026-05-06: criado grafo read-only `evide
 
 Status Company Brain Timeline v0 em 2026-05-06: criado `timeline` read-only no Summary e API `/timeline`, com escopos `all`, `proposal`, `target` e `source`, reunindo source sync, artifact ingest, watcher run, work item, workflow, signal, finding, guidance, proposal created e audit events de approval/preview/execution. Exposto em MCP e UI com contadores de proposal/target/source/external write events.
 
-Proximo corte planejado: saved audit views v0 para filtros persistidos/read-only de audit trail, proposal/target review, graph e timeline; depois policy simulator/preview replay.
+Status Saved Audit Views v0 em 2026-05-06: criado `savedAuditViews` read-only no Summary e API `/saved-audit-views`, com presets derivados para audit trail, proposal/target review, evidence graph e timeline. Cada view traz surface, filtros, itemCount, exportUrl, prioridade de review e updatedAt. Exposto em MCP e UI, sem persistir estado mutavel.
+
+Proximo corte planejado: writeback policy simulator v0 e preview/replay simulator v0, ambos read-only/preview-only, para avaliar risk/action policy e replay/idempotency sem executar mutacao externa.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -169,6 +171,7 @@ Proximo corte planejado: saved audit views v0 para filtros persistidos/read-only
 - [x] **Writeback proposal/target review v0** — visao read-only consolidada por proposal e target com safety review, hashes, refs, eventos, evidence completeness, remediation, GitHub status evidence, API/UI/MCP
 - [x] **Evidence/provenance graph v0** — grafo read-only de source/artifact/evidence/workflow/guidance/proposal/target com API/UI/MCP e filtro por root
 - [x] **Company Brain timeline v0** — timeline read-only por all/proposal/target/source com source sync, artifacts, watcher runs, evidence, proposals e audit events de writeback
+- [x] **Saved audit views v0** — presets read-only para audit trail, proposal/target review, evidence graph e timeline com filtros, counts, export URLs, UI e MCP
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

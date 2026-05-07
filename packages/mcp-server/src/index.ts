@@ -431,6 +431,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_saved_audit_views",
+  {
+    title: "Get Company Brain saved audit views",
+    description:
+      "Read-only derived saved views for audit trail, proposal/target review, evidence graph and timeline filters. Does not persist filters or mutate external systems.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/saved-audit-views"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_felhen_demo_v0_1",
   {
     title: "Run Felhen Demo v0.1",

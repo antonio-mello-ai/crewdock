@@ -2196,6 +2196,38 @@ export interface CompanyBrainTimeline {
   };
 }
 
+export type CompanyBrainSavedAuditViewSurface =
+  | "audit_trail"
+  | "proposal_target_review"
+  | "evidence_graph"
+  | "timeline";
+
+export interface CompanyBrainSavedAuditView {
+  id: string;
+  title: string;
+  surface: CompanyBrainSavedAuditViewSurface;
+  description: string;
+  filters: Record<string, string | number | null>;
+  itemCount: number;
+  exportUrl: string;
+  reviewPriority: SignalSeverity;
+  updatedAt: number | null;
+}
+
+export interface CompanyBrainSavedAuditViews {
+  generatedAt: number;
+  views: CompanyBrainSavedAuditView[];
+  stats: {
+    viewCount: number;
+    criticalCount: number;
+    warnCount: number;
+    auditTrailViewCount: number;
+    proposalReviewViewCount: number;
+    graphViewCount: number;
+    timelineViewCount: number;
+  };
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2564,6 +2596,7 @@ export interface CompanyBrainSummary {
   writebackProposalTargetReview: CompanyBrainWritebackProposalTargetReview;
   evidenceGraph: CompanyBrainEvidenceGraph;
   timeline: CompanyBrainTimeline;
+  savedAuditViews: CompanyBrainSavedAuditViews;
   stats: {
     sourceCount: number;
     artifactCount: number;

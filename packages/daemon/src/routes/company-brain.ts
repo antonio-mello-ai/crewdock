@@ -15,6 +15,7 @@ import type {
   CompanyBrainEvidenceGraph,
   CompanyBrainEvidenceGraphNodeKind,
   CompanyBrainReviewCohesion,
+  CompanyBrainSavedAuditViews,
   CompanyBrainTimeline,
   CompanyBrainTimelineEvent,
   CompanyBrainTimelineScope,
@@ -6662,6 +6663,189 @@ function buildCompanyBrainTimeline(args: {
   };
 }
 
+function companyBrainViewUrl(path: string, filters: Record<string, string | number | null>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== null && value !== "") params.set(key, String(value));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return `/api/company-brain/${path}${suffix}`;
+}
+
+function buildCompanyBrainSavedAuditViews(
+  data: ReturnType<typeof listAll>
+): CompanyBrainSavedAuditViews {
+  const generatedAt = now();
+  const reviews = new Map(
+    data.externalActionProposals.map((proposal) => [
+      proposal.id,
+      buildWritebackExecutionReview(proposal, generatedAt),
+    ])
+  );
+  const proposalReview = buildWritebackProposalTargetReview({
+    data,
+    reviews,
+    generatedAt,
+    limit: 250,
+  });
+  const latestProposal = proposalReview.items[0] ?? null;
+  const latestTarget = proposalReview.targetSummaries[0] ?? null;
+  const latestSource = [...data.sources].sort(
+    (a, b) => (b.lastSyncAt ?? b.updatedAt) - (a.lastSyncAt ?? a.updatedAt)
+  )[0] ?? null;
+  const statusAudit = buildWritebackAuditTrail({
+    proposals: data.externalActionProposals,
+    reviews,
+    event: "github_status_set",
+    limit: 250,
+  });
+  const failedAudit = buildWritebackAuditTrail({
+    proposals: data.externalActionProposals,
+    reviews,
+    executionStatus: "failed",
+    limit: 250,
+  });
+  const views: CompanyBrainSavedAuditViews["views"] = [
+    {
+      id: "writeback-status-executions",
+      title: "GitHub status executions",
+      surface: "audit_trail",
+      description: "GitHub commit status writebacks that reached execution audit.",
+      filters: { event: "github_status_set", limit: 50 },
+      itemCount: statusAudit.total,
+      exportUrl: companyBrainViewUrl("external-action-proposals/audit-trail", {
+        event: "github_status_set",
+        format: "csv",
+        limit: 50,
+      }),
+      reviewPriority: statusAudit.total ? "info" : "warn",
+      updatedAt: statusAudit.items[0]?.at ?? null,
+    },
+    {
+      id: "failed-writebacks",
+      title: "Failed writebacks",
+      surface: "audit_trail",
+      description: "Writeback audit events for failed proposal executions.",
+      filters: { executionStatus: "failed", limit: 50 },
+      itemCount: failedAudit.total,
+      exportUrl: companyBrainViewUrl("external-action-proposals/audit-trail", {
+        executionStatus: "failed",
+        format: "csv",
+        limit: 50,
+      }),
+      reviewPriority: failedAudit.total ? "critical" : "info",
+      updatedAt: failedAudit.items[0]?.at ?? null,
+    },
+    {
+      id: "proposal-target-review-needs-review",
+      title: "Proposal/target review queue",
+      surface: "proposal_target_review",
+      description: "Proposal/target review items that are not completed or duplicate-prevented.",
+      filters: { limit: 50 },
+      itemCount: proposalReview.stats.needsReviewCount,
+      exportUrl: companyBrainViewUrl(
+        "external-action-proposals/proposal-target-review",
+        { limit: 50 }
+      ),
+      reviewPriority: proposalReview.stats.needsReviewCount ? "warn" : "info",
+      updatedAt: proposalReview.items[0]?.updatedAt ?? null,
+    },
+  ];
+  if (latestTarget) {
+    const targetTimeline = buildCompanyBrainTimeline({
+      data,
+      scope: "target",
+      id: latestTarget.targetKey,
+      limit: 100,
+    });
+    views.push({
+      id: `target-timeline:${latestTarget.targetKey}`,
+      title: `Target timeline: ${latestTarget.targetLabel}`,
+      surface: "timeline",
+      description: "Latest target-linked writeback and evidence timeline.",
+      filters: { scope: "target", id: latestTarget.targetKey, limit: 100 },
+      itemCount: targetTimeline.total,
+      exportUrl: companyBrainViewUrl("timeline", {
+        scope: "target",
+        id: latestTarget.targetKey,
+        limit: 100,
+      }),
+      reviewPriority: latestTarget.needsReviewCount ? "warn" : "info",
+      updatedAt: targetTimeline.stats.latestAt,
+    });
+  }
+  if (latestProposal) {
+    const proposalGraph = buildCompanyBrainEvidenceGraph({
+      data,
+      rootKind: "external_action_proposal",
+      rootId: latestProposal.proposalId,
+      limit: 100,
+    });
+    views.push({
+      id: `proposal-graph:${latestProposal.proposalId}`,
+      title: `Proposal graph: ${latestProposal.title}`,
+      surface: "evidence_graph",
+      description: "Evidence/provenance graph centered on the latest writeback proposal.",
+      filters: {
+        rootKind: "external_action_proposal",
+        rootId: latestProposal.proposalId,
+        limit: 100,
+      },
+      itemCount: proposalGraph.stats.nodeCount,
+      exportUrl: companyBrainViewUrl("evidence-graph", {
+        rootKind: "external_action_proposal",
+        rootId: latestProposal.proposalId,
+        limit: 100,
+      }),
+      reviewPriority: proposalGraph.stats.orphanNodeCount ? "warn" : "info",
+      updatedAt: latestProposal.updatedAt,
+    });
+  }
+  if (latestSource) {
+    const sourceTimeline = buildCompanyBrainTimeline({
+      data,
+      scope: "source",
+      id: latestSource.id,
+      limit: 100,
+    });
+    views.push({
+      id: `source-timeline:${latestSource.id}`,
+      title: `Source timeline: ${latestSource.name}`,
+      surface: "timeline",
+      description: "Latest source ingestion, watcher and evidence timeline.",
+      filters: { scope: "source", id: latestSource.id, limit: 100 },
+      itemCount: sourceTimeline.total,
+      exportUrl: companyBrainViewUrl("timeline", {
+        scope: "source",
+        id: latestSource.id,
+        limit: 100,
+      }),
+      reviewPriority: latestSource.syncError ? "critical" : "info",
+      updatedAt: sourceTimeline.stats.latestAt,
+    });
+  }
+
+  return {
+    generatedAt,
+    views: views.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)),
+    stats: {
+      viewCount: views.length,
+      criticalCount: views.filter((view) => view.reviewPriority === "critical")
+        .length,
+      warnCount: views.filter((view) => view.reviewPriority === "warn").length,
+      auditTrailViewCount: views.filter((view) => view.surface === "audit_trail")
+        .length,
+      proposalReviewViewCount: views.filter(
+        (view) => view.surface === "proposal_target_review"
+      ).length,
+      graphViewCount: views.filter((view) => view.surface === "evidence_graph")
+        .length,
+      timelineViewCount: views.filter((view) => view.surface === "timeline")
+        .length,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -7023,6 +7207,7 @@ app.get("/summary", (c) => {
   const writebackProposalTargetReview = buildWritebackProposalTargetReview({ data });
   const evidenceGraph = buildCompanyBrainEvidenceGraph({ data });
   const timeline = buildCompanyBrainTimeline({ data });
+  const savedAuditViews = buildCompanyBrainSavedAuditViews(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -7059,6 +7244,7 @@ app.get("/summary", (c) => {
       writebackProposalTargetReview,
       evidenceGraph,
       timeline,
+      savedAuditViews,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -7172,6 +7358,11 @@ app.get("/timeline", (c) => {
     id,
     limit: Number.isFinite(limitParam) ? limitParam : 100,
   });
+  return c.json({ data });
+});
+
+app.get("/saved-audit-views", (c) => {
+  const data = buildCompanyBrainSavedAuditViews(listAll());
   return c.json({ data });
 });
 

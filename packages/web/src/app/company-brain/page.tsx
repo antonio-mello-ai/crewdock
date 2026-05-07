@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import {
+  companyBrainDaemonApiUrl,
   companyBrainWritebackAuditTrailCsvUrl,
   companyBrainWritebackEvidencePacketJsonUrl,
   type CompanyBrainWritebackAuditTrailFilters,
@@ -403,6 +404,7 @@ export default function CompanyBrainPage() {
   const writebackProposalTargetReview = summary?.writebackProposalTargetReview;
   const evidenceGraph = summary?.evidenceGraph;
   const timeline = summary?.timeline;
+  const savedAuditViews = summary?.savedAuditViews;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -2593,6 +2595,44 @@ export default function CompanyBrainPage() {
                             {event.actor ?? "system"} · {formatTimeAgo(event.at)}
                           </p>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {savedAuditViews ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-medium text-neutral-300">
+                        Saved audit views
+                      </p>
+                      <p className="text-xs text-neutral-700">
+                        {savedAuditViews.stats.viewCount} views ·{" "}
+                        {savedAuditViews.stats.warnCount} warn ·{" "}
+                        {savedAuditViews.stats.criticalCount} critical
+                      </p>
+                    </div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {savedAuditViews.views.slice(0, 6).map((view) => (
+                        <a
+                          key={view.id}
+                          href={companyBrainDaemonApiUrl(view.exportUrl)}
+                          className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs hover:border-neutral-700"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-medium text-neutral-300">
+                              {view.title}
+                            </p>
+                            <StatusBadge value={view.surface} />
+                            <StatusBadge value={view.reviewPriority} />
+                          </div>
+                          <p className="mt-1 line-clamp-2 text-neutral-600">
+                            {view.description}
+                          </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            {view.itemCount} items ·{" "}
+                            {view.updatedAt ? formatTimeAgo(view.updatedAt) : "never"}
+                          </p>
+                        </a>
                       ))}
                     </div>
                   </div>
