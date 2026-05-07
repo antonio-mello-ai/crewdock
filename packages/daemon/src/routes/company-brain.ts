@@ -1990,7 +1990,9 @@ async function runGitHubPrCiWatcherSync(
       .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
       .get();
     if (!watcher) throw new Error("GitHub PR/CI watcher seed not found");
-    if (watcher.status !== "active") throw new Error("GitHub PR/CI watcher is not active");
+    if (!["active", "error"].includes(watcher.status)) {
+      throw new Error("GitHub PR/CI watcher is not runnable");
+    }
 
     const { repo, pulls } = await fetchGitHubPullRequestsWithCi(
       requireText(body.repo, "repo"),
@@ -11689,7 +11691,9 @@ app.post("/adapters/github/pr-ci/sync", async (c) => {
       .where(eq(cbWatchers.id, GITHUB_PR_CI_WATCHER_ID))
       .get();
     if (!watcher) throw new Error("GitHub PR/CI watcher seed not found");
-    if (watcher.status !== "active") throw new Error("GitHub PR/CI watcher is not active");
+    if (!["active", "error"].includes(watcher.status)) {
+      throw new Error("GitHub PR/CI watcher is not runnable");
+    }
 
     const { repo, pulls } = await fetchGitHubPullRequestsWithCi(
       requireText(body.repo, "repo"),
