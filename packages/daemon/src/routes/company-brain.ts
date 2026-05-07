@@ -85,6 +85,7 @@ import type {
   Visibility,
   WritebackAdapterKey,
   WritebackEvidencePacket,
+  WritebackPreviewReplaySimulator,
   WorkflowBlueprintStage,
 } from "@aios/shared";
 import { getDb } from "../db/client.js";
@@ -7004,6 +7005,171 @@ function buildWritebackPolicySimulator(args?: {
   };
 }
 
+function buildLocalWritebackPreview(proposal: ExternalActionProposal): {
+  status: string | null;
+  executionBlocked: boolean | null;
+  mutationAttempted: boolean;
+  payloadHash: string | null;
+  error: string | null;
+} {
+  try {
+    if (proposal.destinationType === "github" && isGitHubCommentAction(proposal.actionType)) {
+      buildGitHubCommentWritebackPreview(proposal);
+      return {
+        status: "dry_run",
+        executionBlocked: false,
+        mutationAttempted: false,
+        payloadHash: stablePayloadHash(proposal.payload),
+        error: null,
+      };
+    }
+    if (proposal.destinationType === "github" && isGitHubLabelAction(proposal.actionType)) {
+      const preview = buildGitHubLabelProposalPreview(proposal);
+      return {
+        status: preview.status,
+        executionBlocked: preview.executionBlocked,
+        mutationAttempted: Boolean(preview.mutationAttempted),
+        payloadHash: stablePayloadHash(proposal.payload),
+        error: null,
+      };
+    }
+    if (
+      proposal.destinationType === "github" &&
+      isGitHubStatusCheckAction(proposal.actionType)
+    ) {
+      const preview = buildGitHubStatusCheckProposalPreview(proposal);
+      return {
+        status: preview.status,
+        executionBlocked: preview.executionBlocked,
+        mutationAttempted: Boolean(preview.mutationAttempted),
+        payloadHash: preview.payloadHash,
+        error: null,
+      };
+    }
+    if (
+      proposal.destinationType === "slack" &&
+      isSlackThreadReplyAction(proposal.actionType)
+    ) {
+      buildSlackThreadReplyWritebackPreview(proposal);
+      return {
+        status: "dry_run",
+        executionBlocked: false,
+        mutationAttempted: false,
+        payloadHash: stablePayloadHash(proposal.payload),
+        error: null,
+      };
+    }
+    return {
+      status: null,
+      executionBlocked: true,
+      mutationAttempted: false,
+      payloadHash: stablePayloadHash(proposal.payload),
+      error: "No local preview simulator is available for this action type.",
+    };
+  } catch (err) {
+    return {
+      status: null,
+      executionBlocked: true,
+      mutationAttempted: false,
+      payloadHash: stablePayloadHash(proposal.payload),
+      error: err instanceof Error ? err.message : "Unknown preview error",
+    };
+  }
+}
+
+function buildPreviewReplaySimulator(
+  data: ReturnType<typeof listAll>
+): WritebackPreviewReplaySimulator {
+  const generatedAt = now();
+  const items = data.externalActionProposals
+    .map((proposal) => {
+      const review = buildWritebackExecutionReview(proposal, generatedAt);
+      const preview = buildLocalWritebackPreview(proposal);
+      const latestEvent = latestExternalActionAudit(proposal);
+      const terminalState =
+        ["completed", "executed", "cancelled", "blocked"].includes(
+          proposal.executionStatus
+        ) || Boolean(proposal.externalId || proposal.externalUrl);
+      const duplicatePrevented = hasDuplicateAvoidanceAudit(proposal);
+      const completedNoop = hasCompletedNoopAudit(proposal);
+      const manualRetryRequiresRationale = proposal.executionStatus === "failed";
+      const safeToPreview =
+        preview.error === null &&
+        proposal.approvalStatus !== "blocked" &&
+        proposal.executionStatus !== "cancelled";
+      const safeToExecuteWithoutNewApproval =
+        review.status === "ready_to_execute" &&
+        preview.error === null &&
+        preview.executionBlocked === false &&
+        !terminalState &&
+        !manualRetryRequiresRationale;
+      const reason = terminalState
+        ? "Terminal or externally completed proposal; do not replay write execution."
+        : manualRetryRequiresRationale
+          ? "Failed proposal requires human retry rationale before another execution attempt."
+          : safeToExecuteWithoutNewApproval
+            ? "Retry Safety says the proposal is ready, but this simulator remains read-only."
+            : preview.error
+              ? preview.error
+              : "Proposal needs approval, preview refresh or safety review before execution.";
+      return {
+        proposalId: proposal.id,
+        title: proposal.title,
+        destinationType: proposal.destinationType,
+        actionType: proposal.actionType,
+        approvalStatus: proposal.approvalStatus,
+        executionStatus: proposal.executionStatus,
+        reviewStatus: review.status,
+        targetSummary: writebackTargetSummary(proposal),
+        preview: {
+          available: preview.error === null,
+          status: preview.status,
+          executionBlocked: preview.executionBlocked,
+          mutationAttempted: false,
+          payloadHash: preview.payloadHash,
+          idempotencyKey: proposal.idempotencyKey,
+          error: preview.error,
+        },
+        replay: {
+          terminalState,
+          safeToPreview,
+          safeToExecuteWithoutNewApproval,
+          duplicatePrevented,
+          completedNoop,
+          automaticWriteRetryAllowed: false,
+          manualRetryRequiresRationale,
+          reason,
+        },
+        refs: {
+          externalId: proposal.externalId,
+          externalUrl: proposal.externalUrl,
+          rollbackRef: proposal.rollbackRef,
+        },
+        latestEvent: latestEvent?.event ?? null,
+        updatedAt: proposal.updatedAt,
+      };
+    })
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return {
+    generatedAt,
+    items,
+    stats: {
+      proposalCount: items.length,
+      previewAvailableCount: items.filter((item) => item.preview.available).length,
+      previewBlockedCount: items.filter((item) => item.preview.executionBlocked).length,
+      terminalStateCount: items.filter((item) => item.replay.terminalState).length,
+      safeToExecuteWithoutNewApprovalCount: items.filter(
+        (item) => item.replay.safeToExecuteWithoutNewApproval
+      ).length,
+      duplicatePreventedCount: items.filter((item) => item.replay.duplicatePrevented)
+        .length,
+      failedRetryNeedsRationaleCount: items.filter(
+        (item) => item.replay.manualRetryRequiresRationale
+      ).length,
+    },
+  };
+}
+
 function optionalNumberQuery(value: string | undefined) {
   if (value === undefined || value.trim() === "") return null;
   const parsed = Number(value);
@@ -7367,6 +7533,7 @@ app.get("/summary", (c) => {
   const timeline = buildCompanyBrainTimeline({ data });
   const savedAuditViews = buildCompanyBrainSavedAuditViews(data);
   const writebackPolicySimulator = buildWritebackPolicySimulator();
+  const previewReplaySimulator = buildPreviewReplaySimulator(data);
   const unlinkedWorkItemCount = data.workItems.filter(
     (item) => !item.priorityId && !item.goalId
   ).length;
@@ -7405,6 +7572,7 @@ app.get("/summary", (c) => {
       timeline,
       savedAuditViews,
       writebackPolicySimulator,
+      previewReplaySimulator,
       stats: {
         sourceCount: data.sources.length,
         artifactCount: data.artifacts.length,
@@ -7570,6 +7738,11 @@ app.get("/writeback-policy-simulator", (c) => {
         }
       : null;
   const data = buildWritebackPolicySimulator({ customCase });
+  return c.json({ data });
+});
+
+app.get("/external-action-proposals/preview-replay-simulator", (c) => {
+  const data = buildPreviewReplaySimulator(listAll());
   return c.json({ data });
 });
 

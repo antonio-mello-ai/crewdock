@@ -1848,6 +1848,26 @@ Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-exe
 - Caso custom `destinationType=github&actionType=github_check&riskClass=B&actionPolicy=request_human` retornou `previewOnly=true`, `executionBlocked=true`, `realExecutorAvailable=false`, blocked action `real_check_run_creation`.
 - Risk C ficou blocked, sem abrir mutacao real.
 
+## Slice Preview/Replay Simulator v0
+
+Objetivo: analisar replay/idempotency/dry-run safety de proposals existentes, sem chamar write APIs e sem gravar audit trail.
+
+Implementado em 2026-05-06:
+
+1. Summary ganhou `previewReplaySimulator`.
+2. API read-only `/api/company-brain/external-action-proposals/preview-replay-simulator` lista proposals existentes com preview local puro.
+3. MCP ganhou `get_company_brain_preview_replay_simulator`.
+4. Cada item traz status de preview, payload hash, idempotency key, terminal state, duplicate/noop flags, automatic write retry policy, retry rationale requirement, external refs e reason.
+5. UI ganhou bloco `Preview/replay simulator` no Writeback Governance.
+6. O simulador usa builders locais de preview e nao chama GitHub/Slack write APIs nem append audit events.
+
+Dogfood read-only validado no DB temporario `/tmp/aios-runtime-github-status-executor-dogfood.sqlite`, daemon `127.0.0.1:43156`:
+
+- Stats: `proposalCount=1`, `previewAvailableCount=1`, `previewBlockedCount=0`, `terminalStateCount=1`, `safeToExecuteWithoutNewApprovalCount=0`.
+- Proposal `35xo7wHd9CBV` retornou `preview.status=dry_run`, `executionBlocked=false`, `mutationAttempted=false`, payloadHash `6737a218dba45d17e183f92ede73276af44a215f00a7e1444ac32558bc3de48f`.
+- Replay retornou `terminalState=true`, `safeToExecuteWithoutNewApproval=false`, `automaticWriteRetryAllowed=false` e reason `Terminal or externally completed proposal; do not replay write execution.`
+- External refs preservados: `externalId=47036420104` e externalUrl do commit `b9e1057...`.
+
 ## Dogfood ERP
 
 O refactor do ERP esta sendo usado como primeiro dogfood do fluxo AIOS ticket-to-production.
@@ -1966,7 +1986,7 @@ Continue do estado atual sem replanejar do zero. Leia primeiro:
 - docs/backlog.md
 - ../../../../corp/docs/action/aios-product-roadmap.md
 
-Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0 e Writeback Policy Simulator v0. O proximo corte recomendado e preview/replay simulator v0 para proposals existentes, sem chamar write APIs; depois Markdown evidence packet export. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
+Objetivo da sessao: continuar apos GitHub Comment Writeback v0, Slack Thread Reply Writeback v0, Writeback Safety Dashboard v0, Writeback Preview Gate v0, Writeback HITL Rationale v0, Retry Safety / Idempotent Execution Review v0, Writeback Policy Matrix v0, GitHub Label Proposal v0 preview-only, GitHub Status/Check Proposal v0 preview-only, Writeback Audit Review v0, GitHub Label Executor v0, Post-Writeback Audit Review v0, Writeback Negative-Path Review v0, Writeback Adapter Summary v0, Writeback Audit Trail Export v0, Writeback HITL Runbook v0, Writeback Audit Search/Export v0, Writeback Evidence Packet v0, Operating Loop Metrics v0, AIOS Briefing Writeback Safety v0, Adoption Dashboard Writeback Maturity v0, Writeback Audit UI Filters/Export v0, Writeback Evidence Packet JSON Export v0, Writeback Evidence Packet Index v0, Writeback Evidence Integrity Gaps v0, Evidence Remediation Suggestions v0, GitHub Status Executor v0, Writeback Target Summary v0, GitHub Status Writeback Observability v0, Writeback Target Observability v0, Writeback Proposal/Target Review v0, Evidence/Provenance Graph v0, Company Brain Timeline v0, Saved Audit Views v0, Writeback Policy Simulator v0 e Preview/Replay Simulator v0. O proximo corte recomendado e Markdown evidence packet export v0 e melhorias de briefing para audit/readiness. Pare antes de novo executor real, novo alvo externo, check-run real, assign/unassign, notification-read, close/reopen, merge, deploy, repo/canal publico ou qualquer writeback que nao esteja em GitHub interno privado allowlisted com approval, preview, HITL rationale, retry safety, idempotency e audit trail.
 
 Antes de editar, confirme git status, commit atual, schema atual, rotas atuais e leia o `corp` atual. Depois implemente um corte pequeno e validavel:
 - preservar provenance, status, human review, idempotency e audit trail;

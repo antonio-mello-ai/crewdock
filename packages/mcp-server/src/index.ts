@@ -495,6 +495,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_preview_replay_simulator",
+  {
+    title: "Get Company Brain preview replay simulator",
+    description:
+      "Read-only analysis of existing ExternalActionProposal preview and replay safety. Computes local dry-run/idempotency state without calling external write APIs or appending audit events.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/external-action-proposals/preview-replay-simulator"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "run_felhen_demo_v0_1",
   {
     title: "Run Felhen Demo v0.1",

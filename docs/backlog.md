@@ -125,7 +125,9 @@ Status Saved Audit Views v0 em 2026-05-06: criado `savedAuditViews` read-only no
 
 Status Writeback Policy Simulator v0 em 2026-05-06: criado `writebackPolicySimulator` read-only no Summary e API `/writeback-policy-simulator`, com matriz de casos para GitHub comment/label/status/check, Slack thread reply e Risk C blocked. O simulador retorna approval/execution policy, preview-only, executor availability, required gates, blocked actions e rationale. Exposto em MCP e UI, sem criar proposal ou executar writeback.
 
-Proximo corte planejado: preview/replay simulator v0 para analisar idempotency/replay/dry-run de proposals existentes sem chamar write APIs; depois Markdown evidence packet export.
+Status Preview/Replay Simulator v0 em 2026-05-06: criado `previewReplaySimulator` read-only no Summary e API `/external-action-proposals/preview-replay-simulator`, analisando proposals existentes com previews locais puros, payload hash, idempotency key, terminal state, duplicate/noop flags, retry rationale e replay safety. Exposto em MCP e UI sem chamar write APIs nem gravar audit trail.
+
+Proximo corte planejado: Markdown evidence packet export v0 e melhorias de briefing para audit/readiness, sem mutacao externa.
 
 - [x] **Company Brain schema v0** — adicionar objetos horizontais no daemon: `Source`, `Artifact`, `StrategicPriority`, `Decision`, `Signal`, `WorkItem`, `WorkflowBlueprint`, `WorkflowRun`, `AlignmentFinding`, `GuidanceItem`, `AgentContext` e `ImprovementProposal`
 - [x] **Source registry + raw artifact store** — guardar artifacts com `source`, `raw_ref`, author, timestamp, hash, visibility e provenance
@@ -175,6 +177,7 @@ Proximo corte planejado: preview/replay simulator v0 para analisar idempotency/r
 - [x] **Company Brain timeline v0** — timeline read-only por all/proposal/target/source com source sync, artifacts, watcher runs, evidence, proposals e audit events de writeback
 - [x] **Saved audit views v0** — presets read-only para audit trail, proposal/target review, evidence graph e timeline com filtros, counts, export URLs, UI e MCP
 - [x] **Writeback policy simulator v0** — matriz read-only de policy/risk/action com gates, preview-only, executor availability, blocked actions, API/UI/MCP
+- [x] **Preview/replay simulator v0** — analise read-only de previews locais, idempotency, terminal state, retry safety e replay bloqueado para proposals existentes
 - [ ] **Operating Architecture Kernel** — modelar camadas multi-area: source, artifact/event, graph, goal/cadence, workflow orchestration, agent runtime, governance, context/retrieval, writeback, audit e UI. Parcial: campos multi-area e gates/SLA/provenance existem no kernel Slice 1.
 - [x] **Goal/Cadence Layer** — criar metas, milestones, metricas, due dates, review cadence e SLA status para priorities, work items, workflow runs e guidance
 - [x] **Evidence Inbox v0** — tela/API para revisar artifacts, ligar a prioridades e marcar pendencias

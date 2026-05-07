@@ -406,6 +406,7 @@ export default function CompanyBrainPage() {
   const timeline = summary?.timeline;
   const savedAuditViews = summary?.savedAuditViews;
   const writebackPolicySimulator = summary?.writebackPolicySimulator;
+  const previewReplaySimulator = summary?.previewReplaySimulator;
   const [writebackAuditFilters, setWritebackAuditFilters] = useState({
     search: "",
     adapter: "",
@@ -2673,6 +2674,56 @@ export default function CompanyBrainPage() {
                           </p>
                           <p className="mt-1 truncate text-neutral-700">
                             gates {item.requiredGates.slice(0, 4).join(", ")}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {previewReplaySimulator ? (
+                  <div className="mt-3 rounded-md border border-neutral-800/60 px-3 py-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-medium text-neutral-300">
+                        Preview/replay simulator
+                      </p>
+                      <p className="text-xs text-neutral-700">
+                        {previewReplaySimulator.stats.previewAvailableCount} previewable ·{" "}
+                        {previewReplaySimulator.stats.terminalStateCount} terminal ·{" "}
+                        {
+                          previewReplaySimulator.stats
+                            .safeToExecuteWithoutNewApprovalCount
+                        }{" "}
+                        ready
+                      </p>
+                    </div>
+                    <div className="mt-2 grid gap-2 md:grid-cols-2">
+                      {previewReplaySimulator.items.slice(0, 4).map((item) => (
+                        <div
+                          key={item.proposalId}
+                          className="rounded-md border border-neutral-800/60 px-3 py-2 text-xs"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate font-medium text-neutral-300">
+                              {item.title}
+                            </p>
+                            <StatusBadge value={item.reviewStatus} />
+                            <StatusBadge
+                              value={item.preview.available ? "preview_ok" : "preview_error"}
+                            />
+                            {item.replay.terminalState ? (
+                              <StatusBadge value="terminal" />
+                            ) : null}
+                          </div>
+                          <p className="mt-1 truncate text-neutral-600">
+                            {item.destinationType}/{item.actionType} ·{" "}
+                            {item.targetSummary ?? item.proposalId}
+                          </p>
+                          <p className="mt-1 truncate text-neutral-700">
+                            hash {item.preview.payloadHash ?? "none"} · key{" "}
+                            {item.preview.idempotencyKey}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-neutral-700">
+                            {item.replay.reason}
                           </p>
                         </div>
                       ))}

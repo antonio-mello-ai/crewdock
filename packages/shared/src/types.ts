@@ -2263,6 +2263,57 @@ export interface CompanyBrainWritebackPolicySimulator {
   };
 }
 
+export interface WritebackPreviewReplaySimulationItem {
+  proposalId: string;
+  title: string;
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  reviewStatus: WritebackExecutionReviewStatus;
+  targetSummary: string | null;
+  preview: {
+    available: boolean;
+    status: string | null;
+    executionBlocked: boolean | null;
+    mutationAttempted: boolean;
+    payloadHash: string | null;
+    idempotencyKey: string;
+    error: string | null;
+  };
+  replay: {
+    terminalState: boolean;
+    safeToPreview: boolean;
+    safeToExecuteWithoutNewApproval: boolean;
+    duplicatePrevented: boolean;
+    completedNoop: boolean;
+    automaticWriteRetryAllowed: boolean;
+    manualRetryRequiresRationale: boolean;
+    reason: string;
+  };
+  refs: {
+    externalId: string | null;
+    externalUrl: string | null;
+    rollbackRef: string | null;
+  };
+  latestEvent: string | null;
+  updatedAt: number;
+}
+
+export interface WritebackPreviewReplaySimulator {
+  generatedAt: number;
+  items: WritebackPreviewReplaySimulationItem[];
+  stats: {
+    proposalCount: number;
+    previewAvailableCount: number;
+    previewBlockedCount: number;
+    terminalStateCount: number;
+    safeToExecuteWithoutNewApprovalCount: number;
+    duplicatePreventedCount: number;
+    failedRetryNeedsRationaleCount: number;
+  };
+}
+
 export interface WritebackOperatingLoopMetrics {
   generatedAt: number;
   staleThresholdMs: number;
@@ -2633,6 +2684,7 @@ export interface CompanyBrainSummary {
   timeline: CompanyBrainTimeline;
   savedAuditViews: CompanyBrainSavedAuditViews;
   writebackPolicySimulator: CompanyBrainWritebackPolicySimulator;
+  previewReplaySimulator: WritebackPreviewReplaySimulator;
   stats: {
     sourceCount: number;
     artifactCount: number;
