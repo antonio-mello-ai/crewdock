@@ -2646,6 +2646,136 @@ export interface CompanyBrainNextWork {
   };
 }
 
+export type CompanyOperatingMapAreaSlug =
+  | "strategy"
+  | "development"
+  | "marketing"
+  | "sales"
+  | "operations"
+  | "finance"
+  | "support"
+  | "legal_compliance";
+
+export type CompanyOperatingMapAreaStatus =
+  | "healthy"
+  | "attention"
+  | "critical"
+  | "empty"
+  | "policy_blocked";
+
+export interface CompanyOperatingMapWorkItemSlice {
+  workItemId: string;
+  title: string;
+  status: WorkItemStatus;
+  externalProvider: string | null;
+  externalId: string | null;
+  externalUrl: string | null;
+  area: CompanyBrainArea;
+  riskClass: RiskClass;
+  blockedReason: string | null;
+  prUrl: string | null;
+  branch: string | null;
+  lastSessionResultArtifactId: string | null;
+  lastSessionResultOutcome: SessionResultOutcome | null;
+}
+
+export interface CompanyOperatingMapSourceSlice {
+  sourceId: string;
+  name: string;
+  sourceType: string;
+  healthStatus: string;
+  lastSyncAt: number | null;
+  externalRef: string | null;
+}
+
+export interface CompanyOperatingMapEvidenceSlice {
+  artifactId: string;
+  title: string;
+  artifactType: string;
+  occurredAt: number;
+  rawRef: string;
+  summary: string | null;
+}
+
+export interface CompanyOperatingMapGuidanceSlice {
+  guidanceId: string;
+  title: string;
+  action: string;
+  audience: GuidanceAudience;
+  severity: SignalSeverity;
+  status: GuidanceStatus;
+  feedbackStatus: GuidanceFeedbackStatus;
+  workItemId: string | null;
+}
+
+export interface CompanyOperatingMapProposalSlice {
+  proposalId: string;
+  title: string;
+  destinationType: ExternalActionDestination;
+  actionType: ExternalActionKind;
+  riskClass: RiskClass;
+  approvalStatus: ExternalActionApprovalStatus;
+  executionStatus: ExternalActionExecutionStatus;
+  destinationRef: string | null;
+}
+
+export interface CompanyOperatingMapTotals {
+  workItemCount: number;
+  workItemOpenCount: number;
+  workItemReviewCount: number;
+  workItemBlockedCount: number;
+  workItemDoneCount: number;
+  sourceCount: number;
+  sourceHealthyCount: number;
+  sourceStaleCount: number;
+  artifactCount: number;
+  recentSessionResultCount: number;
+  openGuidanceCount: number;
+  pendingProposalCount: number;
+  blockedProposalCount: number;
+  agentRunCount: number;
+  blockedWorkItemCount: number;
+  signalsAttentionCount: number;
+}
+
+export interface CompanyOperatingMapArea {
+  slug: CompanyOperatingMapAreaSlug;
+  displayName: string;
+  description: string;
+  primaryArea: CompanyBrainArea;
+  isPrimary: boolean;
+  status: CompanyOperatingMapAreaStatus;
+  emptyStateReason: string | null;
+  totals: CompanyOperatingMapTotals;
+  topWorkItems: CompanyOperatingMapWorkItemSlice[];
+  sources: CompanyOperatingMapSourceSlice[];
+  recentEvidence: CompanyOperatingMapEvidenceSlice[];
+  openGuidance: CompanyOperatingMapGuidanceSlice[];
+  pendingProposals: CompanyOperatingMapProposalSlice[];
+  agentRunsSummary: {
+    runningCount: number;
+    queuedCount: number;
+    failedCount: number;
+    completedCount: number;
+    note: string;
+  };
+}
+
+export interface CompanyOperatingMap {
+  generatedAt: number;
+  primaryAreaSlug: CompanyOperatingMapAreaSlug;
+  totals: {
+    areaCount: number;
+    primaryAreaCount: number;
+    healthyAreaCount: number;
+    attentionAreaCount: number;
+    criticalAreaCount: number;
+    emptyAreaCount: number;
+    policyBlockedAreaCount: number;
+  };
+  areas: CompanyOperatingMapArea[];
+}
+
 export interface CompanyBrainOperatingSnapshot {
   generatedAt: number;
   overallStatus: "healthy" | "attention" | "critical" | "error";

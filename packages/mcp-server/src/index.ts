@@ -2060,6 +2060,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_operating_map",
+  {
+    title: "Get Company Operating Map",
+    description:
+      "Read-only Company Operating Map: AIOS / Company Brain at the center with eight operating areas (Strategy, Development, Marketing, Sales, Operations, Finance, Support, Legal & Compliance). For each area returns status (healthy/attention/critical/empty/policy_blocked), totals (work items by status, sources, evidence, guidance, proposals, signals), top work items with PR/branch when known, sources slice, recent evidence, open guidance and pending proposals. Agent run summary derives from session_result artifacts until the Symphony-compatible AgentRunner schema lands.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-map"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "submit_company_brain_session_result",
   {
     title: "Submit Company Brain session/run result",
