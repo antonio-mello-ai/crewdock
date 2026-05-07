@@ -85,7 +85,7 @@ diferentes (`sec:`, `perf:`, `ops:`, `test:`). Manter como esta; nao renomear.
 ## Mapping issue -> Company Brain WorkItem
 
 Issues GitHub sao espelhadas (read-only) para o Company Brain via adapter
-GitHub Issues. Por issue criada/fechada/relabelada, esperar:
+GitHub Issues. Por issue visivel no filtro do sync, esperar:
 
 - `Source` `AIOS GitHub Issues active roadmap` (reusado, nao recriado).
 - `Artifact` `github_issue` por issue, com `rawRef` apontando para a URL HTML
@@ -101,13 +101,14 @@ Adapter:
 - API: `POST /api/company-brain/adapters/github/issues/sync`.
 - MCP tool: `mcp__aios__sync_company_brain_github_issues`.
 
-Modo: read-only. Nao escreve em GitHub. Issues que mudam de label/state apos o
-ultimo sync sao reconciliadas no proximo sync.
+Modo: read-only. Nao escreve em GitHub.
 
 Limites:
 
-- Sync nao apaga `WorkItem` quando a issue some do filtro. Ha dedupe por
-  `externalId`; mudancas chegam como reconciliacao.
+- Sync v0 cria/deduplica `Artifact` e `WorkItem`; ele nao apaga `WorkItem`
+  quando a issue some do filtro e ainda nao atualiza labels/state de issues ja
+  espelhadas. Mudancas posteriores de label/state devem ser tratadas como gap
+  conhecido ate existir refresh/update explicito do adapter.
 - Issues com prefixo `AIOS-` viram WorkItems sob prioridade do roadmap quando
   associacao manual existe; demais ficam visiveis em Adoption Dashboard com gap
   `no_priority_or_goal`.
