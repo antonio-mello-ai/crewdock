@@ -2060,6 +2060,100 @@ server.registerTool(
 );
 
 server.registerTool(
+  "submit_company_brain_session_result",
+  {
+    title: "Submit Company Brain session/run result",
+    description:
+      "Convert a finished agent or human session into durable Company Brain evidence. Creates an Artifact with artifactType=session_result and provenance, optionally updates the linked WorkItem (status mapping by outcome; PR link recorded in metadata), and generates Signal candidates from blockers and failed validations plus GuidanceItem candidates from nextSteps. Compatible with Symphony/Codex run output. No external writeback; no auto-close of WorkItems. WorkItem moves to review when outcome is pr_opened or awaiting_review, to blocked when outcome is blocked, to needs_human when outcome is failed; other outcomes leave status untouched.",
+    inputSchema: {
+      runnerType: z.enum(["claude_code", "codex", "symphony", "manual", "other"]),
+      outcome: z.enum([
+        "completed",
+        "pr_opened",
+        "awaiting_review",
+        "blocked",
+        "failed",
+        "cancelled",
+      ]),
+      summary: z.string().min(1),
+      workItemId: z.string().optional(),
+      workflowRunId: z.string().optional(),
+      externalIssueRef: z.string().optional(),
+      detail: z.string().optional(),
+      branch: z.string().optional(),
+      prUrl: z.string().optional(),
+      workspaceRef: z.string().optional(),
+      commits: z
+        .array(z.object({ sha: z.string(), message: z.string().optional() }))
+        .optional(),
+      changedFiles: z.array(z.string()).optional(),
+      validations: z
+        .array(
+          z.object({
+            kind: z.string(),
+            status: z.enum(["passed", "failed", "skipped", "partial", "unknown"]),
+            notes: z.string().optional(),
+          })
+        )
+        .optional(),
+      blockers: z
+        .array(
+          z.object({
+            kind: z.string(),
+            description: z.string(),
+            severity: z.enum(["info", "warn", "critical"]).optional(),
+          })
+        )
+        .optional(),
+      nextSteps: z
+        .array(
+          z.object({
+            action: z.string(),
+            audience: z.enum(["human", "team", "agent", "system"]).optional(),
+            severity: z.enum(["info", "warn", "critical"]).optional(),
+          })
+        )
+        .optional(),
+      startedAt: z.number().int().optional(),
+      finishedAt: z.number().int().optional(),
+      tokensInput: z.number().int().optional(),
+      tokensOutput: z.number().int().optional(),
+      tokensTotal: z.number().int().optional(),
+      costUsd: z.number().optional(),
+      agentSessionId: z.string().optional(),
+      agentThreadId: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      visibility: z.enum(["public", "internal", "restricted"]).optional(),
+      actor: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/session-results",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "create_company_brain_github_issue_create_proposal",
   {
     title: "Create GitHub issue create proposal from WorkItem",

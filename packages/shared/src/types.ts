@@ -1104,6 +1104,85 @@ export interface CreateGuidanceItemRequest {
   provenance?: Provenance | null;
 }
 
+export type SessionResultRunnerType =
+  | "claude_code"
+  | "codex"
+  | "symphony"
+  | "manual"
+  | "other";
+
+export type SessionResultValidationStatus =
+  | "passed"
+  | "failed"
+  | "skipped"
+  | "partial"
+  | "unknown";
+
+export type SessionResultOutcome =
+  | "completed"
+  | "pr_opened"
+  | "awaiting_review"
+  | "blocked"
+  | "failed"
+  | "cancelled";
+
+export interface SessionResultValidation {
+  kind: string;
+  status: SessionResultValidationStatus;
+  notes?: string | null;
+}
+
+export interface SessionResultBlocker {
+  kind: string;
+  description: string;
+  severity?: SignalSeverity;
+}
+
+export interface SessionResultNextStep {
+  action: string;
+  audience?: GuidanceAudience;
+  severity?: SignalSeverity;
+}
+
+export interface SubmitSessionResultRequest {
+  workItemId?: string | null;
+  workflowRunId?: string | null;
+  externalIssueRef?: string | null;
+  runnerType: SessionResultRunnerType;
+  outcome: SessionResultOutcome;
+  summary: string;
+  detail?: string | null;
+  branch?: string | null;
+  prUrl?: string | null;
+  workspaceRef?: string | null;
+  commits?: Array<{ sha: string; message?: string | null }>;
+  changedFiles?: string[];
+  validations?: SessionResultValidation[];
+  blockers?: SessionResultBlocker[];
+  nextSteps?: SessionResultNextStep[];
+  startedAt?: number | null;
+  finishedAt?: number | null;
+  tokensInput?: number | null;
+  tokensOutput?: number | null;
+  tokensTotal?: number | null;
+  costUsd?: number | null;
+  agentSessionId?: string | null;
+  agentThreadId?: string | null;
+  area?: CompanyBrainArea;
+  visibility?: Visibility;
+  actor?: string | null;
+}
+
+export interface SubmitSessionResultResponse {
+  artifact: Artifact;
+  workItem: WorkItem | null;
+  signalsCreated: Signal[];
+  guidanceItemsCreated: GuidanceItem[];
+  workItemUpdated: boolean;
+  prLinkRecorded: boolean;
+  metadataMerged: Record<string, unknown>;
+}
+
 export interface UpdateGuidanceItemRequest {
   audience?: GuidanceAudience;
   action?: string;
