@@ -129,7 +129,7 @@ GET /api/company-brain/next-work
 ->
 recommended.workItem.externalId = "antonio-mello-ai/crewdock#27"
 candidatesConsidered = 5
-totals.activeWorkItemCount = 6
+totals.activeWorkItemCount = 5
 ```
 
 Esse smoke confirma que item historico fora do ultimo sync `open` segue

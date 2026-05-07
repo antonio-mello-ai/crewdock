@@ -4692,21 +4692,19 @@ function isVisibleInLatestGitHubIssueSync(
 function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
   const generatedAt = now();
   const workItems = data.workItems as WorkItem[];
+  const visibleActiveWorkItems = workItems.filter(
+    (item) =>
+      NEXT_WORK_ACTIVE_STATUSES.includes(item.status) &&
+      isVisibleInLatestGitHubIssueSync(item, data)
+  );
   const totals = {
-    activeWorkItemCount: workItems.filter((item) =>
-      NEXT_WORK_ACTIVE_STATUSES.includes(item.status)
-    ).length,
+    activeWorkItemCount: visibleActiveWorkItems.length,
     blockedWorkItemCount: workItems.filter((item) => item.status === "blocked").length,
     doneWorkItemCount: workItems.filter(
       (item) => item.status === "done" || item.status === "cancelled"
     ).length,
   };
-  const candidates = workItems.filter(
-    (item) =>
-      NEXT_WORK_ACTIVE_STATUSES.includes(item.status) &&
-      !item.blockedReason &&
-      isVisibleInLatestGitHubIssueSync(item, data)
-  );
+  const candidates = visibleActiveWorkItems.filter((item) => !item.blockedReason);
   if (!candidates.length) {
     const reason =
       totals.blockedWorkItemCount > 0
