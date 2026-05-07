@@ -32,6 +32,12 @@ import type {
   AreaBlueprintEntry,
   AreaBlueprintReadinessStatus,
   AreaBlueprintRegistry,
+  DecomposeOperatingGoalRequest,
+  OperatingGoalAreaPlan,
+  OperatingGoalDecomposition,
+  OperatingGoalDirection,
+  OperatingGoalEvaluationCriterion,
+  OperatingGoalMetric,
   CommandRouterClassification,
   CommandRouterIntentKind,
   CommandRouterRouting,
@@ -11457,6 +11463,285 @@ function buildAreaBlueprintRegistry(
 app.get("/area-blueprints", (c) => {
   const data = buildAreaBlueprintRegistry(listAll());
   return c.json({ data });
+});
+
+const GOAL_DIRECTION_PATTERNS: Array<{ direction: OperatingGoalDirection; pattern: RegExp }> = [
+  { direction: "increase", pattern: /\b(?:increase|grow|raise|improve|boost|maximize)\b/i },
+  { direction: "decrease", pattern: /\b(?:decrease|reduce|lower|cut|drop|minimize|tighten)\b/i },
+  { direction: "achieve", pattern: /\b(?:achieve|launch|deliver|ship|reach|complete)\b/i },
+  { direction: "maintain", pattern: /\b(?:maintain|keep|sustain|preserve)\b/i },
+];
+
+const GOAL_AREA_KEYWORDS: Array<{
+  slug: CompanyOperatingMapAreaSlug;
+  patterns: RegExp[];
+  reason: string;
+  weight: number;
+}> = [
+  {
+    slug: "sales",
+    patterns: [/\bdesign partner|conversion|deal|outbound|pipeline|customer\b/i],
+    reason: "Sales owns pipeline, design partner conversations and conversion.",
+    weight: 0.9,
+  },
+  {
+    slug: "marketing",
+    patterns: [/\bbrand|awareness|campaign|content|seo|ad\b/i],
+    reason: "Marketing owns brand reach and content/ads contributions.",
+    weight: 0.8,
+  },
+  {
+    slug: "development",
+    patterns: [/\bbug|feature|ship|build|api|launch ready|aios|pr\b/i],
+    reason: "Development owns implementation, PR/CI and dogfood gates.",
+    weight: 0.95,
+  },
+  {
+    slug: "operations",
+    patterns: [/\bincident|cadence|infra|operating loop|monitor|deploy\b/i],
+    reason: "Operations owns runtime health and operating cadence.",
+    weight: 0.7,
+  },
+  {
+    slug: "finance",
+    patterns: [/\brevenue|runway|cost|pricing|margin|billing\b/i],
+    reason: "Finance owns revenue, cost and runway metrics.",
+    weight: 0.85,
+  },
+  {
+    slug: "support",
+    patterns: [/\bsupport|ticket|help|response time|nps|csat|retention\b/i],
+    reason: "Support owns customer success outcomes including retention.",
+    weight: 0.85,
+  },
+  {
+    slug: "strategy",
+    patterns: [/\bpriority|tradeoff|roadmap|okr|positioning\b/i],
+    reason: "Strategy owns priorities, decisions and tradeoffs.",
+    weight: 0.6,
+  },
+  {
+    slug: "legal_compliance",
+    patterns: [/\blgpd|gdpr|privacy|compliance|legal|contract\b/i],
+    reason: "Legal & Compliance owns regulatory and contract gates.",
+    weight: 0.6,
+  },
+];
+
+const METRIC_KEYWORDS: Array<{ keyword: RegExp; metric: string }> = [
+  { keyword: /\bretention\b/i, metric: "customer_retention_rate" },
+  { keyword: /\brevenue\b/i, metric: "monthly_recurring_revenue" },
+  { keyword: /\brunway\b/i, metric: "runway_months" },
+  { keyword: /\bdesign partner\b/i, metric: "design_partners_signed" },
+  { keyword: /\bconversion\b/i, metric: "lead_to_customer_conversion" },
+  { keyword: /\bbug\b/i, metric: "open_bug_count" },
+  { keyword: /\blaunch ready\b/i, metric: "launch_readiness_index" },
+  { keyword: /\bcost\b/i, metric: "monthly_cost_usd" },
+  { keyword: /\bnps\b/i, metric: "nps_score" },
+  { keyword: /\bresponse time\b/i, metric: "median_response_time_hours" },
+];
+
+function inferGoalMetric(goalText: string, override?: string): OperatingGoalMetric {
+  const text = goalText.trim();
+  const direction =
+    GOAL_DIRECTION_PATTERNS.find((entry) => entry.pattern.test(text))?.direction ??
+    "unknown";
+  const metricName =
+    override ??
+    METRIC_KEYWORDS.find((entry) => entry.keyword.test(text))?.metric ??
+    "primary_outcome_metric";
+  return {
+    raw: text,
+    direction,
+    metricName,
+    target: null,
+  };
+}
+
+function selectGoalAreas(
+  goalText: string,
+  primaryHint: CompanyOperatingMapAreaSlug | undefined,
+  data: ReturnType<typeof listAll>,
+  registry: AreaBlueprintRegistry
+): OperatingGoalAreaPlan[] {
+  const text = goalText.toLowerCase();
+  const matched = new Map<CompanyOperatingMapAreaSlug, { reason: string; weight: number }>();
+  for (const entry of GOAL_AREA_KEYWORDS) {
+    if (entry.patterns.some((re) => re.test(text))) {
+      matched.set(entry.slug, { reason: entry.reason, weight: entry.weight });
+    }
+  }
+  if (primaryHint && !matched.has(primaryHint)) {
+    matched.set(primaryHint, {
+      reason: "Caller-provided primaryAreaSlug hint applied.",
+      weight: 0.95,
+    });
+  }
+  if (!matched.size) {
+    matched.set("strategy", {
+      reason: "No keyword matched; defaulting to Strategy as the goal owner.",
+      weight: 0.5,
+    });
+  }
+  const areas: OperatingGoalAreaPlan[] = [];
+  for (const [slug, info] of matched.entries()) {
+    const blueprint = registry.entries.find((entry) => entry.slug === slug);
+    if (!blueprint) continue;
+    const allowedAreas = new Set<CompanyBrainArea>([
+      blueprint.primaryArea,
+      ...blueprint.alternateAreas,
+    ]);
+    const candidates = (data.workItems as WorkItem[])
+      .filter((item) => allowedAreas.has(item.area))
+      .filter((item) => {
+        const title = (item.title ?? "").toLowerCase();
+        const desc = (item.description ?? "").toLowerCase();
+        return text
+          .split(/\s+/)
+          .filter((word) => word.length >= 4)
+          .some((word) => title.includes(word) || desc.includes(word));
+      })
+      .slice(0, 5)
+      .map((item) => ({
+        workItemId: item.id,
+        title: item.title,
+        status: item.status,
+        externalUrl: item.externalUrl ?? null,
+        relevance: 0.7,
+      }));
+    areas.push({
+      slug: blueprint.slug,
+      displayName: blueprint.displayName,
+      ownerRole: blueprint.ownerRole,
+      reasonIncluded: info.reason,
+      contributionWeight: info.weight,
+      defaultSourcePatterns: blueprint.defaultSourcePatterns,
+      expectedAgentRoles: blueprint.expectedAgentRoles,
+      defaultGates: blueprint.defaultGates,
+      cadence: blueprint.cadence,
+      candidateWorkItems: candidates,
+      candidateWatchers: blueprint.defaultSourceTypes.map(
+        (type) => `watcher-${type.replace(/[^a-z0-9]+/g, "_")}-v0`
+      ),
+      candidateGuidanceQuestions: blueprint.defaultGates.map(
+        (gate) => `Has ${gate} been defined for this goal?`
+      ),
+    });
+  }
+  areas.sort((a, b) => b.contributionWeight - a.contributionWeight);
+  return areas;
+}
+
+function deriveOperatingGoalCadence(direction: OperatingGoalDirection): string {
+  if (direction === "achieve") return "weekly checkpoints until target met";
+  if (direction === "decrease" || direction === "increase") return "weekly metric review";
+  if (direction === "maintain") return "monthly review";
+  return "weekly review";
+}
+
+function buildOperatingGoalDecomposition(
+  request: DecomposeOperatingGoalRequest,
+  data: ReturnType<typeof listAll>,
+  registry: AreaBlueprintRegistry
+): OperatingGoalDecomposition {
+  const generatedAt = now();
+  const goalText = (request.goalText ?? "").trim();
+  const metric = inferGoalMetric(goalText, request.targetMetric);
+  const areas = selectGoalAreas(
+    goalText,
+    request.primaryAreaSlug,
+    data,
+    registry
+  );
+  const primaryAreaSlug =
+    request.primaryAreaSlug ?? areas[0]?.slug ?? "strategy";
+  const reviewCadence = request.cadenceHint ?? deriveOperatingGoalCadence(metric.direction);
+  const evaluationCriteria: OperatingGoalEvaluationCriterion[] = [
+    {
+      metric: metric.metricName,
+      target: metric.target,
+      cadence: reviewCadence,
+      evidenceSource: areas[0]?.defaultSourcePatterns[0] ?? "company-brain://artifact",
+    },
+    {
+      metric: "open_blockers_count",
+      target: "0",
+      cadence: reviewCadence,
+      evidenceSource: "aios://gate-closure-ritual",
+    },
+    {
+      metric: "open_guidance_count",
+      target: "<=3 per area",
+      cadence: reviewCadence,
+      evidenceSource: "aios://guidance-queue",
+    },
+  ];
+  const recommendedNextActions: string[] = [];
+  recommendedNextActions.push(
+    `Confirm primary owner for area ${primaryAreaSlug} and document the target value of ${metric.metricName}.`
+  );
+  if (areas.some((area) => area.candidateWorkItems.length === 0)) {
+    recommendedNextActions.push(
+      "Create or link initial WorkItems via /company-brain/command for areas without candidates."
+    );
+  }
+  if (areas.some((area) => area.slug === "development")) {
+    recommendedNextActions.push(
+      "Use the AIOS Development Blueprint to gate execution: triage -> plan -> execute -> review -> tests -> security -> deploy gate."
+    );
+  }
+  recommendedNextActions.push(
+    "Schedule the first review tick using Operating Cadence; record evidence as session_result intake after each iteration."
+  );
+  const clarifications =
+    metric.direction === "unknown" || goalText.length < 8
+      ? [
+          {
+            question: "What is the desired direction (increase / decrease / maintain / achieve)?",
+            options: ["increase", "decrease", "maintain", "achieve"],
+          },
+          {
+            question: "What is the measurable target value?",
+          },
+        ]
+      : metric.target === null
+        ? [
+            {
+              question: `Numeric target for ${metric.metricName}?`,
+            },
+          ]
+        : [];
+  return {
+    generatedAt,
+    goalText,
+    metric,
+    primaryAreaSlug,
+    areas,
+    reviewCadence,
+    evaluationCriteria,
+    recommendedNextActions,
+    clarifications,
+    policySummary:
+      "Goal-to-Execution Superoptimizer v0 is read-first and governed: it derives areas, candidate WorkItems, watchers and gates from the existing Company Brain. It does not auto-create WorkItems, agent runs or external writeback. Use Command Router to commit Risk A artefacts; use the existing proposal flow for Risk B writeback.",
+  };
+}
+
+app.post("/operating-goals/decompose", async (c) => {
+  try {
+    const body = (await c.req
+      .json<DecomposeOperatingGoalRequest>()
+      .catch(() => ({ goalText: "" } as DecomposeOperatingGoalRequest))) as DecomposeOperatingGoalRequest;
+    if (!body.goalText || !body.goalText.trim()) {
+      return c.json({ error: "validation", message: "goalText is required" }, 400);
+    }
+    const data = listAll();
+    const registry = buildAreaBlueprintRegistry(data);
+    const decomposition = buildOperatingGoalDecomposition(body, data, registry);
+    return c.json({ data: decomposition });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "decomposition_failed", message }, 400);
+  }
 });
 
 const AREA_KEYWORDS: Array<{ slug: CompanyOperatingMapAreaSlug; area: CompanyBrainArea; patterns: RegExp[] }> = [

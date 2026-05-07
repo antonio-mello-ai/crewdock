@@ -2131,6 +2131,44 @@ server.registerTool(
 );
 
 server.registerTool(
+  "decompose_company_brain_operating_goal",
+  {
+    title: "Decompose a Company Brain operating goal",
+    description:
+      "Read-first Goal-to-Execution Superoptimizer. Accepts a high-level operating goal (text plus optional area/metric/cadence hints) and returns a decomposition: parsed metric (direction + name + target), primary area, per-area plans (owner, source patterns, watchers, gates, candidate WorkItems already in Company Brain that match the goal), evaluation criteria, recommended next actions, clarifications when ambiguous, and a policy summary. Does not auto-create WorkItems, agent runs or external writeback. Use the Command Router to commit Risk A artefacts and the existing ExternalActionProposal flow for Risk B writeback.",
+    inputSchema: {
+      goalText: z.string().min(4),
+      primaryAreaSlug: z
+        .enum([
+          "strategy",
+          "development",
+          "marketing",
+          "sales",
+          "operations",
+          "finance",
+          "support",
+          "legal_compliance",
+        ])
+        .optional(),
+      targetMetric: z.string().optional(),
+      cadenceHint: z.string().optional(),
+      visibility: z.enum(["public", "internal", "restricted"]).optional(),
+      actor: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-goals/decompose",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_area_blueprints",
   {
     title: "Get Company Brain Area Blueprint Registry",
