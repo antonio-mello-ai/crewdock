@@ -19,21 +19,50 @@ import {
   PanelLeft,
   Menu,
   X,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 
 const navItems = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/console", label: "Console", icon: MessageSquare },
-  { href: "/terminal", label: "Terminal", icon: SquareTerminal },
-  { href: "/jobs", label: "Jobs", icon: ListTodo },
-  { href: "/schedules", label: "Schedules", icon: Clock },
-  { href: "/costs", label: "Costs", icon: DollarSign },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/company-brain", label: "Company Brain", icon: BrainCircuit },
-  { href: "/settings", label: "Settings", icon: Settings },
+  {
+    title: "AIOS",
+    items: [
+      {
+        href: "/company-brain/operating",
+        label: "Operating",
+        icon: BrainCircuit,
+      },
+      {
+        href: "/company-brain",
+        label: "Brain Admin",
+        icon: LayoutDashboard,
+        exact: true,
+      },
+    ],
+  },
+  {
+    title: "Runtime Admin",
+    items: [
+      { href: "/runtime", label: "Runtime Overview", icon: LayoutDashboard },
+      { href: "/console", label: "Console", icon: MessageSquare },
+      { href: "/terminal", label: "Terminal", icon: SquareTerminal },
+      { href: "/jobs", label: "Jobs", icon: ListTodo },
+      { href: "/schedules", label: "Schedules", icon: Clock },
+      { href: "/costs", label: "Costs", icon: DollarSign },
+      { href: "/inbox", label: "Inbox", icon: Inbox },
+      { href: "/agents", label: "Agents", icon: Bot },
+      { href: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
+
+type NavItem = (typeof navItems)[number]["items"][number];
+
+function isNavItemActive(pathname: string, item: NavItem) {
+  if (item.exact) return pathname === item.href;
+  return item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -94,7 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     AIOS
                   </span>
                   <span className="text-[10px] leading-none text-neutral-500 font-mono">
-                    runtime
+                    company brain
                   </span>
                 </div>
               </Link>
@@ -123,31 +152,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Separator />
 
           {/* Nav */}
-          <nav className="flex-1 space-y-0.5 p-2 mt-1">
-            {navItems.map((item) => {
-              const isActive =
-                item.href === "/"
-                  ? pathname === "/"
-                  : pathname.startsWith(item.href);
+          <nav className="flex-1 space-y-4 p-2 mt-1">
+            {navItems.map((section) => (
+              <div key={section.title}>
+                {!isCollapsed && (
+                  <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+                    {section.title}
+                  </div>
+                )}
+                <div className="space-y-0.5">
+                  {section.items.map((item) => {
+                    const isActive = isNavItemActive(pathname, item);
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => isMobile && setMobileOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-neutral-800/80 text-neutral-100"
-                      : "text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
-                  )}
-                  title={isCollapsed ? item.label : undefined}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {!isCollapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            })}
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => isMobile && setMobileOpen(false)}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-neutral-800/80 text-neutral-100"
+                            : "text-neutral-500 hover:bg-neutral-800/40 hover:text-neutral-300"
+                        )}
+                        title={isCollapsed ? item.label : undefined}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {!isCollapsed && <span>{item.label}</span>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </nav>
 
           {/* Collapse toggle — desktop only */}
