@@ -183,6 +183,26 @@ Comportamento:
    - `mcp__aios__sync_company_brain_github_issues` ou
    - `POST /api/company-brain/adapters/github/issues/sync`.
 
+## Symphony-compatible Agent Runner (planejado, v1+)
+
+O AIOS adotou o spec OpenAI Symphony como contrato de orquestracao para
+agent runs (decisao em
+`docs/action/aios-symphony-compatibility-map-2026-05-07.md`). A implementacao
+roda como minimal wrapper em TypeScript no daemon AIOS, sem sidecar Elixir
+e sem TypeScript port completo. As entidades AIOS existentes (`WorkItem`,
+`WorkflowBlueprint`, `WorkflowRun`, `WorkflowStep`, `AgentContext`,
+`Artifact`, `Signal`, `GuidanceItem`, `ExternalActionProposal`,
+`Operating Loop`) sao reusadas; o runner adiciona `cbAgentRuns`,
+`cbAgentRunSteps`, `cbAgentRunRetries`, `cbAgentRunWorkspaces` e o
+`WorkflowLoader` parser de `WORKFLOW.md` (versionado em-repo).
+
+Em v0 (compatibility map) so existe o doc. Cuts v1/v2/v3 implementam
+schema + workspace manager, depois orchestrator + agent subprocess +
+retry queue, depois auto-dispatch + reconciliation + UI. Ate la, sessoes
+de implementacao continuam abrindo branch/PR manualmente seguindo este
+runbook. Agent nao recebe `GITHUB_TOKEN` diretamente: writeback continua
+mediado por `ExternalActionProposal` + Writeback Policy Matrix.
+
 ## WorkItem -> GitHub Issue
 
 Um WorkItem do Company Brain pode virar draft de issue GitHub via
