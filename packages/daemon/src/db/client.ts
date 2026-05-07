@@ -581,6 +581,45 @@ CREATE INDEX IF NOT EXISTS idx_cb_watchers_status ON cb_watchers(status);
 CREATE INDEX IF NOT EXISTS idx_cb_watchers_trigger ON cb_watchers(trigger_type);
 CREATE INDEX IF NOT EXISTS idx_cb_watcher_runs_watcher_id ON cb_watcher_runs(watcher_id);
 CREATE INDEX IF NOT EXISTS idx_cb_watcher_runs_status ON cb_watcher_runs(status);
+
+CREATE TABLE IF NOT EXISTS cb_agent_runs (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT,
+  workflow_run_id TEXT,
+  agent_context_id TEXT,
+  source_id TEXT,
+  repo TEXT,
+  branch TEXT,
+  workspace_ref TEXT,
+  runner_type TEXT NOT NULL DEFAULT 'manual',
+  status TEXT NOT NULL DEFAULT 'queued',
+  claim_state TEXT NOT NULL DEFAULT 'unclaimed',
+  attempt INTEGER NOT NULL DEFAULT 0,
+  started_at INTEGER,
+  finished_at INTEGER,
+  error_summary TEXT,
+  pr_url TEXT,
+  external_run_ref TEXT,
+  tokens_input INTEGER,
+  tokens_output INTEGER,
+  tokens_total INTEGER,
+  cost_usd REAL,
+  agent_session_id TEXT,
+  agent_thread_id TEXT,
+  area TEXT NOT NULL DEFAULT 'unknown',
+  risk_class TEXT NOT NULL DEFAULT 'unknown',
+  action_policy TEXT NOT NULL DEFAULT 'observe_only',
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  metadata TEXT,
+  audit_trail TEXT NOT NULL DEFAULT '[]',
+  provenance TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_work_item ON cb_agent_runs(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_status ON cb_agent_runs(status);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_claim_state ON cb_agent_runs(claim_state);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_runner_type ON cb_agent_runs(runner_type);
 `;
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;

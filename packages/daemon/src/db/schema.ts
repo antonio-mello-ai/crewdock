@@ -1,5 +1,8 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import type {
+  AgentRunClaimState,
+  AgentRunRunnerType,
+  AgentRunStatus,
   CompanyBrainArea,
   ActionPolicy,
   AgentContextStatus,
@@ -691,6 +694,61 @@ export const cbWatcherRuns = sqliteTable("cb_watcher_runs", {
     .notNull()
     .default("observe_only"),
   riskClass: text("risk_class").$type<RiskClass>().notNull().default("unknown"),
+  provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbAgentRuns = sqliteTable("cb_agent_runs", {
+  id: text("id").primaryKey(),
+  workItemId: text("work_item_id"),
+  workflowRunId: text("workflow_run_id"),
+  agentContextId: text("agent_context_id"),
+  sourceId: text("source_id"),
+  repo: text("repo"),
+  branch: text("branch"),
+  workspaceRef: text("workspace_ref"),
+  runnerType: text("runner_type")
+    .$type<AgentRunRunnerType>()
+    .notNull()
+    .default("manual"),
+  status: text("status").$type<AgentRunStatus>().notNull().default("queued"),
+  claimState: text("claim_state")
+    .$type<AgentRunClaimState>()
+    .notNull()
+    .default("unclaimed"),
+  attempt: integer("attempt", { mode: "number" }).notNull().default(0),
+  startedAt: integer("started_at", { mode: "number" }),
+  finishedAt: integer("finished_at", { mode: "number" }),
+  errorSummary: text("error_summary"),
+  prUrl: text("pr_url"),
+  externalRunRef: text("external_run_ref"),
+  tokensInput: integer("tokens_input", { mode: "number" }),
+  tokensOutput: integer("tokens_output", { mode: "number" }),
+  tokensTotal: integer("tokens_total", { mode: "number" }),
+  costUsd: real("cost_usd"),
+  agentSessionId: text("agent_session_id"),
+  agentThreadId: text("agent_thread_id"),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("unknown"),
+  riskClass: text("risk_class").$type<RiskClass>().notNull().default("unknown"),
+  actionPolicy: text("action_policy")
+    .$type<ActionPolicy>()
+    .notNull()
+    .default("observe_only"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown> | null>(),
+  auditTrail: text("audit_trail", { mode: "json" })
+    .$type<
+      Array<{
+        at: number;
+        actor: string | null;
+        event: string;
+        note: string | null;
+        metadata?: Record<string, unknown> | null;
+      }>
+    >()
+    .notNull()
+    .default([]),
   provenance: text("provenance", { mode: "json" }).$type<Provenance | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
   updatedAt: integer("updated_at", { mode: "number" }).notNull(),
