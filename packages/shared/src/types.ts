@@ -2646,6 +2646,83 @@ export interface CompanyBrainNextWork {
   };
 }
 
+export type CommandRouterIntentKind =
+  | "create_work_item"
+  | "create_guidance"
+  | "create_external_action_proposal"
+  | "submit_session_result"
+  | "route_to_goal_decomposition"
+  | "create_github_issue_proposal"
+  | "ask_clarification"
+  | "noop";
+
+export type CommandRouterTargetKind =
+  | "work_item"
+  | "guidance_item"
+  | "external_action_proposal"
+  | "session_result"
+  | "goal_decomposition"
+  | "github_issue_proposal"
+  | "clarification"
+  | "none";
+
+export type CommandRouterDecision =
+  | "preview_only"
+  | "created"
+  | "blocked"
+  | "needs_clarification"
+  | "deferred_to_goal_decomposition";
+
+export interface CommandRouterClassification {
+  area: CompanyBrainArea;
+  intentKind: CommandRouterIntentKind;
+  targetKind: CommandRouterTargetKind;
+  riskClass: RiskClass;
+  confidence: number;
+  primaryAreaSlug: CompanyOperatingMapAreaSlug;
+}
+
+export interface CommandRouterClarification {
+  question: string;
+  options?: string[];
+}
+
+export interface CommandRouterRouting {
+  decision: CommandRouterDecision;
+  rationale: string[];
+  nextActionLabel: string;
+  nextActionDetail: string;
+  createdWorkItemId?: string | null;
+  createdGuidanceItemId?: string | null;
+  suggestedRoute?: string | null;
+  policySummary?: string | null;
+  clarifications?: CommandRouterClarification[];
+}
+
+export interface RouteCompanyBrainCommandRequest {
+  text: string;
+  intentHint?: CommandRouterIntentKind;
+  area?: CompanyBrainArea;
+  preferredTargetKind?: CommandRouterTargetKind;
+  riskClassHint?: RiskClass;
+  dryRun?: boolean;
+  actor?: string | null;
+  visibility?: Visibility;
+  workItemTitle?: string;
+  workItemDescription?: string;
+  guidanceTitle?: string;
+  guidanceAction?: string;
+  guidanceAudience?: GuidanceAudience;
+  goalSummary?: string;
+}
+
+export interface CompanyBrainCommandRouterResult {
+  generatedAt: number;
+  request: RouteCompanyBrainCommandRequest;
+  classification: CommandRouterClassification;
+  routing: CommandRouterRouting;
+}
+
 export type CompanyOperatingMapAreaSlug =
   | "strategy"
   | "development"

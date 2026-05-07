@@ -27,6 +27,7 @@ import type {
   CompanyBrainWritebackEvidenceRemediationSuggestionsResponse,
   CompanyBrainOperatingSnapshot,
   CompanyBrainSummary,
+  CompanyBrainCommandRouterResult,
   CompanyOperatingMap,
   CreateAgentContextRequest,
   CreateArtifactRequest,
@@ -540,6 +541,36 @@ export function useCompanyBrainOperatingMap() {
     queryKey: ["company-brain", "operating-map"],
     queryFn: () => api("/api/company-brain/operating-map"),
     refetchInterval: 15_000,
+  });
+}
+
+export function useRouteCompanyBrainCommand() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<CompanyBrainCommandRouterResult>,
+    Error,
+    {
+      text: string;
+      intentHint?: string;
+      area?: string;
+      riskClassHint?: string;
+      dryRun?: boolean;
+      actor?: string;
+      workItemTitle?: string;
+      workItemDescription?: string;
+      guidanceTitle?: string;
+      guidanceAction?: string;
+      guidanceAudience?: string;
+    }
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/command-router", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain"] });
+    },
   });
 }
 

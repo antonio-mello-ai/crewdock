@@ -212,6 +212,13 @@ export default function CompanyBrainOperatingPage() {
               <FileText className="size-4" />
               Operating Map
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "/company-brain/command")}
+            >
+              <FileText className="size-4" />
+              Command Router
+            </Button>
             <Button variant="outline" onClick={() => (window.location.href = "/company-brain")}>
               <FileText className="size-4" />
               Admin
