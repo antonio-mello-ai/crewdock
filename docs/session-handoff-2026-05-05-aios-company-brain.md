@@ -2559,3 +2559,43 @@ Docs upstream no `corp` tambem foram atualizados:
 - `docs/action/aios-yc-thesis-five-week-build-plan-2026-05-05.md`;
 - `docs/action/roadmap.md`;
 - `docs/action/CHANGELOG.md`.
+
+## 2026-05-07 - AIOS Agent Execution v1
+
+Milestone `AIOS Execution Loop v0` foi concluida em modo continuo:
+
+- PRs `#41` a `#47` mergeados;
+- issues `#29`, `#30`, `#31`, `#37`, `#38`, `#39`, `#40` fechadas;
+- CT165 deployado a cada cut;
+- Company Brain reconciliado ate empty state da milestone.
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v1` (GitHub milestone number `4`).
+
+Issues abertas:
+
+- `#48 AIOS-RUN-01: AgentRun schema and lifecycle v1`;
+- `#49 AIOS-RUN-02: WorkflowLoader and WORKFLOW.md skeleton`;
+- `#50 AIOS-RUN-03: Workspace manager and git worktree safety`;
+- `#51 AIOS-RUN-04: Manual AgentRun dry-run orchestrator`;
+- `#52 AIOS-RUN-05: Session Result Intake UI`;
+- `#53 AIOS-RUN-06: Operating Map v1 from Area Blueprint Registry`;
+- `#54 AIOS-RUN-07: Evaluation-driven ImprovementProposal records`.
+
+Producao:
+
+- CT165 recebeu `GITHUB_TOKEN` em `.env.prod` para sync autenticado do GitHub
+  Issues adapter;
+- `aios-daemon` reiniciado e `active`;
+- sync read-only retornou `issuesSeen=7`,
+  `lastIssueNumbers=[54,53,52,51,50,49,48]`, `workItemsCreated=7`;
+- `GET /api/company-brain/next-work` recomenda
+  `#48 AIOS-RUN-01: AgentRun schema and lifecycle v1` com
+  `candidatesConsidered=7`.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#48` primeiro e
+seguir issue-by-issue pela milestone nova. Parar apenas em launch automatico
+real de agente, novo segredo/permissao alem do token ja configurado, novo
+servico pago, writeback externo fora das policies ou cleanup destrutivo de
+workspace.

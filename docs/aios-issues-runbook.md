@@ -13,7 +13,9 @@ Boundary local: `docs/company-brain-direction.md`. Backlog implementacional:
 
 ## Estado da fila
 
-- Milestone ativa: `AIOS Execution Loop v0` (number=3).
+- Milestone ativa: `AIOS Agent Execution v1` (number=4).
+- Milestone anterior `AIOS Execution Loop v0` (number=3) foi fechada em
+  2026-05-07 com issues `#25` a `#31` e `#37` a `#40` concluídas.
 - Active queue: issues abertas com label `aios` + milestone ativa.
 - Legacy queue: issues fechadas marcadas com pelo menos uma de
   `legacy-runtime`, `runtime-admin`, `icebox` ou `superseded`. Permanecem
@@ -53,6 +55,9 @@ Issues do roadmap AIOS usam prefixo:
   center, work item flow, Symphony-compatible runner, result intake, company
   operating map, command router, area blueprint registry, goal-to-execution,
   agent-run evaluation).
+- `AIOS-RUN-NN` para substrato de execucao agentic (AgentRun schema,
+  WorkflowLoader, workspace manager, dry-run orchestrator, result UI,
+  evaluation-to-improvement).
 - `AIOS-OPS-NN` para operacao de Company Brain (cadence, briefing, gate
   closure, source health) quando precisar virar issue formal alem do backlog.
 
@@ -65,6 +70,8 @@ Exemplos atuais:
 - `#31 AIOS-EXEC-05: Company Operating Map v0`
 - `#39 AIOS-EXEC-08: Goal-to-Execution Superoptimizer v0`
 - `#40 AIOS-EXEC-09: Agent Run Evaluation Loop v0`
+- `#48 AIOS-RUN-01: AgentRun schema and lifecycle v1`
+- `#49 AIOS-RUN-02: WorkflowLoader and WORKFLOW.md skeleton`
 
 Issues legacy (#1 a #24, milestones `v1.4.0`, `v1.5.0`) usavam prefixos
 diferentes (`sec:`, `perf:`, `ops:`, `test:`). Manter como esta; nao renomear.
