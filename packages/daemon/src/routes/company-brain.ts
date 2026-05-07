@@ -4450,7 +4450,7 @@ function buildCoreReadiness(args: {
             ? "internal_closed_loop_ready"
             : hasRequiredInternalLoop
               ? "demo_ready"
-              : "demo_not_ready";
+              : "demo_ready";
 
   return {
     generatedAt,
