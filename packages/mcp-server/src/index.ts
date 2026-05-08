@@ -2168,6 +2168,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "execute_company_brain_agent_run_supervised",
+  {
+    title: "Execute a Company Brain agent run (supervised real subprocess)",
+    description:
+      "Manually launch a real agent subprocess for an AgentRun, off by default and gated by the runner policy. Requires actor and rationale. Verifies AIOS_AGENT_RUNNER_ENABLED, repo allowlist, command allowlist, workspace allowlist and HITL inputs before spawning. Spawns the workflow's agent.command with args inside the prepared workspace, redacts writeback secrets from subprocess env (GITHUB_TOKEN/SLACK_BOT_TOKEN/etc unless explicit env opt-in), captures stdout/stderr to .aios-run/<id>.log inside the workspace, transitions AgentRun queued -> running -> completed/failed/timed_out, records execution metadata on AgentRun. commandOverride and argsOverride enable harmless dogfood (e.g. echo). Does not auto-create PRs, merges or deploys. Does not destructively clean any workspace.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      commandOverride: z.string().optional(),
+      argsOverride: z.array(z.string()).optional(),
+      timeoutMsOverride: z.number().int().positive().optional(),
+      promptOverride: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/execute`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "evaluate_company_brain_agent_run_runner_policy",
   {
     title: "Evaluate Company Brain agent runner policy",

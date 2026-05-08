@@ -1163,6 +1163,54 @@ export interface DryRunExecuteAgentRunRequest {
   rationale?: string | null;
 }
 
+export type RunnerExecutionOutcome =
+  | "completed"
+  | "failed"
+  | "timed_out"
+  | "blocked_by_policy"
+  | "blocked_by_concurrency"
+  | "blocked_by_lifecycle"
+  | "spawn_error";
+
+export interface RunnerExecutionLogSummary {
+  logPath: string | null;
+  stdoutPreview: string;
+  stderrPreview: string;
+  byteCountStdout: number;
+  byteCountStderr: number;
+}
+
+export interface ExecuteAgentRunRequest {
+  actor: string;
+  rationale: string;
+  commandOverride?: string;
+  argsOverride?: string[];
+  timeoutMsOverride?: number;
+  promptOverride?: string;
+}
+
+export interface ExecuteAgentRunResponse {
+  generatedAt: number;
+  agentRunId: string;
+  outcome: RunnerExecutionOutcome;
+  status: AgentRunStatus;
+  exitCode: number | null;
+  signal: string | null;
+  durationMs: number;
+  command: string;
+  args: string[];
+  workspacePath: string | null;
+  branchName: string | null;
+  promptRendered: string;
+  envAllowedKeys: string[];
+  envRedactedKeys: string[];
+  logSummary: RunnerExecutionLogSummary;
+  policyDecision: RunnerPolicyDecision;
+  blockReasons: string[];
+  errorSummary: string | null;
+  realExecutionPerformed: boolean;
+}
+
 export type RunnerPolicyGateStatus = "passed" | "failed" | "warn" | "info";
 
 export type RunnerPolicyDecision =
@@ -1232,6 +1280,7 @@ export interface EvaluateRunnerPolicyRequest {
   intent?: "dry_run" | "real_execution";
   workspaceRootOverride?: string | null;
   allowGithubTokenOverride?: boolean;
+  commandOverride?: string | null;
 }
 
 export type WorkspacePreparationStatus =
