@@ -2364,6 +2364,7 @@ async function fetchGitHubIssues(repo: string, state: string, limit: number) {
   const issues = await githubApi<GitHubIssuePayload[]>(
     `/repos/${parsed.owner}/${parsed.name}/issues`,
     {
+      filter: "all",
       state,
       per_page: String(Math.max(1, Math.min(limit, 100))),
     }

@@ -2599,3 +2599,50 @@ seguir issue-by-issue pela milestone nova. Parar apenas em launch automatico
 real de agente, novo segredo/permissao alem do token ja configurado, novo
 servico pago, writeback externo fora das policies ou cleanup destrutivo de
 workspace.
+
+## 2026-05-07 - AIOS Agent Execution v2
+
+Milestone `AIOS Agent Execution v1` foi concluida:
+
+- PRs `#55` a `#61` mergeados;
+- issues `#48` a `#54` fechadas;
+- CT165 daemon ativo apos redeploys;
+- Pages publicado para mudancas de UI;
+- session results submetidos em producao;
+- production smoke validou AgentRun schema, WorkflowLoader, workspace prepare,
+  dry-run orchestrator, Session Result UI, Operating Map registry-driven e
+  ImprovementProposal persistente.
+
+Antes de abrir nova fila, foi rodado sync `state=all` em producao para marcar
+`#48` a `#54` como `done`. `Next Work` voltou a empty state.
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v2` (GitHub milestone number `5`).
+
+Issues abertas:
+
+- `#62 AIOS-RUN-08: Runner policy and execution gates v2`;
+- `#63 AIOS-RUN-09: Manual real subprocess executor v2`;
+- `#64 AIOS-RUN-10: AgentRun logs, heartbeat, timeout and cancel v2`;
+- `#65 AIOS-RUN-11: Runner session result auto-intake v2`;
+- `#66 AIOS-RUN-12: Workspace cleanup and quarantine gate v2`;
+- `#67 AIOS-RUN-13: Agent Runs execution console v2`;
+- `#68 AIOS-RUN-14: Supervised runner dogfood pack v2`.
+
+Direcional da v2: sair do dry-run para supervised real runner. O AIOS deve
+conseguir iniciar um AgentRun manual, em workspace isolado, com policy gates,
+logs, cancelamento, timeout, intake de resultado e dogfood controlado. Ainda
+nao e milestone de auto-dispatch amplo.
+
+Bug corrigido na preparacao da fila: o GitHub Issues adapter passou a usar
+`filter=all` no endpoint REST. Sem isso, o GitHub listava apenas issues
+atribuidas ao token, e issues abertas sem assignee nao apareciam no Company
+Brain nem no `next-work`.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#62` primeiro e
+seguir issue-by-issue pela milestone `AIOS Agent Execution v2`. Pode seguir sem
+parar em docs, APIs internas, UI, policy, logs, cancelamento, workspace
+quarantine e dogfood controlado. Deve parar antes de auto-dispatch amplo,
+novo segredo/permissao, servico pago, writeback externo fora das policies,
+auto-merge/deploy ou cleanup destrutivo sem confirmacao explicita.

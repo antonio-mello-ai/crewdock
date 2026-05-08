@@ -184,11 +184,14 @@ Comportamento:
 2. Escolher prefixo de titulo (`AIOS-CLEAN-NN`, `AIOS-EXEC-NN`, `AIOS-OPS-NN`)
    incrementando o ultimo numero usado.
 3. Aplicar labels `aios` + outras pertinentes.
-4. Atribuir milestone `AIOS Execution Loop v0` enquanto a frente estiver ativa.
+4. Atribuir a milestone ativa declarada em `WORKFLOW.md`.
 5. Preencher template (Context/Goal/Scope/Acceptance/Constraints).
 6. Apos abrir, rodar sync read-only para criar `Artifact`/`WorkItem`:
    - `mcp__aios__sync_company_brain_github_issues` ou
    - `POST /api/company-brain/adapters/github/issues/sync`.
+   - O adapter GitHub Issues deve usar `filter=all` na REST API; sem isso,
+     o GitHub retorna apenas issues atribuídas ao token e o `next-work` pode
+     ficar vazio mesmo com issues abertas.
 
 ## Symphony-compatible Agent Runner (planejado, v1+)
 

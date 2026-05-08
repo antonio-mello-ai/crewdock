@@ -2,7 +2,7 @@
 tracker:
   kind: github
   repo: antonio-mello-ai/crewdock
-  active_milestone: AIOS Agent Execution v1
+  active_milestone: AIOS Agent Execution v2
   active_states:
     - open
   terminal_states:
