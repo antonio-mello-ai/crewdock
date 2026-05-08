@@ -228,6 +228,13 @@ export default function CompanyBrainOperatingPage() {
               <FileText className="size-4" />
               Submit Session
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => (window.location.href = "/company-brain/agent-runs")}
+            >
+              <FileText className="size-4" />
+              Agent Runs
+            </Button>
             <Button variant="outline" onClick={() => (window.location.href = "/company-brain")}>
               <FileText className="size-4" />
               Admin

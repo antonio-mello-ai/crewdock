@@ -544,6 +544,121 @@ export function useCompanyBrainOperatingMap() {
   });
 }
 
+export function useCompanyBrainAgentRunsList(filters?: {
+  status?: string;
+  limit?: number;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.status) params.set("status", filters.status);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  const query = params.toString();
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "agent-runs", "list", filters],
+    queryFn: () =>
+      api(`/api/company-brain/agent-runs${query ? `?${query}` : ""}`),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useCompanyBrainAgentRunsSummary() {
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "agent-runs", "summary"],
+    queryFn: () => api("/api/company-brain/agent-runs/summary"),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useCompanyBrainAgentRun(id: string | null) {
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "agent-run", id],
+    queryFn: () => api(`/api/company-brain/agent-runs/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useCompanyBrainAgentRunLogs(id: string | null, tail = 100) {
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "agent-run", id, "logs", tail],
+    queryFn: () =>
+      api(`/api/company-brain/agent-runs/${id}/logs?tail=${tail}`),
+    enabled: Boolean(id),
+    refetchInterval: 4_000,
+  });
+}
+
+export function useEvaluateCompanyBrainAgentRunPolicy() {
+  return useMutation<ApiResponse<unknown>, Error, {
+    agentRunId: string;
+    actor?: string;
+    rationale?: string;
+    intent?: "dry_run" | "real_execution";
+    commandOverride?: string;
+  }>({
+    mutationFn: ({ agentRunId, ...rest }) =>
+      api(`/api/company-brain/agent-runs/${agentRunId}/policy/evaluate`, {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }),
+  });
+}
+
+export function useExecuteCompanyBrainAgentRun() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<unknown>, Error, {
+    agentRunId: string;
+    actor: string;
+    rationale: string;
+    commandOverride?: string;
+    argsOverride?: string[];
+    promptOverride?: string;
+    timeoutMsOverride?: number;
+  }>({
+    mutationFn: ({ agentRunId, ...rest }) =>
+      api(`/api/company-brain/agent-runs/${agentRunId}/execute`, {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-run", vars.agentRunId] });
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-runs"] });
+    },
+  });
+}
+
+export function useCancelCompanyBrainAgentRun() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<unknown>, Error, {
+    agentRunId: string;
+    actor: string;
+    rationale: string;
+  }>({
+    mutationFn: ({ agentRunId, ...rest }) =>
+      api(`/api/company-brain/agent-runs/${agentRunId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-run", vars.agentRunId] });
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-runs"] });
+    },
+  });
+}
+
+export function useCreateCompanyBrainAgentRun() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<unknown>, Error, Record<string, unknown>>({
+    mutationFn: (body) =>
+      api("/api/company-brain/agent-runs", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-runs"] });
+    },
+  });
+}
+
 export function useSubmitCompanyBrainSessionResult() {
   const qc = useQueryClient();
   return useMutation<
