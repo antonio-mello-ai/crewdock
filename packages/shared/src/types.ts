@@ -1213,6 +1213,10 @@ export interface RemoveWorkspaceResponse {
   performed: boolean;
   removedPath: string | null;
   worktreeRemoved: boolean;
+  worktreeListedBefore: boolean;
+  worktreeListedAfter: boolean;
+  noopAlreadyRemoved: boolean;
+  commandSummary: string | null;
   blockReasons: string[];
 }
 

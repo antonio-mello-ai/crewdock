@@ -14821,10 +14821,43 @@ app.post("/agent-runs/:id/workspace/remove", async (c) => {
       return c.json({ error: "not_found", message: "agent run not found" }, 404);
     }
     const summary = computeWorkspaceCleanupSummary({ agentRun: run });
+    const worktreeListedBefore = summary.worktreeListed;
     const blockReasons: string[] = [];
+
+    // Idempotent path: workspace already removed
     if (!summary.workspaceExists) {
-      blockReasons.push("workspace_missing");
+      const noopAuditTrail = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+        actor: body.actor,
+        event: "agent_run_workspace_remove_noop",
+        note: body.rationale,
+        metadata: {
+          reason: "workspace_already_removed",
+          targetPath: summary.workspacePath,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({
+          workspaceRef: run.workspaceRef ? null : run.workspaceRef,
+          auditTrail: noopAuditTrail,
+          updatedAt: now(),
+        } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+      const noopResponse: RemoveWorkspaceResponse = {
+        generatedAt: now(),
+        agentRunId: id,
+        performed: false,
+        removedPath: null,
+        worktreeRemoved: false,
+        worktreeListedBefore: false,
+        worktreeListedAfter: false,
+        noopAlreadyRemoved: true,
+        commandSummary: "noop: workspace already removed",
+        blockReasons: ["workspace_already_removed"],
+      };
+      return c.json({ data: noopResponse });
     }
+
     if (summary.risks.some((r) => r.kind === "path_outside_root")) {
       blockReasons.push("path_outside_root");
     }
@@ -14844,23 +14877,44 @@ app.post("/agent-runs/:id/workspace/remove", async (c) => {
         performed: false,
         removedPath: null,
         worktreeRemoved: false,
+        worktreeListedBefore,
+        worktreeListedAfter: worktreeListedBefore,
+        noopAlreadyRemoved: false,
+        commandSummary: null,
         blockReasons,
       };
       return c.json({ data: blockedResponse }, 400);
     }
     let worktreeRemoved = false;
-    if (summary.worktreeListed) {
-      const wtRemove = spawnSync("git", ["worktree", "remove", "--force", summary.workspacePath], {
-        encoding: "utf-8",
-      });
-      if (wtRemove.status === 0) worktreeRemoved = true;
+    let commandSummary: string | null = null;
+    if (worktreeListedBefore) {
+      const wtRemove = spawnSync(
+        "git",
+        ["worktree", "remove", "--force", summary.workspacePath],
+        { encoding: "utf-8" }
+      );
+      if (wtRemove.status === 0) {
+        worktreeRemoved = true;
+        commandSummary = `git worktree remove --force OK; rmSync(recursive)`;
+      } else {
+        commandSummary = `git worktree remove --force FAILED (status=${wtRemove.status}, stderr=${(wtRemove.stderr ?? "").trim().slice(0, 200)}); rmSync(recursive) fallback`;
+      }
+    } else {
+      commandSummary = `worktree not listed; rmSync(recursive) only`;
     }
     rmSync(summary.workspacePath, { recursive: true, force: true });
+    const worktreeListedAfter = workspaceListed(summary.workspacePath);
     const auditTrail = appendAgentRunAuditEntry(run.auditTrail ?? [], {
       actor: body.actor,
       event: "agent_run_workspace_removed",
       note: body.rationale,
-      metadata: { removedPath: summary.workspacePath, worktreeRemoved },
+      metadata: {
+        removedPath: summary.workspacePath,
+        worktreeRemoved,
+        worktreeListedBefore,
+        worktreeListedAfter,
+        commandSummary,
+      },
     });
     db.update(cbAgentRuns)
       .set({
@@ -14876,6 +14930,10 @@ app.post("/agent-runs/:id/workspace/remove", async (c) => {
       performed: true,
       removedPath: summary.workspacePath,
       worktreeRemoved,
+      worktreeListedBefore,
+      worktreeListedAfter,
+      noopAlreadyRemoved: false,
+      commandSummary,
       blockReasons: [],
     };
     return c.json({ data: response });
