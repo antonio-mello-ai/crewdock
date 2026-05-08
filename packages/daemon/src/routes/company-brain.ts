@@ -36,7 +36,11 @@ import type {
   AreaBlueprintRegistry,
   AgentRun,
   AgentRunClaimState,
+  AgentRunDryRunExecutionResult,
+  AgentRunDryRunPhase,
+  AgentRunDryRunRetryPlan,
   AgentWorkspaceStatusResponse,
+  DryRunExecuteAgentRunRequest,
   PrepareAgentWorkspaceRequest,
   PreviewWorkflowLoaderRequest,
   WorkspaceLocation,
@@ -12574,6 +12578,372 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "workspace_prepare_failed", message }, 400);
+  }
+});
+
+function computeAgentRunRetryDelay(
+  attempt: number,
+  maxBackoffMs: number,
+  succeededClean: boolean
+): number {
+  if (succeededClean) return 1000;
+  const base = 10000 * Math.pow(2, Math.max(attempt - 1, 0));
+  return Math.min(base, maxBackoffMs);
+}
+
+app.post("/agent-runs/:id/execute-dry-run", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<DryRunExecuteAgentRunRequest>()
+      .catch(() => ({}))) as DryRunExecuteAgentRunRequest;
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    if (AGENT_RUN_TERMINAL_STATUSES.includes(existing.status)) {
+      return c.json(
+        {
+          error: "validation",
+          message: `agent run already terminal (${existing.status}); create a new run for another attempt`,
+        },
+        400
+      );
+    }
+    const startedFromStatus = existing.status;
+    const startedAt = now();
+    const phases: AgentRunDryRunPhase[] = [];
+    const rationale: string[] = [];
+    let trail = existing.auditTrail ?? [];
+    let currentStatus: AgentRunStatus = existing.status;
+    let currentClaim: AgentRunClaimState = existing.claimState;
+    let currentAttempt = existing.attempt ?? 0;
+
+    const stepDb = (
+      newStatus: AgentRunStatus,
+      newClaim: AgentRunClaimState,
+      event: string
+    ) => {
+      const at = now();
+      trail = appendAgentRunAuditEntry(trail, {
+        actor: body.actor ?? null,
+        event,
+        note: body.rationale ?? null,
+        metadata: { previousStatus: currentStatus, newStatus, attempt: currentAttempt },
+        at,
+      });
+      currentStatus = newStatus;
+      currentClaim = newClaim;
+      db.update(cbAgentRuns)
+        .set({
+          status: newStatus,
+          claimState: newClaim,
+          attempt: currentAttempt,
+          auditTrail: trail,
+          updatedAt: at,
+        } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+    };
+
+    const recordPhase = (
+      name: string,
+      status: AgentRunDryRunPhase["status"],
+      detail: string,
+      phaseStart: number,
+      blockReasons?: string[]
+    ) => {
+      const phaseEnd = now();
+      phases.push({
+        name,
+        status,
+        startedAt: phaseStart,
+        finishedAt: phaseEnd,
+        durationMs: phaseEnd - phaseStart,
+        detail,
+        blockReasons,
+      });
+    };
+
+    const claimStart = now();
+    if (currentStatus === "queued") {
+      currentAttempt = currentAttempt + 1;
+      stepDb("claimed", "claimed", "agent_run_claimed_dry_run");
+    } else {
+      rationale.push(`Run already past queued (status=${currentStatus}); skipping claim phase.`);
+    }
+    recordPhase(
+      "claim",
+      "passed",
+      `Claimed agent run for attempt ${currentAttempt}.`,
+      claimStart
+    );
+
+    const workflowStart = now();
+    const workflow = loadWorkflowFromRepoRoot();
+    if (!workflow.isValid) {
+      recordPhase(
+        "workflow_validation",
+        "failed",
+        "WORKFLOW.md is invalid",
+        workflowStart,
+        workflow.errors
+      );
+      stepDb("failed", "released", "agent_run_failed_dry_run");
+      const result: AgentRunDryRunExecutionResult = {
+        generatedAt: now(),
+        agentRunId: id,
+        startedFromStatus,
+        finalStatus: currentStatus,
+        finalClaimState: currentClaim,
+        attempt: currentAttempt,
+        totalDurationMs: now() - startedAt,
+        phases,
+        workflow: {
+          isValid: workflow.isValid,
+          errorCount: workflow.errors.length,
+          warningCount: workflow.warnings.length,
+          repo: workflow.config.tracker.repo,
+        },
+        workspace: {
+          status: "failed",
+          workspacePath: "",
+          branchName: "",
+          blockReasons: ["workflow validation failed; skipped workspace check"],
+        },
+        policy: {
+          riskClass: existing.riskClass,
+          actionPolicy: existing.actionPolicy,
+          realExecutionAllowed: false,
+          blockReasons: ["dry-run only; no real execution path enabled"],
+        },
+        retryPlan: null,
+        rationale: [...rationale, ...phases.map((p) => p.detail)],
+        realExecutionPerformed: false,
+      };
+      return c.json({ data: result });
+    }
+    recordPhase(
+      "workflow_validation",
+      "passed",
+      `WORKFLOW.md validated (source=${workflow.source}); ${workflow.warnings.length} warnings.`,
+      workflowStart
+    );
+
+    const workspaceStart = now();
+    const repo = existing.repo ?? workflow.config.tracker.repo ?? "";
+    let workspaceStatus: WorkspacePreparationStatus = "ready_to_create";
+    let workspacePath = "";
+    let branchName = "";
+    let workspaceBlockReasons: string[] = [];
+    if (!repo) {
+      workspaceStatus = "blocked_safety";
+      workspaceBlockReasons = ["agent run has no repo and workflow has no tracker.repo"];
+      recordPhase(
+        "workspace_check",
+        "failed",
+        "no repo to derive workspace path",
+        workspaceStart,
+        workspaceBlockReasons
+      );
+    } else {
+      const workItem = existing.workItemId
+        ? (db
+            .select()
+            .from(cbWorkItems)
+            .where(eq(cbWorkItems.id, existing.workItemId))
+            .get() as typeof cbWorkItems.$inferSelect | undefined)
+        : undefined;
+      const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
+      const workItemKey = externalIdMatch
+        ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
+        : workItem?.externalId ?? existing.workItemId ?? existing.id;
+      const { location, safetyError } = resolveWorkspaceLocation({
+        repo,
+        workItemKey,
+      });
+      workspacePath = location.workspacePath;
+      branchName = location.branchName;
+      if (safetyError) {
+        workspaceStatus = "blocked_invalid_path";
+        workspaceBlockReasons = [safetyError];
+        recordPhase(
+          "workspace_check",
+          "failed",
+          "workspace path safety check failed",
+          workspaceStart,
+          workspaceBlockReasons
+        );
+      } else if (existsSync(workspacePath) && workspaceIsDirty(workspacePath)) {
+        workspaceStatus = "blocked_dirty";
+        workspaceBlockReasons = ["existing workspace has uncommitted changes"];
+        recordPhase(
+          "workspace_check",
+          "failed",
+          "existing workspace is dirty",
+          workspaceStart,
+          workspaceBlockReasons
+        );
+      } else if (existsSync(workspacePath)) {
+        workspaceStatus = "reused";
+        recordPhase(
+          "workspace_check",
+          "passed",
+          `workspace exists at ${workspacePath} and is clean`,
+          workspaceStart
+        );
+      } else {
+        workspaceStatus = "ready_to_create";
+        recordPhase(
+          "workspace_check",
+          "passed",
+          `workspace path ${workspacePath} ready to be created on first real run`,
+          workspaceStart
+        );
+      }
+    }
+
+    const policyStart = now();
+    const policyBlockReasons: string[] = [];
+    if (existing.riskClass === "C") {
+      policyBlockReasons.push("Risk C requested action is blocked by Writeback Policy Matrix v0");
+    }
+    if (existing.riskClass === "unknown") {
+      policyBlockReasons.push("riskClass=unknown; classify before any real execution");
+    }
+    policyBlockReasons.push("dry-run executor never launches a real coding agent in v1");
+    recordPhase(
+      "policy_check",
+      policyBlockReasons.length > 1 ? "passed" : "passed",
+      `riskClass=${existing.riskClass}, actionPolicy=${existing.actionPolicy}; v1 enforces dry-run only.`,
+      policyStart
+    );
+
+    const simulationStart = now();
+    const forcedFailure = body.forceFailure === true;
+    const forcedBlocker = body.forceBlocker ?? null;
+    const workspaceBlocking =
+      body.treatWorkspaceBlockAsFailure === true &&
+      (workspaceStatus === "blocked_dirty" ||
+        workspaceStatus === "blocked_invalid_path" ||
+        workspaceStatus === "blocked_safety");
+    let finalStatus: AgentRunStatus;
+    let finalClaim: AgentRunClaimState;
+    let event: string;
+    if (forcedFailure) {
+      finalStatus = "failed";
+      finalClaim = "released";
+      event = "agent_run_dry_run_forced_failure";
+      recordPhase(
+        "simulation",
+        "failed",
+        "forceFailure=true requested by caller",
+        simulationStart
+      );
+    } else if (forcedBlocker) {
+      finalStatus = "blocked";
+      finalClaim = "claimed";
+      event = "agent_run_dry_run_blocked";
+      recordPhase(
+        "simulation",
+        "skipped",
+        `simulated blocker: ${forcedBlocker}`,
+        simulationStart,
+        [forcedBlocker]
+      );
+    } else if (workspaceBlocking) {
+      finalStatus = "blocked";
+      finalClaim = "claimed";
+      event = "agent_run_dry_run_workspace_blocked";
+      recordPhase(
+        "simulation",
+        "skipped",
+        "workspace blocking; halted dry-run before simulated turns",
+        simulationStart,
+        workspaceBlockReasons
+      );
+    } else {
+      finalStatus = "completed";
+      finalClaim = "released";
+      event = "agent_run_dry_run_completed";
+      recordPhase(
+        "simulation",
+        "passed",
+        "no real subprocess started; dry-run flow finished cleanly",
+        simulationStart
+      );
+    }
+
+    if (currentStatus !== "running" && finalStatus !== "blocked") {
+      stepDb("running", "running", "agent_run_dry_run_running");
+    }
+
+    if (finalStatus === "completed" || finalStatus === "failed") {
+      stepDb(finalStatus, finalClaim, event);
+    } else if (finalStatus === "blocked") {
+      stepDb(finalStatus, finalClaim, event);
+    }
+
+    let retryPlan: AgentRunDryRunRetryPlan | null = null;
+    const succeededClean = finalStatus === "completed";
+    const shouldPlanRetry =
+      finalStatus === "failed" || finalStatus === "blocked" || succeededClean;
+    if (shouldPlanRetry) {
+      const delay = computeAgentRunRetryDelay(
+        currentAttempt,
+        workflow.config.agent.maxRetryBackoffMs,
+        succeededClean
+      );
+      retryPlan = {
+        attempt: currentAttempt + 1,
+        delayMs: delay,
+        scheduledAt: now() + delay,
+        rationale: succeededClean
+          ? "Symphony continuation tick after a clean run; verify the issue is still active before re-dispatch."
+          : `Symphony exponential backoff: min(10000 * 2^(attempt-1), max_retry_backoff_ms=${workflow.config.agent.maxRetryBackoffMs}).`,
+      };
+    }
+
+    const result: AgentRunDryRunExecutionResult = {
+      generatedAt: now(),
+      agentRunId: id,
+      startedFromStatus,
+      finalStatus: currentStatus,
+      finalClaimState: currentClaim,
+      attempt: currentAttempt,
+      totalDurationMs: now() - startedAt,
+      phases,
+      workflow: {
+        isValid: workflow.isValid,
+        errorCount: workflow.errors.length,
+        warningCount: workflow.warnings.length,
+        repo: workflow.config.tracker.repo,
+      },
+      workspace: {
+        status: workspaceStatus,
+        workspacePath,
+        branchName,
+        blockReasons: workspaceBlockReasons,
+      },
+      policy: {
+        riskClass: existing.riskClass,
+        actionPolicy: existing.actionPolicy,
+        realExecutionAllowed: false,
+        blockReasons: policyBlockReasons,
+      },
+      retryPlan,
+      rationale: [...rationale, ...phases.map((p) => `${p.name}: ${p.detail}`)],
+      realExecutionPerformed: false,
+    };
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_dry_run_failed", message }, 400);
   }
 });
 
