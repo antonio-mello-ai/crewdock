@@ -2774,6 +2774,16 @@ Issues abertas:
 - `#97 AIOS-RUN-27: Internal WorkItem status update path v5`;
 - `#98 AIOS-RUN-28: Successful controlled auto-dispatch dogfood pack v5`.
 
+Producao apos sync:
+
+- sync GitHub Issues `state=open` retornou `issuesSeen=5`,
+  `workItemsCreated=5`, `lastIssueNumbers=[98,97,96,95,94]`;
+- `GET /api/company-brain/workflow-loader` mostra
+  `activeMilestone=AIOS Agent Execution v5` e `isValid=true`;
+- `GET /api/company-brain/next-work` recomenda
+  `#94 AIOS-RUN-24: Auto-dispatch config clarity and policy hints v5`
+  com `candidatesConsidered=5`.
+
 Direcional da v5: hardening operacional do controlled auto-dispatch. A v5
 fecha as 5 friccoes do dogfood v4: semantica de allowlists, identidade estavel
 de WorkflowBlueprint, review UX de cleanup, update interno auditado de WorkItem

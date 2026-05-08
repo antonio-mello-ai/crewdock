@@ -57,8 +57,16 @@ Stop before:
 
 Before opening v5, production `next-work` was empty after v4 closure.
 
-After opening v5 and syncing GitHub Issues, production should recommend
-`#94 AIOS-RUN-24: Auto-dispatch config clarity and policy hints v5`.
+After opening v5, updating CT165 to `75f4ec4` and syncing GitHub Issues:
+
+- sync `state=open` returned `issuesSeen=5`;
+- `workItemsCreated=5`;
+- `lastIssueNumbers=[98,97,96,95,94]`;
+- `GET /api/company-brain/workflow-loader` returned
+  `activeMilestone=AIOS Agent Execution v5`, `isValid=true`;
+- `GET /api/company-brain/next-work` recommends
+  `#94 AIOS-RUN-24: Auto-dispatch config clarity and policy hints v5`
+  with `candidatesConsidered=5`.
 
 ## Next Handoff Prompt
 
@@ -70,7 +78,7 @@ Estado:
 - Nova milestone tem issues #94 a #98.
 - WORKFLOW.md aponta para AIOS Agent Execution v5.
 - Company Brain já foi sincronizado em produção.
-- Next Work deve recomendar #94 AIOS-RUN-24: Auto-dispatch config clarity and policy hints v5.
+- Next Work recomenda #94 AIOS-RUN-24: Auto-dispatch config clarity and policy hints v5.
 - Comece de origin/main atualizado.
 
 Siga em modo contínuo issue-by-issue:
