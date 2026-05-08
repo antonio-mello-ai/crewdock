@@ -2374,6 +2374,22 @@ export interface WorkflowBlueprint {
   updatedAt: number;
 }
 
+export interface UpdateWorkItemStatusRequest {
+  actor: string;
+  rationale: string;
+  status: WorkItemStatus;
+  blockedReason?: string | null;
+  reviewNote?: string | null;
+}
+
+export interface UpdateWorkItemStatusResponse {
+  generatedAt: number;
+  workItem: WorkItem;
+  previousStatus: WorkItemStatus;
+  internalOverride: boolean;
+  artifactId: string;
+}
+
 export interface CreateWorkflowBlueprintRequest {
   /**
    * Optional stable client-supplied identity. When provided, becomes the

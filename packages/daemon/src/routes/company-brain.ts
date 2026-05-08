@@ -105,6 +105,8 @@ import type {
   OperatingLoopReconciliationOutcome,
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
+  UpdateWorkItemStatusRequest,
+  UpdateWorkItemStatusResponse,
   CreateAgentRunRequest,
   UpdateAgentRunRequest,
   DecomposeOperatingGoalRequest,
@@ -22259,6 +22261,162 @@ app.post("/work-items", async (c) => {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
   }
+});
+
+const ALLOWED_WORK_ITEM_STATUS_VALUES: ReadonlyArray<WorkItemStatus> = [
+  "new",
+  "triage",
+  "planned",
+  "in_progress",
+  "review",
+  "blocked",
+  "done",
+  "cancelled",
+];
+
+app.patch("/work-items/:id/status", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req
+    .json<UpdateWorkItemStatusRequest>()
+    .catch(() => ({}))) as UpdateWorkItemStatusRequest;
+  if (!body.actor || !body.actor.trim()) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  if (!body.rationale || !body.rationale.trim()) {
+    return c.json(
+      { error: "validation", message: "rationale is required" },
+      400
+    );
+  }
+  if (!body.status || !ALLOWED_WORK_ITEM_STATUS_VALUES.includes(body.status)) {
+    return c.json(
+      {
+        error: "validation",
+        message: `status must be one of [${ALLOWED_WORK_ITEM_STATUS_VALUES.join(",")}]`,
+      },
+      400
+    );
+  }
+  if (body.status === "blocked" && !body.blockedReason?.trim()) {
+    return c.json(
+      {
+        error: "validation",
+        message: "blockedReason is required when status=blocked",
+      },
+      400
+    );
+  }
+
+  const db = getDb();
+  const existing = db
+    .select()
+    .from(cbWorkItems)
+    .where(eq(cbWorkItems.id, id))
+    .get() as WorkItem | undefined;
+  if (!existing) {
+    return c.json(
+      { error: "not_found", message: `work item ${id} not found` },
+      404
+    );
+  }
+
+  const previousStatus = existing.status;
+  const timestamp = now();
+  const internalOverride =
+    existing.externalProvider === "github" && existing.externalId
+      ? true
+      : false;
+
+  // Resolve or create the synthetic source for internal status updates so
+  // the audit Artifact has a stable provenance pointer.
+  const sourceArea: CompanyBrainArea = existing.area;
+  const sourceVisibility: Visibility = existing.visibility ?? "internal";
+  const auditSourceId = ensureSessionResultsSource(
+    sourceArea,
+    sourceVisibility,
+    timestamp
+  );
+
+  const artifactId = nanoid(12);
+  const rawRef = `aios://work-item-status-update/${id}/${timestamp}`;
+  const auditTitle = `WorkItem status: ${previousStatus} -> ${body.status} (${existing.title.slice(0, 80)})`;
+  const auditMetadata: Record<string, unknown> = {
+    workItemId: id,
+    previousStatus,
+    newStatus: body.status,
+    actor: body.actor.trim(),
+    rationale: body.rationale.trim(),
+    internalOverride,
+    blockedReason: body.blockedReason ?? null,
+    reviewNote: body.reviewNote ?? null,
+  };
+  if (internalOverride) {
+    auditMetadata.externalRef = existing.externalId;
+    auditMetadata.note =
+      "Internal-only status override; GitHub issue was NOT mutated. Sync GitHub Issues to reconcile if needed.";
+  }
+  const auditRow: Artifact = {
+    id: artifactId,
+    sourceId: auditSourceId,
+    artifactType: "session_result",
+    area: existing.area,
+    title: auditTitle,
+    summary: `Internal status update for WorkItem ${id} by ${body.actor.trim()}: ${body.rationale.trim().slice(0, 200)}`,
+    contentRef: null,
+    rawRef,
+    author: body.actor.trim(),
+    occurredAt: timestamp,
+    ingestedAt: timestamp,
+    hash: createHash("sha256")
+      .update(JSON.stringify({ id, previousStatus, newStatus: body.status, timestamp }))
+      .digest("hex"),
+    visibility: sourceVisibility,
+    provenance: {
+      sourceId: auditSourceId,
+      rawRef,
+      artifactId,
+      createdFrom: "company_brain:work_item_status_update",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "approved",
+      visibility: sourceVisibility,
+      notes: `actor=${body.actor.trim()}; status=${previousStatus}->${body.status}; internalOverride=${internalOverride}`,
+    },
+    humanReviewStatus: "approved",
+    confidence: 1,
+    metadata: auditMetadata,
+  };
+  db.insert(cbArtifacts).values(auditRow as never).run();
+
+  // Update the WorkItem.
+  const updates: Record<string, unknown> = {
+    status: body.status,
+    updatedAt: timestamp,
+  };
+  if (body.status === "blocked") {
+    updates.blockedReason = body.blockedReason!.trim();
+  } else if (previousStatus === ("blocked" as WorkItemStatus)) {
+    updates.blockedReason = null;
+  }
+  db.update(cbWorkItems)
+    .set(updates as never)
+    .where(eq(cbWorkItems.id, id))
+    .run();
+
+  const refreshed = db
+    .select()
+    .from(cbWorkItems)
+    .where(eq(cbWorkItems.id, id))
+    .get() as WorkItem;
+
+  const response: UpdateWorkItemStatusResponse = {
+    generatedAt: timestamp,
+    workItem: refreshed,
+    previousStatus,
+    internalOverride,
+    artifactId,
+  };
+  return c.json({ data: response });
 });
 
 app.post("/extractors/artifact-insights", async (c) => {

@@ -1647,6 +1647,42 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_company_brain_work_item_status",
+  {
+    title: "Update Company Brain WorkItem status (internal, audited)",
+    description:
+      "Update a WorkItem.status with actor + rationale. Creates an audit Artifact (session_result type) recording previous->new status, internalOverride flag (when WorkItem is GitHub-sourced), and rationale. Does NOT mutate GitHub issues — internal-only override.",
+    inputSchema: {
+      workItemId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      status: z.enum([
+        "new",
+        "triage",
+        "planned",
+        "in_progress",
+        "review",
+        "blocked",
+        "done",
+        "cancelled",
+      ]),
+      blockedReason: z.string().optional(),
+      reviewNote: z.string().optional(),
+    },
+  },
+  async ({ workItemId, ...rest }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/work-items/${workItemId}/status`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(rest),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "promote_company_brain_agent_run_suggestion",
   {
     title: "Promote Company Brain AgentRun suggestion",
