@@ -1659,6 +1659,33 @@ server.registerTool(
 );
 
 server.registerTool(
+  "chain_company_brain_agent_run_github_pr_proposal",
+  {
+    title: "Chain Company Brain AgentRun to GitHub PR proposal",
+    description:
+      "For a completed AgentRun, collect/persist its patch packet and create or reuse a preview-only github_pr_create ExternalActionProposal. Idempotent per AgentRun patch signature; does not push, open PRs, merge or deploy.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      titleOverride: z.string().optional(),
+      bodyOverride: z.string().optional(),
+      requireCompleted: z.boolean().optional(),
+    },
+  },
+  async ({ agentRunId, ...rest }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/github-pr-proposal/chain`,
+      {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_agent_run_patch_packet",
   {
     title: "Get Company Brain AgentRun patch/validation packet",

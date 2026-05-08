@@ -103,6 +103,9 @@ import type {
   AgentRunPatchPacketCommit,
   AgentRunPatchPacketValidation,
   AgentRunReconciliationFinding,
+  AgentRunPrProposalChainRequest,
+  AgentRunPrProposalChainResponse,
+  AgentRunPrProposalProvenanceLinks,
   CollectAgentRunPatchPacketResponse,
   EvaluateAutoDispatchEligibilityRequest,
   ExecuteGitHubPrProposalRequest,
@@ -12642,11 +12645,71 @@ function collectAgentRunPatchPacket(args: {
   };
 }
 
+function computeAgentRunPatchPacketSignature(args: {
+  agentRun: typeof cbAgentRuns.$inferSelect;
+  packet: AgentRunPatchPacket;
+  repo?: string | null;
+  sourceBranch?: string | null;
+  baseBranch?: string | null;
+}): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        agentRunId: args.agentRun.id,
+        repo: args.repo ?? args.agentRun.repo ?? null,
+        sourceBranch: args.sourceBranch ?? args.packet.branch ?? args.agentRun.branch ?? null,
+        baseBranch: args.baseBranch ?? args.packet.baseRef ?? null,
+        changedFiles: args.packet.changedFiles,
+        commits: args.packet.commits.map((c) => c.sha),
+      })
+    )
+    .digest("hex");
+}
+
+function findExistingPatchPacketArtifact(args: {
+  agentRunId: string;
+  packetSignature: string;
+}): Artifact | null {
+  const rows = getDb()
+    .select()
+    .from(cbArtifacts)
+    .orderBy(desc(cbArtifacts.ingestedAt))
+    .limit(500)
+    .all() as Artifact[];
+  return (
+    rows.find((artifact) => {
+      const metadata = artifact.metadata as Record<string, unknown> | null;
+      if (!metadata || metadata.kind !== "agent_run_patch_packet") return false;
+      if (metadata.packetSignature === args.packetSignature) return true;
+      const packet = metadata.packet as AgentRunPatchPacket | undefined;
+      return (
+        packet?.agentRunId === args.agentRunId &&
+        metadata.packetSignature === args.packetSignature
+      );
+    }) ?? null
+  );
+}
+
 function persistAgentRunPatchPacket(args: {
   packet: AgentRunPatchPacket;
   agentRun: typeof cbAgentRuns.$inferSelect;
-}): { artifactId: string } {
+  packetSignature?: string;
+}): { artifactId: string; reused: boolean; packetSignature: string } {
   const db = getDb();
+  const packetSignature =
+    args.packetSignature ??
+    computeAgentRunPatchPacketSignature({
+      agentRun: args.agentRun,
+      packet: args.packet,
+    });
+  const existing = findExistingPatchPacketArtifact({
+    agentRunId: args.agentRun.id,
+    packetSignature,
+  });
+  if (existing) {
+    args.packet.artifactId = existing.id;
+    return { artifactId: existing.id, reused: true, packetSignature };
+  }
   const timestamp = args.packet.generatedAt;
   const sourceArea = args.agentRun.area;
   const sourceVisibility = args.agentRun.visibility;
@@ -12656,6 +12719,7 @@ function persistAgentRunPatchPacket(args: {
     timestamp
   );
   const artifactId = nanoid(12);
+  args.packet.artifactId = artifactId;
   const rawRef = `aios://agent-run-patch-packet/${args.agentRun.id}/${timestamp}`;
   const titleParts = [
     `AgentRun ${args.agentRun.id} patch packet`,
@@ -12692,7 +12756,7 @@ function persistAgentRunPatchPacket(args: {
     occurredAt: timestamp,
     ingestedAt: timestamp,
     hash: createHash("sha256")
-      .update(JSON.stringify(args.packet))
+      .update(JSON.stringify({ ...args.packet, generatedAt: null }))
       .digest("hex"),
     visibility: sourceVisibility,
     provenance: {
@@ -12710,11 +12774,13 @@ function persistAgentRunPatchPacket(args: {
     confidence: 1,
     metadata: {
       kind: "agent_run_patch_packet",
+      agentRunId: args.agentRun.id,
+      packetSignature,
       packet: args.packet,
     },
   };
   db.insert(cbArtifacts).values(artifactRow as never).run();
-  return { artifactId };
+  return { artifactId, reused: false, packetSignature };
 }
 
 function buildWorkspacePreparationResult(args: {
@@ -13016,6 +13082,37 @@ const RUNNER_PROFILE_REGISTRY: RunnerProfile[] = [
       format: "noop",
       expectedExitCodes: [0],
       description: "Empty stdout, exit 0.",
+    },
+    defaultEnabled: true,
+    category: "dogfood",
+  },
+  {
+    id: "dogfood-empty-commit",
+    title: "Dogfood empty commit",
+    description:
+      "Creates a local empty git commit in the prepared AgentRun worktree. It is used to prove the auto-dispatch -> patch packet -> PR proposal chain without editing product code or calling external services.",
+    command: "git",
+    args: [
+      "-c",
+      "user.name=AIOS Dogfood",
+      "-c",
+      "user.email=aios@example.invalid",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "aios dogfood empty commit",
+    ],
+    capabilities: ["git_commit"],
+    authMode: "none",
+    allowedRepos: ["antonio-mello-ai/crewdock"],
+    allowedAreas: ["development", "platform"],
+    maxConcurrency: 1,
+    riskCeiling: "A",
+    outputContract: {
+      format: "fallback",
+      expectedExitCodes: [0],
+      description:
+        "A local empty commit ahead of the base branch; suitable for PR proposal dogfood, never pushes by itself.",
     },
     defaultEnabled: true,
     category: "dogfood",
@@ -14001,6 +14098,15 @@ function githubPrWritebackRepoAllowlist(): string[] {
   return csvEnv(process.env.AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST);
 }
 
+function autoDispatchPrProposalEnabled(): boolean {
+  return process.env.AIOS_AGENT_AUTODISPATCH_PR_PROPOSAL_ENABLED === "true";
+}
+
+function autoDispatchPrProposalRepoAllowlist(): string[] {
+  const explicit = csvEnv(process.env.AIOS_AGENT_AUTODISPATCH_PR_PROPOSAL_REPO_ALLOWLIST);
+  return explicit.length ? explicit : csvEnv(process.env.AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST);
+}
+
 const AIOS_PR_MARKER_PREFIX = "<!-- aios:proposalId=";
 
 function buildAiosPrMarker(args: {
@@ -14829,94 +14935,104 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
   return c.json({ data: response }, 201);
 });
 
-app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
+type BuildGitHubPrProposalPreviewResult =
+  | {
+      ok: true;
+      response: PreviewGitHubPrProposalResponse;
+      packet: AgentRunPatchPacket;
+      workItem: WorkItem | null;
+      suggestion: AgentRunSuggestion | null;
+      provenanceLinks: AgentRunPrProposalProvenanceLinks;
+    }
+  | {
+      ok: false;
+      statusCode: 400 | 404;
+      error: string;
+      message: string;
+      packet: AgentRunPatchPacket | null;
+      workItem: WorkItem | null;
+      suggestion: AgentRunSuggestion | null;
+      provenanceLinks: AgentRunPrProposalProvenanceLinks;
+    };
+
+function findAgentRunSuggestionForRun(run: typeof cbAgentRuns.$inferSelect): AgentRunSuggestion | null {
   const db = getDb();
-  const id = c.req.param("id");
-  const body = (await c.req.json().catch(() => ({}))) as {
-    actor?: string;
-    rationale?: string;
-    titleOverride?: string;
-    bodyOverride?: string;
-  };
-  const actor = body.actor?.trim();
-  if (!actor) {
-    return c.json({ error: "validation", message: "actor is required" }, 400);
+  const metadata = run.metadata as Record<string, unknown> | null;
+  const metadataSuggestionId =
+    typeof metadata?.promotedFromSuggestionId === "string"
+      ? metadata.promotedFromSuggestionId
+      : null;
+  if (metadataSuggestionId) {
+    const byId = db
+      .select()
+      .from(cbAgentRunSuggestions)
+      .where(eq(cbAgentRunSuggestions.id, metadataSuggestionId))
+      .get() as AgentRunSuggestion | undefined;
+    if (byId) return byId;
   }
-  const run = db
+  return (
+    (db
+      .select()
+      .from(cbAgentRunSuggestions)
+      .where(eq(cbAgentRunSuggestions.promotedAgentRunId, run.id))
+      .get() as AgentRunSuggestion | undefined) ?? null
+  );
+}
+
+function appendAgentRunPrProposalAudit(args: {
+  agentRunId: string;
+  actor: string;
+  event: string;
+  note: string | null;
+  metadata: Record<string, unknown>;
+}) {
+  const db = getDb();
+  const refreshed = db
     .select()
     .from(cbAgentRuns)
-    .where(eq(cbAgentRuns.id, id))
-    .get() as typeof cbAgentRuns.$inferSelect | undefined;
-  if (!run) {
-    return c.json({ error: "not_found", message: "agent run not found" }, 404);
-  }
-  if (!run.repo) {
-    return c.json(
-      {
-        error: "validation",
-        message: "AgentRun.repo is missing; cannot build PR proposal",
-      },
-      400
-    );
-  }
-  if (!run.branch) {
-    return c.json(
-      {
-        error: "validation",
-        message: "AgentRun.branch is missing; cannot build PR proposal",
-      },
-      400
-    );
-  }
+    .where(eq(cbAgentRuns.id, args.agentRunId))
+    .get() as AgentRun | undefined;
+  if (!refreshed) return;
+  const alreadyAudited = (refreshed.auditTrail ?? []).some(
+    (entry) =>
+      entry.event === args.event &&
+      entry.metadata?.proposalId === args.metadata.proposalId &&
+      entry.metadata?.patchPacketSignature === args.metadata.patchPacketSignature
+  );
+  if (alreadyAudited) return;
+  const auditTrail = appendAgentRunAuditEntry(refreshed.auditTrail ?? [], {
+    actor: args.actor,
+    event: args.event,
+    note: args.note,
+    metadata: args.metadata,
+  });
+  db.update(cbAgentRuns)
+    .set({ auditTrail, updatedAt: now() } as never)
+    .where(eq(cbAgentRuns.id, args.agentRunId))
+    .run();
+}
 
-  // Collect a fresh patch packet (do not persist a new artifact — reuse
-  // the most recent persisted one if it matches the current signature).
-  const packet = collectAgentRunPatchPacket({ agentRun: run });
-  if (packet.status !== "clean" && packet.status !== "dirty") {
-    return c.json(
-      {
-        error: "blocked",
-        message: `patch packet status=${packet.status}; cannot build PR proposal`,
-        data: { packet },
-      },
-      400
-    );
-  }
-  if (
-    packet.diffStat.filesChanged === 0 &&
-    packet.changedFiles.length === 0 &&
-    packet.commits.length === 0
-  ) {
-    return c.json(
-      {
-        error: "blocked",
-        message: "patch packet has no diff and no commits; nothing to propose",
-        data: { packet },
-      },
-      400
-    );
-  }
-
-  const workflow = loadWorkflowFromRepoRoot();
-  const baseBranch = packet.baseRef ?? workflow.config.workspace.baseBranch ?? "main";
-  const sourceBranch = run.branch;
-  const repo = run.repo;
-
-  // Build idempotency key from packet signature so re-running preview
-  // for the same workspace state returns the same proposal.
-  const packetSignature = createHash("sha256")
-    .update(
-      JSON.stringify({
-        agentRunId: run.id,
-        repo,
-        sourceBranch,
-        baseBranch,
-        changedFiles: packet.changedFiles,
-        commits: packet.commits.map((c) => c.sha),
-      })
-    )
-    .digest("hex");
-  const idempotencyKey = `aios-pr-proposal:${run.id}:${packetSignature.slice(0, 16)}`;
+function buildGitHubPrProposalPreviewFromAgentRun(args: {
+  run: typeof cbAgentRuns.$inferSelect;
+  actor: string;
+  rationale?: string | null;
+  titleOverride?: string | null;
+  bodyOverride?: string | null;
+  requireCompleted?: boolean;
+  createdFrom: string;
+}): BuildGitHubPrProposalPreviewResult {
+  const db = getDb();
+  const run = args.run;
+  const suggestion = findAgentRunSuggestionForRun(run);
+  const baseLinks: AgentRunPrProposalProvenanceLinks = {
+    workItemId: run.workItemId,
+    suggestionId: suggestion?.id ?? null,
+    agentRunId: run.id,
+    patchPacketArtifactId: null,
+    proposalId: null,
+    proposalIdempotencyKey: null,
+    patchPacketSignature: null,
+  };
 
   const workItem = run.workItemId
     ? ((db
@@ -14926,8 +15042,101 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
         .get() as WorkItem | undefined) ?? null)
     : null;
 
+  if (args.requireCompleted && run.status !== "completed") {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "blocked",
+      message: `AgentRun.status=${run.status}; expected completed before PR proposal chain`,
+      packet: null,
+      workItem,
+      suggestion,
+      provenanceLinks: baseLinks,
+    };
+  }
+  if (!run.repo) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "validation",
+      message: "AgentRun.repo is missing; cannot build PR proposal",
+      packet: null,
+      workItem,
+      suggestion,
+      provenanceLinks: baseLinks,
+    };
+  }
+  if (!run.branch) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "validation",
+      message: "AgentRun.branch is missing; cannot build PR proposal",
+      packet: null,
+      workItem,
+      suggestion,
+      provenanceLinks: baseLinks,
+    };
+  }
+
+  const packet = collectAgentRunPatchPacket({ agentRun: run });
+  if (packet.status !== "clean" && packet.status !== "dirty") {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "blocked",
+      message: `patch packet status=${packet.status}; cannot build PR proposal`,
+      packet,
+      workItem,
+      suggestion,
+      provenanceLinks: baseLinks,
+    };
+  }
+  if (
+    packet.diffStat.filesChanged === 0 &&
+    packet.changedFiles.length === 0 &&
+    packet.commits.length === 0
+  ) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "blocked",
+      message: "patch packet has no diff and no commits; nothing to propose",
+      packet,
+      workItem,
+      suggestion,
+      provenanceLinks: baseLinks,
+    };
+  }
+
+  const workflow = loadWorkflowFromRepoRoot();
+  const baseBranch = packet.baseRef ?? workflow.config.workspace.baseBranch ?? "main";
+  const sourceBranch = run.branch;
+  const repo = run.repo;
+  const packetSignature = computeAgentRunPatchPacketSignature({
+    agentRun: run,
+    packet,
+    repo,
+    sourceBranch,
+    baseBranch,
+  });
+  const persistedPacket = persistAgentRunPatchPacket({
+    packet,
+    agentRun: run,
+    packetSignature,
+  });
+  packet.artifactId = persistedPacket.artifactId;
+  const idempotencyKey = `aios-pr-proposal:${run.id}:${packetSignature.slice(0, 16)}`;
+  const provenanceLinks: AgentRunPrProposalProvenanceLinks = {
+    ...baseLinks,
+    patchPacketArtifactId: persistedPacket.artifactId,
+    proposalId: null,
+    proposalIdempotencyKey: idempotencyKey,
+    patchPacketSignature: packetSignature,
+  };
+
   const titleBase =
-    body.titleOverride?.trim() ||
+    args.titleOverride?.trim() ||
     (workItem ? workItem.title : `AIOS AgentRun ${run.id} proposal`);
   const title = `feat(aios): ${titleBase}`.slice(0, 240);
 
@@ -14939,7 +15148,7 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
     : "(no validations recorded)";
 
   const bodyText =
-    body.bodyOverride?.trim() ||
+    args.bodyOverride?.trim() ||
     [
       `## Summary`,
       "",
@@ -14947,10 +15156,16 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
       "",
       "Authored by AIOS Agent Run.",
       "",
+      `### Provenance`,
+      "",
+      `- workItemId: ${workItem?.id ?? "-"}`,
+      `- suggestionId: ${suggestion?.id ?? "-"}`,
+      `- agentRunId: ${run.id}`,
+      `- patchPacketArtifactId: ${persistedPacket.artifactId}`,
+      `- patchPacketSignature: ${packetSignature.slice(0, 16)}`,
+      "",
       `### Patch packet`,
       "",
-      `- agentRunId: ${run.id}`,
-      `- workItemId: ${workItem?.id ?? "-"}`,
       `- baseRef: ${baseBranch}`,
       `- changedFiles: ${packet.changedFiles.length} (${packet.changedFiles
         .slice(0, 10)
@@ -14979,7 +15194,7 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
     body: bodyText,
     agentRunId: run.id,
     workItemId: run.workItemId,
-    patchPacketArtifactId: packet.artifactId,
+    patchPacketArtifactId: persistedPacket.artifactId,
     patchPacketSignature: packetSignature,
     changedFileCount: packet.changedFiles.length,
     diffStat: packet.diffStat,
@@ -14992,34 +15207,65 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
     },
   };
 
-  // Idempotency: if a proposal with this idempotencyKey exists, return it.
   const existing = db
     .select()
     .from(cbExternalActionProposals)
     .where(eq(cbExternalActionProposals.idempotencyKey, idempotencyKey))
-    .get();
+    .get() as ExternalActionProposal | undefined;
   if (existing) {
+    const links = {
+      ...provenanceLinks,
+      proposalId: existing.id,
+      proposalIdempotencyKey: existing.idempotencyKey,
+    };
+    appendAgentRunPrProposalAudit({
+      agentRunId: run.id,
+      actor: args.actor,
+      event: "agent_run_pr_proposal_preview_reused",
+      note: args.rationale ?? null,
+      metadata: {
+        createdFrom: args.createdFrom,
+        proposalId: existing.id,
+        idempotencyKey,
+        patchPacketArtifactId: persistedPacket.artifactId,
+        patchPacketSignature: packetSignature,
+        suggestionId: suggestion?.id ?? null,
+      },
+    });
     const response: PreviewGitHubPrProposalResponse = {
       generatedAt: now(),
       proposalId: existing.id,
       alreadyExisted: true,
       payload,
-      proposal: existing as unknown as ExternalActionProposal,
+      proposal: existing,
+      patchPacket: packet,
+      patchPacketArtifactId: persistedPacket.artifactId,
+      provenanceLinks: links,
     };
-    return c.json({ data: response });
+    return {
+      ok: true,
+      response,
+      packet,
+      workItem,
+      suggestion,
+      provenanceLinks: links,
+    };
   }
 
   const timestamp = now();
   const proposalId = nanoid(12);
   const auditEntry = {
     at: timestamp,
-    actor,
+    actor: args.actor,
     event: "external_action_proposal_created" as const,
-    note: body.rationale?.trim() ?? null,
+    note: args.rationale?.trim() ?? null,
     metadata: {
       kind: "github_pr_create",
       idempotencyKey,
       patchPacketSignature: packetSignature,
+      patchPacketArtifactId: persistedPacket.artifactId,
+      suggestionId: suggestion?.id ?? null,
+      createdFrom: args.createdFrom,
     },
   };
   const proposalRow: ExternalActionProposal = {
@@ -15031,7 +15277,7 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
     workflowRunId: null,
     title,
     rationale:
-      body.rationale?.trim() ??
+      args.rationale?.trim() ??
       `Preview-only PR proposal generated from AgentRun ${run.id} patch packet`,
     destinationType: "github",
     destinationRef: `${repo}:${sourceBranch}->${baseBranch}`,
@@ -15043,7 +15289,7 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
       "Preview-only PR proposal. No GitHub push/merge/deploy occurs from this record. Human review required before any executor runs.",
     approvalStatus: "pending",
     approvalRequired: true,
-    requestedBy: actor,
+    requestedBy: args.actor,
     approvedBy: null,
     approvedAt: null,
     rejectionReason: null,
@@ -15058,18 +15304,37 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
     provenance: {
       sourceId: run.sourceId ?? "",
       rawRef: `aios://agent-run/${run.id}`,
-      artifactId: packet.artifactId ?? undefined,
+      artifactId: persistedPacket.artifactId,
       createdFrom: "company_brain:agent_run_pr_proposal_preview",
       confidence: 1,
       extractedAt: timestamp,
       humanReviewStatus: "pending",
       visibility: "internal",
-      notes: `signature=${packetSignature.slice(0, 12)}; agentRunId=${run.id}`,
+      notes: `signature=${packetSignature.slice(0, 12)}; agentRunId=${run.id}; suggestionId=${suggestion?.id ?? "-"}`,
     },
     createdAt: timestamp,
     updatedAt: timestamp,
   };
   db.insert(cbExternalActionProposals).values(proposalRow as never).run();
+  const links = {
+    ...provenanceLinks,
+    proposalId,
+    proposalIdempotencyKey: idempotencyKey,
+  };
+  appendAgentRunPrProposalAudit({
+    agentRunId: run.id,
+    actor: args.actor,
+    event: "agent_run_pr_proposal_previewed",
+    note: args.rationale ?? null,
+    metadata: {
+      createdFrom: args.createdFrom,
+      proposalId,
+      idempotencyKey,
+      patchPacketArtifactId: persistedPacket.artifactId,
+      patchPacketSignature: packetSignature,
+      suggestionId: suggestion?.id ?? null,
+    },
+  });
 
   const response: PreviewGitHubPrProposalResponse = {
     generatedAt: timestamp,
@@ -15077,8 +15342,243 @@ app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
     alreadyExisted: false,
     payload,
     proposal: proposalRow,
+    patchPacket: packet,
+    patchPacketArtifactId: persistedPacket.artifactId,
+    provenanceLinks: links,
   };
-  return c.json({ data: response }, 201);
+  return {
+    ok: true,
+    response,
+    packet,
+    workItem,
+    suggestion,
+    provenanceLinks: links,
+  };
+}
+
+async function maybeCreateAutoDispatchPrProposal(args: {
+  agentRunId: string;
+  actor: string;
+  rationale: string;
+}): Promise<AgentRunPrProposalChainResponse | null> {
+  if (!autoDispatchPrProposalEnabled()) return null;
+  const db = getDb();
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, args.agentRunId))
+    .get() as AgentRun | undefined;
+  if (!run) return null;
+
+  const proposalActor = "operating-loop:auto-pr-proposal";
+  const allowlist = autoDispatchPrProposalRepoAllowlist();
+  const metadata = run.metadata as Record<string, unknown> | null;
+  const suggestion = findAgentRunSuggestionForRun(run);
+  const wasAutoDispatched = (run.auditTrail ?? []).some(
+    (entry) => entry.event === "agent_run_auto_dispatched"
+  ) || (typeof metadata?.promotedBy === "string" &&
+    metadata.promotedBy.startsWith("operating-loop:auto-dispatch")) ||
+    (typeof suggestion?.promotedBy === "string" &&
+      suggestion.promotedBy.startsWith("operating-loop:auto-dispatch"));
+  const blockReasons: string[] = [];
+  if (!wasAutoDispatched) blockReasons.push("agent_run_not_auto_dispatched");
+  if (run.status !== "completed") blockReasons.push(`agent_run_status_${run.status}`);
+  if (run.riskClass !== "A") blockReasons.push(`risk_${run.riskClass}`);
+  if (!run.repo) {
+    blockReasons.push("repo_missing");
+  } else if (!allowlist.includes(run.repo)) {
+    blockReasons.push("repo_not_allowlisted");
+  }
+
+  if (blockReasons.length) {
+    appendAgentRunPrProposalAudit({
+      agentRunId: run.id,
+      actor: proposalActor,
+      event: "agent_run_auto_pr_proposal_blocked",
+      note: args.rationale,
+      metadata: {
+        blockReasons,
+        repo: run.repo,
+        allowlist,
+      },
+    });
+    return null;
+  }
+
+  const result = buildGitHubPrProposalPreviewFromAgentRun({
+    run,
+    actor: proposalActor,
+    rationale: args.rationale,
+    requireCompleted: true,
+    createdFrom: "operating-loop:auto-pr-proposal",
+  });
+  if (!result.ok) {
+    appendAgentRunPrProposalAudit({
+      agentRunId: run.id,
+      actor: proposalActor,
+      event: "agent_run_auto_pr_proposal_blocked",
+      note: result.message,
+      metadata: {
+        error: result.error,
+        message: result.message,
+        provenanceLinks: result.provenanceLinks,
+      },
+    });
+    return {
+      generatedAt: now(),
+      status: "blocked",
+      agentRun: run,
+      workItem: result.workItem,
+      suggestion: result.suggestion,
+      patchPacket: result.packet,
+      patchPacketArtifactId: result.provenanceLinks.patchPacketArtifactId,
+      proposal: null,
+      proposalId: null,
+      alreadyExisted: false,
+      provenanceLinks: result.provenanceLinks,
+      errorSummary: result.message,
+    };
+  }
+  return {
+    generatedAt: now(),
+    status: result.response.alreadyExisted ? "reused" : "created",
+    agentRun: run,
+    workItem: result.workItem,
+    suggestion: result.suggestion,
+    patchPacket: result.packet,
+    patchPacketArtifactId: result.response.patchPacketArtifactId ?? null,
+    proposal: result.response.proposal,
+    proposalId: result.response.proposalId,
+    alreadyExisted: result.response.alreadyExisted,
+    provenanceLinks: result.provenanceLinks,
+    errorSummary: null,
+  };
+}
+
+app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    actor?: string;
+    rationale?: string;
+    titleOverride?: string;
+    bodyOverride?: string;
+  };
+  const actor = body.actor?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const result = buildGitHubPrProposalPreviewFromAgentRun({
+    run,
+    actor,
+    rationale: body.rationale ?? null,
+    titleOverride: body.titleOverride ?? null,
+    bodyOverride: body.bodyOverride ?? null,
+    requireCompleted: false,
+    createdFrom: "api:agent_run_github_pr_proposal_preview",
+  });
+  if (!result.ok) {
+    return c.json(
+      {
+        error: result.error,
+        message: result.message,
+        data: {
+          packet: result.packet,
+          provenanceLinks: result.provenanceLinks,
+        },
+      },
+      result.statusCode
+    );
+  }
+  return c.json(
+    { data: result.response },
+    result.response.alreadyExisted ? 200 : 201
+  );
+});
+
+app.post("/agent-runs/:id/github-pr-proposal/chain", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const body = (await c.req
+    .json<AgentRunPrProposalChainRequest>()
+    .catch(() => ({}))) as AgentRunPrProposalChainRequest;
+  const actor = body.actor?.trim();
+  const rationale = body.rationale?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  if (!rationale) {
+    return c.json({ error: "validation", message: "rationale is required" }, 400);
+  }
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const result = buildGitHubPrProposalPreviewFromAgentRun({
+    run,
+    actor,
+    rationale,
+    titleOverride: body.titleOverride ?? null,
+    bodyOverride: body.bodyOverride ?? null,
+    requireCompleted: body.requireCompleted !== false,
+    createdFrom: "api:agent_run_pr_proposal_chain",
+  });
+  if (!result.ok) {
+    const response: AgentRunPrProposalChainResponse = {
+      generatedAt: now(),
+      status: "blocked",
+      agentRun: run as AgentRun,
+      workItem: result.workItem,
+      suggestion: result.suggestion,
+      patchPacket: result.packet,
+      patchPacketArtifactId: result.provenanceLinks.patchPacketArtifactId,
+      proposal: null,
+      proposalId: null,
+      alreadyExisted: false,
+      provenanceLinks: result.provenanceLinks,
+      errorSummary: result.message,
+    };
+    return c.json(
+      {
+        error: result.error,
+        message: result.message,
+        data: response,
+      },
+      result.statusCode
+    );
+  }
+  const refreshedRun = (db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as AgentRun | undefined) ?? (run as AgentRun);
+  const response: AgentRunPrProposalChainResponse = {
+    generatedAt: now(),
+    status: result.response.alreadyExisted ? "reused" : "created",
+    agentRun: refreshedRun,
+    workItem: result.workItem,
+    suggestion: result.suggestion,
+    patchPacket: result.packet,
+    patchPacketArtifactId: result.response.patchPacketArtifactId ?? null,
+    proposal: result.response.proposal,
+    proposalId: result.response.proposalId,
+    alreadyExisted: result.response.alreadyExisted,
+    provenanceLinks: result.provenanceLinks,
+    errorSummary: null,
+  };
+  return c.json({ data: response }, result.response.alreadyExisted ? 200 : 201);
 });
 
 app.get("/runner-profiles", (c) => {
@@ -15992,23 +16492,35 @@ function startAgentRunSubprocess(entry: Omit<AgentRunProcessEntry, "child" | "st
   }
 
   const logStream = createWriteStream(entry.logPath, { flags: "a" });
+  let logStreamEnded = false;
+  logStream.on("error", (err) => {
+    console.error("[company-brain] AgentRun log stream error", err);
+  });
+  const safeLogWrite = (chunk: string | Buffer) => {
+    if (logStreamEnded || logStream.destroyed || !logStream.writable) return;
+    try {
+      logStream.write(chunk);
+    } catch {
+      // best-effort log capture; runner lifecycle must not crash on log I/O
+    }
+  };
   let stdoutBytes = 0;
   let stderrBytes = 0;
   child.stdout?.on("data", (chunk: Buffer) => {
     stdoutBytes += chunk.length;
-    logStream.write(chunk);
+    safeLogWrite(chunk);
     const lines = chunk.toString("utf-8").split(/\r?\n/).filter((l) => l.length > 0).length;
     recordAgentRunHeartbeat(entry.agentRunId, lines);
   });
   child.stderr?.on("data", (chunk: Buffer) => {
     stderrBytes += chunk.length;
-    logStream.write(`STDERR: `);
-    logStream.write(chunk);
+    safeLogWrite(`STDERR: `);
+    safeLogWrite(chunk);
     const lines = chunk.toString("utf-8").split(/\r?\n/).filter((l) => l.length > 0).length;
     recordAgentRunHeartbeat(entry.agentRunId, lines);
   });
   child.stdout?.on("end", () => {
-    logStream.write("\n");
+    safeLogWrite("\n");
   });
 
   if (entry.promptRendered) {
@@ -16080,7 +16592,8 @@ function startAgentRunSubprocess(entry: Omit<AgentRunProcessEntry, "child" | "st
       `# outcome: ${outcome}`,
       "",
     ];
-    logStream.write(footerLines.join("\n"));
+    safeLogWrite(footerLines.join("\n"));
+    logStreamEnded = true;
     logStream.end();
 
     const db = getDb();
@@ -16165,6 +16678,14 @@ function startAgentRunSubprocess(entry: Omit<AgentRunProcessEntry, "child" | "st
       if (refreshed) {
         const packet = collectAgentRunPatchPacket({ agentRun: refreshed });
         persistAgentRunPatchPacket({ packet, agentRun: refreshed });
+        if (outcome === "completed") {
+          await maybeCreateAutoDispatchPrProposal({
+            agentRunId: entry.agentRunId,
+            actor: entry.body.actor,
+            rationale:
+              "Auto-create preview-only GitHub PR proposal after successful auto-dispatched AgentRun",
+          });
+        }
       }
     } catch (err) {
       console.error(
@@ -20052,6 +20573,57 @@ async function runOperatingLoopAutoDispatchTick(args: {
     };
   }
 
+  try {
+    const prepareResp = await app.request(
+      "/agent-runs/" + promotedAgentRunId + "/workspace/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: autoActor,
+          rationale: `${autoRationale}; prepare git worktree before auto-dispatch execution`,
+          dryRun: false,
+        }),
+      }
+    );
+    if (!prepareResp.ok) {
+      const errBody = (await prepareResp.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      return {
+        ...baseOutcome,
+        status: "error",
+        suggestionId: target.id,
+        agentRunId: promotedAgentRunId,
+        errorSummary: `workspace prepare failed: ${errBody.message ?? prepareResp.status}`,
+        decision: eligibility.decision,
+      };
+    }
+    const prepared = (await prepareResp.json()) as {
+      data?: WorkspacePreparationResult;
+    };
+    const prepareStatus = prepared.data?.status;
+    if (prepareStatus !== "created" && prepareStatus !== "reused") {
+      return {
+        ...baseOutcome,
+        status: "error",
+        suggestionId: target.id,
+        agentRunId: promotedAgentRunId,
+        errorSummary: `workspace prepare status=${prepareStatus ?? "unknown"}; expected created/reused before execute-async`,
+        decision: eligibility.decision,
+      };
+    }
+  } catch (err) {
+    return {
+      ...baseOutcome,
+      status: "error",
+      suggestionId: target.id,
+      agentRunId: promotedAgentRunId,
+      errorSummary: `workspace prepare threw: ${err instanceof Error ? err.message : "unknown"}`,
+      decision: eligibility.decision,
+    };
+  }
+
   // Trigger async execution. Profile selection takes precedence over
   // commandOverride; both produce execute-async commandOverride/argsOverride.
   const execBody: Record<string, unknown> = {
@@ -20466,6 +21038,33 @@ function generateAgentRunSuggestionsForOperatingLoop(args: {
     (item) => item.id === recommended.workItem.id
   );
   if (!workItem) return;
+
+  const existingPromotedSuggestion = (
+    db
+      .select()
+      .from(cbAgentRunSuggestions)
+      .where(
+        and(
+          eq(cbAgentRunSuggestions.workItemId, workItem.id),
+          eq(cbAgentRunSuggestions.status, "active")
+        )
+      )
+      .all() as AgentRunSuggestion[]
+  ).find((suggestion) => Boolean(suggestion.promotedAgentRunId));
+  if (existingPromotedSuggestion?.promotedAgentRunId) {
+    const promotedRun = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, existingPromotedSuggestion.promotedAgentRunId))
+      .get() as AgentRun | undefined;
+    if (
+      promotedRun &&
+      promotedRun.status !== "failed" &&
+      promotedRun.status !== "cancelled"
+    ) {
+      return;
+    }
+  }
 
   // Build a synthetic AgentRun-shaped object to feed evaluateRunnerPolicy.
   // No DB row is created; this is preview-only.

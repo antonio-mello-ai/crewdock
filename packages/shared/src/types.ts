@@ -1822,11 +1822,49 @@ export interface PreviewGitHubPrProposalResponse {
   payload: GitHubPrProposalPayload;
   /** Inline preview of the proposal record after upsert */
   proposal: ExternalActionProposal;
+  patchPacket?: AgentRunPatchPacket;
+  patchPacketArtifactId?: string | null;
+  provenanceLinks?: AgentRunPrProposalProvenanceLinks;
 }
 
 export interface ExecuteGitHubPrProposalRequest {
   actor: string;
   rationale: string;
+}
+
+export interface AgentRunPrProposalProvenanceLinks {
+  workItemId: string | null;
+  suggestionId: string | null;
+  agentRunId: string;
+  patchPacketArtifactId: string | null;
+  proposalId: string | null;
+  proposalIdempotencyKey: string | null;
+  patchPacketSignature: string | null;
+}
+
+export interface AgentRunPrProposalChainRequest {
+  actor: string;
+  rationale: string;
+  titleOverride?: string;
+  bodyOverride?: string;
+  requireCompleted?: boolean;
+}
+
+export type AgentRunPrProposalChainStatus = "created" | "reused" | "blocked";
+
+export interface AgentRunPrProposalChainResponse {
+  generatedAt: number;
+  status: AgentRunPrProposalChainStatus;
+  agentRun: AgentRun;
+  workItem: WorkItem | null;
+  suggestion: AgentRunSuggestion | null;
+  patchPacket: AgentRunPatchPacket | null;
+  patchPacketArtifactId: string | null;
+  proposal: ExternalActionProposal | null;
+  proposalId: string | null;
+  alreadyExisted: boolean;
+  provenanceLinks: AgentRunPrProposalProvenanceLinks;
+  errorSummary: string | null;
 }
 
 export interface GitHubPrWritebackPreflightRequest {

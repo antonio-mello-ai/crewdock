@@ -91,6 +91,8 @@ Auto-dispatch is **default-off** in production. Opt-in requires the following en
 | `AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE` | string | `Auto-dispatched by Operating Loop after eligibility evaluation` | Default rationale recorded on AgentRun. |
 | `AIOS_AGENT_AUTODISPATCH_COMMAND_OVERRIDE` | string (optional) | `echo` | When set, auto-dispatch passes this binary as `commandOverride` to `/execute-async` instead of `WORKFLOW.md` `agent.command`. Must still be present in `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST`. Useful for dogfood smoke runs with benign commands. |
 | `AIOS_AGENT_AUTODISPATCH_PROFILE_ID` | runner profile id (optional) | `noop-echo` | Selects a typed runner profile from the registry (`GET /runner-profiles`). Takes precedence over `COMMAND_OVERRIDE`. Profile's `command`/`args` thread through to `/execute-async`. Eligibility additionally checks the profile is enabled and that repo/area/risk are within profile bounds. |
+| `AIOS_AGENT_AUTODISPATCH_PR_PROPOSAL_ENABLED` | boolean string | `true` | Optional v7 chain gate. When true, a successfully completed auto-dispatched AgentRun can create/reuse a preview-only `github_pr_create` proposal from its patch packet. Default-OFF. |
+| `AIOS_AGENT_AUTODISPATCH_PR_PROPOSAL_REPO_ALLOWLIST` | CSV of `owner/name` | `antonio-mello-ai/crewdock` | Optional repo allowlist for auto-created PR proposals. Falls back to `AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST` when unset. |
 | `AIOS_AGENT_RUNNER_PROFILE_CLAUDE_CODE_ENABLED` | boolean string (optional) | `false` | Toggles the `claude-code-real` runner profile. Default-OFF. |
 | `AIOS_AGENT_RUNNER_PROFILE_CODEX_CLI_ENABLED` | boolean string (optional) | `false` | Toggles the `codex-cli-real` runner profile. Default-OFF. |
 
@@ -102,6 +104,7 @@ Built-in profiles queryable via `GET /runner-profiles?repo=...&area=...&riskClas
 |---|---|---|---|---|---|
 | `noop-echo` | noop | `echo aios-noop-runner-heartbeat` | true | A | `no_op` |
 | `dogfood-true` | dogfood | `true` | true | A | `no_op` |
+| `dogfood-empty-commit` | dogfood | `git -c user.name=AIOS Dogfood -c user.email=aios@example.invalid commit --allow-empty -m "aios dogfood empty commit"` | true | A | `git_commit` |
 | `claude-code-real` | real_agent | `claude -p` | false | B | `shell_command`, `code_edit`, `git_commit`, `github_pr_open`, `test_runner` |
 | `codex-cli-real` | real_agent | `codex` | false | B | same as `claude-code-real` |
 
