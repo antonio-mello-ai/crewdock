@@ -3215,3 +3215,54 @@ Validacao e deploy:
   `NYAVBMwfBPWh`, com `prLinkRecorded=true` e `guidanceItemsCreated=2`;
 - WorkItem `NYAVBMwfBPWh` marcado `done` via status artifact
   `-ocsZGlNGVBm`.
+
+### AIOS-RUN-39 runner readiness matrix checkpoint
+
+Issue `#127` iniciou a milestone `AIOS Agent Execution v8`, cujo foco e
+preparar o primeiro piloto real em projeto interno antes de ligar perfis
+Claude/Codex.
+
+Entregue no branch:
+
+- `WORKFLOW.md` atualizado para `active_milestone: AIOS Agent Execution v8`;
+- runbook de issues atualizado para milestone ativa v8;
+- tipos compartilhados de readiness para runner profiles;
+- endpoint read-only
+  `GET /api/company-brain/runner-profile-readiness`;
+- MCP tool `get_company_brain_runner_profile_readiness`;
+- UI `/company-brain/agent-runs` com matriz `Runner profile readiness`
+  agrupada por `noop`, `dogfood` e `real_agent`;
+- action doc
+  `docs/action/aios-run-39-runner-readiness-matrix-2026-05-08.md`.
+
+Contrato da matriz:
+
+- checa command presence via PATH lookup sem executar comando;
+- checa command allowlist, runner repo allowlist e workspace allowlist;
+- checa profile repo/area/risk gates;
+- mostra auth mode, required env refs e missing env refs;
+- diferencia default-enabled de profile env var;
+- mantém production default-off explicito;
+- retorna recommended next action por profile.
+
+Dogfood local:
+
+- default-off em `/tmp/aios-run39-smoke.sqlite` na porta `43197`:
+  `total=6`, `blocked=6`, `realAgentReady=0`, `realAgentBlocked=2`;
+- opt-in controlado em `/tmp/aios-run39-ready-smoke.sqlite` na porta `43198`
+  com runner/workspace/repo/profile envs habilitados e `riskClass=A`:
+  `ready=6`, `blocked=0`, `realAgentReady=2`;
+- ambos os daemons encerrados; portas `43197` e `43198` sem listener.
+
+Validacao:
+
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
+  passou.
+
+Ainda pendente neste corte antes de merge:
+
+- `git diff --check`;
+- `npx turbo build`;
+- abrir PR com `Closes #127`;
+- apos merge/deploy, submeter `session_result` para o WorkItem de producao
+  `EUpITeaGxoxp` e marcar como `done`.

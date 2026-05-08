@@ -22,6 +22,7 @@ import {
   useCompanyBrainAgentRunsList,
   useCompanyBrainAgentRunsSummary,
   useCompanyBrainAutoDispatchPolicy,
+  useCompanyBrainRunnerProfileReadiness,
   useDismissCompanyBrainAgentRunSuggestion,
   useEvaluateCompanyBrainAgentRunPolicy,
   useExecuteCompanyBrainAgentRun,
@@ -59,11 +60,80 @@ interface AgentRunSummary {
   staleCount: number;
 }
 
+interface RunnerProfileReadinessItem {
+  profile: {
+    id: string;
+    title: string;
+    category: string;
+    command: string;
+    authMode: string;
+    riskCeiling: string;
+    defaultEnabled: boolean;
+    enabledEnvVar?: string;
+  };
+  status: "ready" | "blocked" | "warn";
+  blockReasons: string[];
+  recommendedNextAction: string;
+  commandPresence: { found: boolean; path: string | null };
+  commandAllowlisted: boolean;
+  auth: { requiredEnvRefs: string[]; missingEnvRefs: string[] };
+  gates: Array<{
+    key: string;
+    title: string;
+    status: "ready" | "blocked" | "warn";
+    detail: string;
+    envRefs?: string[];
+    recommendedAction?: string;
+  }>;
+}
+
+interface RunnerProfileReadinessMatrix {
+  totals: {
+    total: number;
+    ready: number;
+    blocked: number;
+    warn: number;
+    realAgentReady: number;
+    realAgentBlocked: number;
+  };
+  filters: { repo: string | null; area: string | null; riskClass: string | null };
+  environment: {
+    runnerEnabled: boolean;
+    workspaceWritesEnabled: boolean;
+    autoDispatchEnabled: boolean;
+    commandAllowlist: string[];
+    runnerRepoAllowlist: string[];
+    workspaceAllowlist: string[];
+    autoDispatchRepoAllowlist: string[];
+  };
+  profilesByCategory: Record<string, RunnerProfileReadinessItem[]>;
+}
+
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
   if (["completed", "pr_opened"].includes(status)) return "default";
   if (["running", "claimed", "needs_review"].includes(status)) return "secondary";
   if (["failed", "blocked", "cancelled", "timed_out"].includes(status)) return "destructive";
   return "outline";
+}
+
+function readinessVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "ready") return "default";
+  if (status === "warn") return "secondary";
+  if (status === "blocked") return "destructive";
+  return "outline";
+}
+
+function formatReadinessList(values: string[], emptyLabel = "(empty)") {
+  if (!values.length) return emptyLabel;
+  if (values.length <= 3) return values.join(", ");
+  return `${values.slice(0, 3).join(", ")} +${values.length - 3}`;
+}
+
+function categoryLabel(category: string) {
+  if (category === "real_agent") return "Real agents";
+  if (category === "dogfood") return "Dogfood";
+  if (category === "noop") return "Noop";
+  return category;
 }
 
 function AgentRunDetail({ runId }: { runId: string }) {
@@ -556,7 +626,13 @@ export default function CompanyBrainAgentRunsPage() {
   const { data: listRes, isLoading } = useCompanyBrainAgentRunsList({ limit: 50 });
   const { data: suggestionsRes } = useCompanyBrainAgentRunSuggestions("active");
   const { data: autoDispatchRes } = useCompanyBrainAutoDispatchPolicy();
+  const { data: readinessRes } = useCompanyBrainRunnerProfileReadiness({
+    repo: "antonio-mello-ai/crewdock",
+    area: "development",
+    riskClass: "B",
+  });
   const autoDispatch = autoDispatchRes?.data as AutoDispatchPolicySummaryRow | undefined;
+  const readiness = readinessRes?.data as RunnerProfileReadinessMatrix | undefined;
   const [expanded, setExpanded] = useState<string | null>(null);
   const summary = summaryRes?.data as AgentRunSummary | undefined;
   const list = listRes?.data as { items: AgentRunRow[]; total: number } | undefined;
@@ -740,6 +816,141 @@ export default function CompanyBrainAgentRunsPage() {
                 </ul>
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        {readiness ? (
+          <section className="rounded-md border border-border">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
+              <div>
+                <h2 className="text-lg font-semibold">Runner profile readiness</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Read-only matrix for the current pilot target. It checks local env, allowlists and profile gates without launching a subprocess.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline" className="text-[10px]">
+                  {readiness.filters.repo ?? "no repo"}
+                </Badge>
+                <Badge variant="outline" className="text-[10px]">
+                  area={readiness.filters.area ?? "any"}
+                </Badge>
+                <Badge variant="outline" className="text-[10px]">
+                  risk={readiness.filters.riskClass ?? "any"}
+                </Badge>
+                <Badge variant="default" className="text-[10px]">
+                  ready {readiness.totals.ready}
+                </Badge>
+                {readiness.totals.warn > 0 ? (
+                  <Badge variant="secondary" className="text-[10px]">
+                    warn {readiness.totals.warn}
+                  </Badge>
+                ) : null}
+                {readiness.totals.blocked > 0 ? (
+                  <Badge variant="destructive" className="text-[10px]">
+                    blocked {readiness.totals.blocked}
+                  </Badge>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid gap-3 border-b border-border p-3 text-sm md:grid-cols-2 lg:grid-cols-4">
+              <article>
+                <p className="text-xs text-muted-foreground">runner</p>
+                <p className="font-mono text-[11px]">
+                  {readiness.environment.runnerEnabled ? "enabled" : "default-off"}
+                </p>
+              </article>
+              <article>
+                <p className="text-xs text-muted-foreground">workspace writes</p>
+                <p className="font-mono text-[11px]">
+                  {readiness.environment.workspaceWritesEnabled ? "enabled" : "default-off"}
+                </p>
+              </article>
+              <article>
+                <p className="text-xs text-muted-foreground">commands</p>
+                <p className="truncate font-mono text-[11px]" title={readiness.environment.commandAllowlist.join(", ")}>
+                  {formatReadinessList(readiness.environment.commandAllowlist)}
+                </p>
+              </article>
+              <article>
+                <p className="text-xs text-muted-foreground">real agent profiles</p>
+                <p className="font-mono text-[11px]">
+                  {readiness.totals.realAgentReady} ready / {readiness.totals.realAgentBlocked} blocked
+                </p>
+              </article>
+            </div>
+
+            <div className="grid gap-3 p-3 xl:grid-cols-3">
+              {Object.entries(readiness.profilesByCategory).map(([category, profiles]) => (
+                <article key={category} className="rounded-md border border-border bg-background">
+                  <div className="flex items-center justify-between border-b border-border p-3">
+                    <h3 className="text-sm font-semibold">{categoryLabel(category)}</h3>
+                    <Badge variant="outline" className="text-[10px]">
+                      {profiles.length} profiles
+                    </Badge>
+                  </div>
+                  <ul className="divide-y divide-border">
+                    {profiles.map((item) => {
+                      const visibleGates = item.gates.filter((gate) => gate.status !== "ready").slice(0, 4);
+                      return (
+                        <li key={item.profile.id} className="p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{item.profile.title}</p>
+                              <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                                {item.profile.id}
+                              </p>
+                            </div>
+                            <Badge variant={readinessVariant(item.status)} className="text-[10px]">
+                              {item.status}
+                            </Badge>
+                          </div>
+                          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                            <dt className="text-muted-foreground">command</dt>
+                            <dd className="truncate font-mono" title={item.commandPresence.path ?? item.profile.command}>
+                              {item.profile.command}
+                              {item.commandPresence.found ? "" : " missing"}
+                            </dd>
+                            <dt className="text-muted-foreground">auth</dt>
+                            <dd className="truncate font-mono">{item.profile.authMode}</dd>
+                            <dt className="text-muted-foreground">risk ceiling</dt>
+                            <dd className="font-mono">{item.profile.riskCeiling}</dd>
+                            <dt className="text-muted-foreground">allowlisted</dt>
+                            <dd className="font-mono">{item.commandAllowlisted ? "yes" : "no"}</dd>
+                          </dl>
+                          {item.auth.missingEnvRefs.length ? (
+                            <p className="mt-2 rounded bg-muted/50 p-2 font-mono text-[10px] text-muted-foreground">
+                              missing env: {item.auth.missingEnvRefs.join(" or ")}
+                            </p>
+                          ) : null}
+                          {visibleGates.length ? (
+                            <ul className="mt-2 space-y-1 text-[11px]">
+                              {visibleGates.map((gate) => (
+                                <li key={gate.key} className="flex items-start gap-2">
+                                  <Badge
+                                    variant={readinessVariant(gate.status)}
+                                    className="mt-0.5 shrink-0 text-[10px]"
+                                  >
+                                    {gate.status}
+                                  </Badge>
+                                  <span className="min-w-0">
+                                    <span className="font-medium">{gate.title}</span>: {gate.detail}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Next: {item.recommendedNextAction}
+                          </p>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </article>
+              ))}
+            </div>
           </section>
         ) : null}
 

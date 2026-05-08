@@ -1664,6 +1664,74 @@ export interface ListRunnerProfilesResponse {
   }>;
 }
 
+export type RunnerProfileReadinessStatus = "ready" | "blocked" | "warn";
+
+export interface RunnerProfileCommandPresence {
+  command: string;
+  found: boolean;
+  path: string | null;
+  checkedWith: "path_lookup";
+}
+
+export interface RunnerProfileAuthReadiness {
+  mode: RunnerProfileAuthMode;
+  requiredEnvRefs: string[];
+  presentEnvRefs: string[];
+  missingEnvRefs: string[];
+}
+
+export interface RunnerProfileReadinessGate {
+  key: string;
+  title: string;
+  status: RunnerProfileReadinessStatus;
+  detail: string;
+  envRefs?: string[];
+  recommendedAction?: string;
+}
+
+export interface RunnerProfileReadinessItem {
+  profile: RunnerProfile;
+  evaluation: RunnerProfileEvaluation;
+  status: RunnerProfileReadinessStatus;
+  blockReasons: string[];
+  recommendedNextAction: string;
+  commandPresence: RunnerProfileCommandPresence;
+  commandAllowlisted: boolean;
+  repoAllowed: boolean | null;
+  areaAllowed: boolean | null;
+  riskAllowed: boolean | null;
+  auth: RunnerProfileAuthReadiness;
+  gates: RunnerProfileReadinessGate[];
+}
+
+export interface RunnerProfileReadinessMatrix {
+  generatedAt: number;
+  filters: {
+    repo: string | null;
+    area: CompanyBrainArea | null;
+    riskClass: RiskClass | null;
+  };
+  environment: {
+    runnerEnabled: boolean;
+    workspaceWritesEnabled: boolean;
+    autoDispatchEnabled: boolean;
+    commandAllowlist: string[];
+    runnerRepoAllowlist: string[];
+    workspaceAllowlist: string[];
+    autoDispatchRepoAllowlist: string[];
+  };
+  totals: {
+    total: number;
+    ready: number;
+    blocked: number;
+    warn: number;
+    realAgentReady: number;
+    realAgentBlocked: number;
+  };
+  profilesByCategory: Record<string, RunnerProfileReadinessItem[]>;
+  profiles: RunnerProfileReadinessItem[];
+}
+
 export type AutoDispatchDecision =
   | "blocked_default_off"
   | "blocked_repo"

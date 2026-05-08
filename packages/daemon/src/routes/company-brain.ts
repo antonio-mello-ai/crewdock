@@ -3,7 +3,9 @@ import { createHash } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
 import {
   appendFileSync,
+  accessSync,
   closeSync,
+  constants as fsConstants,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -16,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, relative, resolve } from "node:path";
+import { basename, delimiter, join, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { and, desc, eq, or as sqlOr } from "drizzle-orm";
@@ -125,7 +127,11 @@ import type {
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
   RunnerProfile,
+  RunnerProfileAuthMode,
   RunnerProfileEvaluation,
+  RunnerProfileReadinessItem,
+  RunnerProfileReadinessMatrix,
+  RunnerProfileReadinessStatus,
   UpdateWorkItemStatusRequest,
   UpdateWorkItemStatusResponse,
   CreateAgentRunRequest,
@@ -13475,6 +13481,324 @@ function evaluateRunnerProfile(args: {
   };
 }
 
+function commandPresence(command: string): RunnerProfileReadinessItem["commandPresence"] {
+  const pathEnv = process.env.PATH ?? "";
+  const candidates = command.includes("/")
+    ? [command]
+    : pathEnv.split(delimiter).filter(Boolean).map((dir) => join(dir, command));
+  for (const candidate of candidates) {
+    try {
+      accessSync(candidate, fsConstants.X_OK);
+      return {
+        command,
+        found: true,
+        path: candidate,
+        checkedWith: "path_lookup",
+      };
+    } catch {
+      // Continue scanning PATH without executing the command.
+    }
+  }
+  return {
+    command,
+    found: false,
+    path: null,
+    checkedWith: "path_lookup",
+  };
+}
+
+function authEnvRefsForMode(mode: RunnerProfileAuthMode): string[] {
+  if (mode === "github_token") return ["GITHUB_TOKEN", "GH_TOKEN"];
+  if (mode === "anthropic_api_key") return ["ANTHROPIC_API_KEY"];
+  if (mode === "openai_api_key") return ["OPENAI_API_KEY"];
+  return [];
+}
+
+function buildRunnerProfileReadinessMatrix(args: {
+  repo?: string | null;
+  area?: CompanyBrainArea | null;
+  riskClass?: RiskClass | null;
+}): RunnerProfileReadinessMatrix {
+  const generatedAt = now();
+  const commandAllowlist = runnerCommandAllowlist();
+  const repoAllowlist = runnerRepoAllowlist();
+  const wsAllowlist = workspaceAllowlist();
+  const autoConfig = autoDispatchConfig();
+  const environment = {
+    runnerEnabled: runnerEnabled(),
+    workspaceWritesEnabled: workspaceWritesEnabled(),
+    autoDispatchEnabled: autoConfig.enabled,
+    commandAllowlist,
+    runnerRepoAllowlist: repoAllowlist,
+    workspaceAllowlist: wsAllowlist,
+    autoDispatchRepoAllowlist: autoConfig.repoAllowlist,
+  };
+  const riskOrder: Record<string, number> = { A: 1, B: 2, C: 3, unknown: 99 };
+
+  const profiles = RUNNER_PROFILE_REGISTRY.map((profile): RunnerProfileReadinessItem => {
+    const gates: RunnerProfileReadinessItem["gates"] = [];
+    const blockReasons: string[] = [];
+    const addGate = (gate: RunnerProfileReadinessItem["gates"][number]) => {
+      gates.push(gate);
+      if (gate.status === "blocked") blockReasons.push(gate.key);
+    };
+    const addEnvGate = (args: {
+      key: string;
+      title: string;
+      passed: boolean;
+      detail: string;
+      envRefs?: string[];
+      recommendedAction: string;
+    }) => {
+      addGate({
+        key: args.key,
+        title: args.title,
+        status: args.passed ? "ready" : "blocked",
+        detail: args.detail,
+        envRefs: args.envRefs,
+        recommendedAction: args.passed ? undefined : args.recommendedAction,
+      });
+    };
+
+    const enabled = isRunnerProfileEnabled(profile);
+    const presence = commandPresence(profile.command);
+    const commandAllowlisted = commandAllowlist.includes(profile.command);
+    const repoAllowed = args.repo
+      ? profile.allowedRepos === "*" && repoAllowlist.includes(args.repo)
+        ? true
+        : profile.allowedRepos === "*"
+          ? repoAllowlist.includes(args.repo)
+          : profile.allowedRepos.includes(args.repo) && repoAllowlist.includes(args.repo)
+      : null;
+    const workspaceRepoAllowed = args.repo
+      ? wsAllowlist.length === 0 || wsAllowlist.includes(args.repo)
+      : null;
+    const areaAllowed = args.area
+      ? profile.allowedAreas === "*" ||
+        (profile.allowedAreas as CompanyBrainArea[]).includes(args.area)
+      : null;
+    const riskAllowed = args.riskClass
+      ? (riskOrder[args.riskClass] ?? 99) <=
+        (riskOrder[profile.riskCeiling] ?? 0)
+      : null;
+    const requiredEnvRefs = authEnvRefsForMode(profile.authMode);
+    const presentEnvRefs = requiredEnvRefs.filter((ref) => Boolean(process.env[ref]));
+    const authSatisfied =
+      requiredEnvRefs.length === 0 ||
+      (profile.authMode === "github_token"
+        ? presentEnvRefs.length > 0
+        : presentEnvRefs.length === requiredEnvRefs.length);
+    const missingEnvRefs = authSatisfied
+      ? []
+      : requiredEnvRefs.filter((ref) => !presentEnvRefs.includes(ref));
+    const evaluation = evaluateRunnerProfile({
+      profileId: profile.id,
+      repo: args.repo,
+      area: args.area,
+      riskClass: args.riskClass,
+    });
+
+    addEnvGate({
+      key: "runner_enabled",
+      title: "Runner enabled",
+      passed: environment.runnerEnabled,
+      detail: `AIOS_AGENT_RUNNER_ENABLED=${String(environment.runnerEnabled)}`,
+      envRefs: ["AIOS_AGENT_RUNNER_ENABLED"],
+      recommendedAction: "Set AIOS_AGENT_RUNNER_ENABLED=true only in a controlled runner environment.",
+    });
+    addEnvGate({
+      key: "workspace_writes_enabled",
+      title: "Workspace writes enabled",
+      passed: environment.workspaceWritesEnabled,
+      detail: `AIOS_AGENT_WORKSPACE_ENABLED=${String(environment.workspaceWritesEnabled)}`,
+      envRefs: ["AIOS_AGENT_WORKSPACE_ENABLED"],
+      recommendedAction: "Set AIOS_AGENT_WORKSPACE_ENABLED=true after repo/workspace allowlists are correct.",
+    });
+    addEnvGate({
+      key: "profile_enabled",
+      title: "Profile enabled",
+      passed: enabled,
+      detail: profile.defaultEnabled
+        ? "Profile is default-enabled."
+        : `${profile.enabledEnvVar ?? "(missing env var)"}=${String(enabled)}`,
+      envRefs: profile.enabledEnvVar ? [profile.enabledEnvVar] : undefined,
+      recommendedAction: profile.enabledEnvVar
+        ? `Set ${profile.enabledEnvVar}=true after readiness review.`
+        : "Use a registered/default-enabled profile.",
+    });
+    addGate({
+      key: "command_present",
+      title: "Command present",
+      status: presence.found ? "ready" : "blocked",
+      detail: presence.found
+        ? `${profile.command} found at ${presence.path}`
+        : `${profile.command} was not found on PATH.`,
+      recommendedAction: presence.found
+        ? undefined
+        : `Install ${profile.command} on the runner host or choose a different profile.`,
+    });
+    addEnvGate({
+      key: "command_allowlisted",
+      title: "Command allowlisted",
+      passed: commandAllowlisted,
+      detail: `${profile.command} in AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST=[${commandAllowlist.join(",")}]`,
+      envRefs: ["AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST"],
+      recommendedAction: `Add ${profile.command} to AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST after command review.`,
+    });
+    if (args.repo) {
+      addEnvGate({
+        key: "runner_repo_allowlisted",
+        title: "Runner repo allowlisted",
+        passed: repoAllowlist.includes(args.repo),
+        detail: `repo=${args.repo}; allowlist=[${repoAllowlist.join(",")}]`,
+        envRefs: ["AIOS_AGENT_RUNNER_REPO_ALLOWLIST"],
+        recommendedAction: `Add ${args.repo} to AIOS_AGENT_RUNNER_REPO_ALLOWLIST for this pilot only.`,
+      });
+      addEnvGate({
+        key: "workspace_repo_allowlisted",
+        title: "Workspace repo allowlisted",
+        passed: workspaceRepoAllowed === true,
+        detail: `repo=${args.repo}; workspaceAllowlist=[${wsAllowlist.join(",") || "(empty=all)"}]`,
+        envRefs: ["AIOS_AGENT_WORKSPACE_ALLOWLIST"],
+        recommendedAction: `Add ${args.repo} to AIOS_AGENT_WORKSPACE_ALLOWLIST or keep it intentionally open only in local dogfood.`,
+      });
+      addGate({
+        key: "profile_repo_allowed",
+        title: "Profile repo allowed",
+        status:
+          profile.allowedRepos === "*" || profile.allowedRepos.includes(args.repo)
+            ? "ready"
+            : "blocked",
+        detail:
+          profile.allowedRepos === "*"
+            ? "Profile allows any repo; runner repo allowlist still gates execution."
+            : `profile.allowedRepos=[${profile.allowedRepos.join(",")}]; repo=${args.repo}`,
+        recommendedAction:
+          profile.allowedRepos === "*" || profile.allowedRepos.includes(args.repo)
+            ? undefined
+            : `Use a profile that explicitly allows ${args.repo}.`,
+      });
+    } else {
+      addGate({
+        key: "repo_context",
+        title: "Repo context",
+        status: "warn",
+        detail: "No repo filter supplied; repo-specific gates are not fully evaluated.",
+        recommendedAction: "Call with repo=<owner/name> before enabling a real profile.",
+      });
+    }
+    if (args.area) {
+      addGate({
+        key: "profile_area_allowed",
+        title: "Profile area allowed",
+        status: areaAllowed ? "ready" : "blocked",
+        detail:
+          profile.allowedAreas === "*"
+            ? "Profile allows any area."
+            : `profile.allowedAreas=[${(profile.allowedAreas as CompanyBrainArea[]).join(",")}]; area=${args.area}`,
+        recommendedAction: areaAllowed ? undefined : `Use an allowed area for profile ${profile.id}.`,
+      });
+    }
+    if (args.riskClass) {
+      addGate({
+        key: "profile_risk_allowed",
+        title: "Profile risk allowed",
+        status: riskAllowed ? "ready" : "blocked",
+        detail: `riskClass=${args.riskClass}; profile.riskCeiling=${profile.riskCeiling}`,
+        recommendedAction: riskAllowed
+          ? undefined
+          : "Lower the WorkItem risk or pick a profile with a higher reviewed risk ceiling.",
+      });
+    }
+    addGate({
+      key: "auth_env_ready",
+      title: "Auth env ready",
+      status: authSatisfied ? "ready" : "blocked",
+      detail: requiredEnvRefs.length
+        ? `authMode=${profile.authMode}; present=[${presentEnvRefs.join(",") || "(none)"}]`
+        : `authMode=${profile.authMode}; no secret env required.`,
+      envRefs: requiredEnvRefs.length ? requiredEnvRefs : undefined,
+      recommendedAction: authSatisfied
+        ? undefined
+        : `Provide ${missingEnvRefs.join(" or ")} only on the intended runner host.`,
+    });
+    addGate({
+      key: "auto_dispatch_default_off",
+      title: "Auto-dispatch default-off",
+      status: environment.autoDispatchEnabled ? "warn" : "ready",
+      detail: `AIOS_AGENT_AUTODISPATCH_ENABLED=${String(environment.autoDispatchEnabled)}`,
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_ENABLED"],
+      recommendedAction: environment.autoDispatchEnabled
+        ? "Keep max concurrency and repo/profile allowlists narrow; manual launch remains preferred for first pilot."
+        : "Manual launch can be tested while broad auto-dispatch remains off.",
+    });
+
+    const status: RunnerProfileReadinessStatus = blockReasons.length
+      ? "blocked"
+      : gates.some((gate) => gate.status === "warn")
+        ? "warn"
+        : "ready";
+    const firstAction =
+      gates.find((gate) => gate.status === "blocked" && gate.recommendedAction)
+        ?.recommendedAction ??
+      gates.find((gate) => gate.status === "warn" && gate.recommendedAction)
+        ?.recommendedAction ??
+      "Ready for manual preview/launch in this environment; keep external writeback governed by proposals.";
+
+    return {
+      profile,
+      evaluation,
+      status,
+      blockReasons,
+      recommendedNextAction: firstAction,
+      commandPresence: presence,
+      commandAllowlisted,
+      repoAllowed,
+      areaAllowed,
+      riskAllowed,
+      auth: {
+        mode: profile.authMode,
+        requiredEnvRefs,
+        presentEnvRefs,
+        missingEnvRefs,
+      },
+      gates,
+    };
+  });
+
+  const profilesByCategory = profiles.reduce<Record<string, RunnerProfileReadinessItem[]>>(
+    (acc, item) => {
+      acc[item.profile.category] = acc[item.profile.category] ?? [];
+      acc[item.profile.category].push(item);
+      return acc;
+    },
+    {}
+  );
+  return {
+    generatedAt,
+    filters: {
+      repo: args.repo ?? null,
+      area: args.area ?? null,
+      riskClass: args.riskClass ?? null,
+    },
+    environment,
+    totals: {
+      total: profiles.length,
+      ready: profiles.filter((item) => item.status === "ready").length,
+      blocked: profiles.filter((item) => item.status === "blocked").length,
+      warn: profiles.filter((item) => item.status === "warn").length,
+      realAgentReady: profiles.filter(
+        (item) => item.profile.category === "real_agent" && item.status === "ready"
+      ).length,
+      realAgentBlocked: profiles.filter(
+        (item) => item.profile.category === "real_agent" && item.status === "blocked"
+      ).length,
+    },
+    profilesByCategory,
+    profiles,
+  };
+}
+
 function autoDispatchEnabled(): boolean {
   return process.env.AIOS_AGENT_AUTODISPATCH_ENABLED === "true";
 }
@@ -16282,6 +16606,14 @@ app.get("/runner-profiles", (c) => {
     profiles,
   };
   return c.json({ data: response });
+});
+
+app.get("/runner-profile-readiness", (c) => {
+  const repo = c.req.query("repo")?.trim() || null;
+  const area = (c.req.query("area")?.trim() as CompanyBrainArea | undefined) || null;
+  const riskClass = (c.req.query("riskClass")?.trim() as RiskClass | undefined) || null;
+  const data = buildRunnerProfileReadinessMatrix({ repo, area, riskClass });
+  return c.json({ data });
 });
 
 app.get("/auto-dispatch/policy", (c) => {
