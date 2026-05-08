@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or as sqlOr } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
   ActionPolicy,
@@ -90,8 +90,15 @@ import type {
   AgentRunSuggestionGeneratedFrom,
   AgentRunSuggestionStatus,
   AgentRunSummary,
+  AutoDispatchDecision,
+  AutoDispatchEligibility,
+  AutoDispatchGate,
+  AutoDispatchPolicyConfig,
+  AutoDispatchPolicySummary,
+  AutoDispatchRuntimeState,
   DismissAgentRunSuggestionRequest,
   DismissAgentRunSuggestionResponse,
+  EvaluateAutoDispatchEligibilityRequest,
   ListAgentRunSuggestionsResponse,
   CreateAgentRunRequest,
   UpdateAgentRunRequest,
@@ -5789,6 +5796,26 @@ function buildOperatingSnapshot(
     agentRunSuggestions = [];
   }
 
+  let autoDispatchPolicy: AutoDispatchPolicySummary;
+  try {
+    autoDispatchPolicy = buildAutoDispatchPolicySummary();
+  } catch {
+    autoDispatchPolicy = {
+      generatedAt: now(),
+      config: autoDispatchConfig(),
+      runtime: {
+        generatedAt: now(),
+        activeAgentRunCount: 0,
+        lastAutoDispatchAt: null,
+        cooldownExpiresAt: null,
+        cooldownRemainingMs: 0,
+        tokensSpentInWindow: 0,
+        tokensAvailableInWindow: 0,
+      },
+      eligibilityPreview: null,
+    };
+  }
+
   return {
     generatedAt,
     overallStatus,
@@ -5804,6 +5831,7 @@ function buildOperatingSnapshot(
     timeline,
     recentEvents: timeline.events.slice(0, 8),
     agentRunSuggestions,
+    autoDispatchPolicy,
   };
 }
 
@@ -12616,6 +12644,719 @@ function runnerAllowGithubToken(): boolean {
 function runnerAllowSlackToken(): boolean {
   return process.env.AIOS_AGENT_RUNNER_ALLOW_SLACK_TOKEN === "true";
 }
+
+function csvEnv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(/[\s,;]+/)
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+}
+
+function autoDispatchEnabled(): boolean {
+  return process.env.AIOS_AGENT_AUTODISPATCH_ENABLED === "true";
+}
+
+function autoDispatchConfig(): AutoDispatchPolicyConfig {
+  const tokenBudget = Number(
+    process.env.AIOS_AGENT_AUTODISPATCH_TOKEN_BUDGET ?? "100000"
+  );
+  const cooldownMs = Number(
+    process.env.AIOS_AGENT_AUTODISPATCH_COOLDOWN_MS ?? "900000"
+  );
+  const maxRuntimeMs = Number(
+    process.env.AIOS_AGENT_AUTODISPATCH_MAX_RUNTIME_MS ?? "600000"
+  );
+  const maxConcurrency = Number(
+    process.env.AIOS_AGENT_AUTODISPATCH_MAX_CONCURRENCY ?? "1"
+  );
+  return {
+    enabled: autoDispatchEnabled(),
+    repoAllowlist: csvEnv(process.env.AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST),
+    workflowAllowlist: csvEnv(
+      process.env.AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST
+    ),
+    areaAllowlist: csvEnv(process.env.AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST),
+    requireRiskA:
+      process.env.AIOS_AGENT_AUTODISPATCH_REQUIRE_RISK_A !== "false",
+    maxConcurrency: Number.isFinite(maxConcurrency) && maxConcurrency > 0
+      ? maxConcurrency
+      : 1,
+    tokenBudget: Number.isFinite(tokenBudget) && tokenBudget > 0
+      ? tokenBudget
+      : 100000,
+    cooldownMs: Number.isFinite(cooldownMs) && cooldownMs >= 0
+      ? cooldownMs
+      : 900000,
+    maxRuntimeMs: Number.isFinite(maxRuntimeMs) && maxRuntimeMs > 0
+      ? maxRuntimeMs
+      : 600000,
+    defaultActor:
+      process.env.AIOS_AGENT_AUTODISPATCH_DEFAULT_ACTOR?.trim() ||
+      "operating-loop:auto-dispatch",
+    defaultRationale:
+      process.env.AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE?.trim() ||
+      "Auto-dispatched by Operating Loop after eligibility evaluation",
+  };
+}
+
+function buildAutoDispatchRuntimeState(
+  config: AutoDispatchPolicyConfig
+): AutoDispatchRuntimeState {
+  const generatedAt = now();
+  const db = getDb();
+
+  const activeRuns = db
+    .select()
+    .from(cbAgentRuns)
+    .where(
+      sqlOr(
+        eq(cbAgentRuns.status, "running"),
+        eq(cbAgentRuns.status, "claimed"),
+        eq(cbAgentRuns.status, "queued")
+      )
+    )
+    .all() as Array<typeof cbAgentRuns.$inferSelect>;
+  const activeAgentRunCount = activeRuns.filter(
+    (r) => r.status === "running" || r.status === "claimed"
+  ).length;
+
+  // last auto-dispatch is the most recent agent_run_real_execution_started
+  // event in audit trail with actor matching defaultActor prefix.
+  const recentRuns = db
+    .select()
+    .from(cbAgentRuns)
+    .orderBy(desc(cbAgentRuns.startedAt))
+    .limit(50)
+    .all() as Array<typeof cbAgentRuns.$inferSelect>;
+  let lastAutoDispatchAt: number | null = null;
+  for (const r of recentRuns) {
+    const audit = (r.auditTrail ?? []) as Array<{
+      at: number;
+      actor: string | null;
+      event: string;
+    }>;
+    for (const entry of audit) {
+      if (
+        entry.actor &&
+        entry.actor.startsWith("operating-loop:auto-dispatch") &&
+        (entry.event === "agent_run_real_execution_started" ||
+          entry.event === "agent_run_async_dispatched")
+      ) {
+        if (!lastAutoDispatchAt || entry.at > lastAutoDispatchAt) {
+          lastAutoDispatchAt = entry.at;
+        }
+      }
+    }
+  }
+  const cooldownExpiresAt = lastAutoDispatchAt
+    ? lastAutoDispatchAt + config.cooldownMs
+    : null;
+  const cooldownRemainingMs = cooldownExpiresAt
+    ? Math.max(0, cooldownExpiresAt - generatedAt)
+    : 0;
+
+  // tokens spent in the cooldown window (used as the budget window)
+  const windowStart = generatedAt - config.cooldownMs;
+  let tokensSpentInWindow = 0;
+  for (const r of recentRuns) {
+    if ((r.startedAt ?? 0) < windowStart) continue;
+    const audit = (r.auditTrail ?? []) as Array<{ actor: string | null }>;
+    const isAuto = audit.some(
+      (e) =>
+        e.actor && e.actor.startsWith("operating-loop:auto-dispatch")
+    );
+    if (!isAuto) continue;
+    tokensSpentInWindow += r.tokensTotal ?? 0;
+  }
+
+  return {
+    generatedAt,
+    activeAgentRunCount,
+    lastAutoDispatchAt,
+    cooldownExpiresAt,
+    cooldownRemainingMs,
+    tokensSpentInWindow,
+    tokensAvailableInWindow: Math.max(
+      0,
+      config.tokenBudget - tokensSpentInWindow
+    ),
+  };
+}
+
+function evaluateAutoDispatchEligibility(args: {
+  workItem: WorkItem | null;
+  suggestion: AgentRunSuggestion | null;
+  actorOverride?: string;
+  rationaleOverride?: string;
+}): AutoDispatchEligibility {
+  const generatedAt = now();
+  const config = autoDispatchConfig();
+  const runtime = buildAutoDispatchRuntimeState(config);
+  const gates: AutoDispatchGate[] = [];
+  const blockReasons: string[] = [];
+  const satisfiedGates: string[] = [];
+  let firstBlockDecision: AutoDispatchDecision | null = null;
+  const setBlock = (decision: AutoDispatchDecision) => {
+    if (!firstBlockDecision) firstBlockDecision = decision;
+  };
+
+  // 1. Default-off (env gate)
+  if (!config.enabled) {
+    gates.push({
+      key: "autodispatch_env_enabled",
+      title: "Auto-dispatch env-enabled",
+      status: "failed",
+      detail:
+        "AIOS_AGENT_AUTODISPATCH_ENABLED is not set to true; auto-dispatch is default-off.",
+      remediation:
+        "Set AIOS_AGENT_AUTODISPATCH_ENABLED=true on a controlled environment after the rest of the gates pass.",
+    });
+    blockReasons.push("autodispatch_disabled");
+    setBlock("blocked_default_off");
+  } else {
+    gates.push({
+      key: "autodispatch_env_enabled",
+      title: "Auto-dispatch env-enabled",
+      status: "passed",
+      detail: "AIOS_AGENT_AUTODISPATCH_ENABLED=true",
+    });
+    satisfiedGates.push("autodispatch_env_enabled");
+  }
+
+  // 2. Repo allowlist (workflow tracker.repo + WorkItem repo)
+  const workflow = loadWorkflowFromRepoRoot();
+  const repo = workflow.config.tracker.repo ?? null;
+  if (!config.repoAllowlist.length) {
+    gates.push({
+      key: "repo_allowed",
+      title: "Repo allowlisted for auto-dispatch",
+      status: "failed",
+      detail:
+        "AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST is empty; auto-dispatch refuses to act on any repo.",
+      remediation:
+        "Set AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST to a CSV of allowlisted repos (owner/name).",
+    });
+    blockReasons.push("autodispatch_repo_allowlist_empty");
+    setBlock("blocked_repo");
+  } else if (!repo) {
+    gates.push({
+      key: "repo_allowed",
+      title: "Repo allowlisted for auto-dispatch",
+      status: "failed",
+      detail: "WORKFLOW.md tracker.repo is missing.",
+      remediation:
+        "Set tracker.repo in WORKFLOW.md before enabling auto-dispatch.",
+    });
+    blockReasons.push("autodispatch_repo_missing");
+    setBlock("blocked_repo");
+  } else if (!config.repoAllowlist.includes(repo)) {
+    gates.push({
+      key: "repo_allowed",
+      title: "Repo allowlisted for auto-dispatch",
+      status: "failed",
+      detail: `repo=${repo} is not in AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST.`,
+      remediation: `Add ${repo} to AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST or fix tracker.repo.`,
+    });
+    blockReasons.push("autodispatch_repo_not_allowed");
+    setBlock("blocked_repo");
+  } else {
+    gates.push({
+      key: "repo_allowed",
+      title: "Repo allowlisted for auto-dispatch",
+      status: "passed",
+      detail: `repo=${repo} ∈ AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST`,
+    });
+    satisfiedGates.push("repo_allowed");
+  }
+
+  // 3. Workflow allowlist (registered workflow blueprint refs)
+  if (!config.workflowAllowlist.length) {
+    gates.push({
+      key: "workflow_allowed",
+      title: "Workflow allowlisted for auto-dispatch",
+      status: "failed",
+      detail:
+        "AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST is empty; auto-dispatch refuses to act on any workflow blueprint.",
+      remediation:
+        "Set AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST to a CSV of workflow blueprint refs registered in cbWorkflowBlueprints.",
+    });
+    blockReasons.push("autodispatch_workflow_allowlist_empty");
+    setBlock("blocked_workflow");
+  } else {
+    const db = getDb();
+    const blueprints = db.select().from(cbWorkflowBlueprints).all();
+    const blueprintRefs = blueprints
+      .map((b) => b.id)
+      .filter((v): v is string => typeof v === "string" && v.length > 0);
+    const matchedRefs = config.workflowAllowlist.filter((ref) =>
+      blueprintRefs.includes(ref)
+    );
+    if (!matchedRefs.length) {
+      gates.push({
+        key: "workflow_allowed",
+        title: "Workflow allowlisted for auto-dispatch",
+        status: "failed",
+        detail: `Allowlist=[${config.workflowAllowlist.join(",")}] does not match any registered workflow blueprint ref (registered=${blueprintRefs.length}).`,
+        remediation:
+          "Register a workflow blueprint with one of the allowlisted refs, or update the allowlist to a registered ref.",
+      });
+      blockReasons.push("autodispatch_workflow_not_allowed");
+      setBlock("blocked_workflow");
+    } else {
+      gates.push({
+        key: "workflow_allowed",
+        title: "Workflow allowlisted for auto-dispatch",
+        status: "passed",
+        detail: `Allowlisted blueprint refs registered: [${matchedRefs.join(",")}]`,
+      });
+      satisfiedGates.push("workflow_allowed");
+    }
+  }
+
+  // 4. Area allowlist (WorkItem.area)
+  if (!args.workItem) {
+    gates.push({
+      key: "area_allowed",
+      title: "Area allowlisted for auto-dispatch",
+      status: "warn",
+      detail:
+        "No WorkItem context provided; cannot evaluate area gate. Returning warn (not block) for global preview.",
+    });
+  } else if (!config.areaAllowlist.length) {
+    gates.push({
+      key: "area_allowed",
+      title: "Area allowlisted for auto-dispatch",
+      status: "failed",
+      detail:
+        "AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST is empty; auto-dispatch refuses to act on any area.",
+      remediation:
+        "Set AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST to a CSV of allowlisted areas.",
+    });
+    blockReasons.push("autodispatch_area_allowlist_empty");
+    setBlock("blocked_area");
+  } else if (!config.areaAllowlist.includes(args.workItem.area)) {
+    gates.push({
+      key: "area_allowed",
+      title: "Area allowlisted for auto-dispatch",
+      status: "failed",
+      detail: `WorkItem.area=${args.workItem.area} ∉ allowlist=[${config.areaAllowlist.join(",")}]`,
+      remediation: `Add ${args.workItem.area} to AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST or pick a different WorkItem.`,
+    });
+    blockReasons.push("autodispatch_area_not_allowed");
+    setBlock("blocked_area");
+  } else {
+    gates.push({
+      key: "area_allowed",
+      title: "Area allowlisted for auto-dispatch",
+      status: "passed",
+      detail: `WorkItem.area=${args.workItem.area} ∈ allowlist`,
+    });
+    satisfiedGates.push("area_allowed");
+  }
+
+  // 5. Risk class — must be A when requireRiskA=true
+  if (!args.workItem) {
+    gates.push({
+      key: "risk_class_allowed",
+      title: "Risk class allowed",
+      status: "warn",
+      detail:
+        "No WorkItem context provided; cannot evaluate risk class gate.",
+    });
+  } else if (config.requireRiskA && args.workItem.riskClass !== "A") {
+    gates.push({
+      key: "risk_class_allowed",
+      title: "Risk class allowed",
+      status: "failed",
+      detail: `requireRiskA=true and WorkItem.riskClass=${args.workItem.riskClass} (need A).`,
+      remediation:
+        "Reduce risk class to A with documented rationale, or disable requireRiskA after independent review.",
+    });
+    blockReasons.push("autodispatch_risk_not_a");
+    setBlock("blocked_risk");
+  } else if (
+    args.workItem.riskClass === "C" ||
+    args.workItem.riskClass === "unknown"
+  ) {
+    gates.push({
+      key: "risk_class_allowed",
+      title: "Risk class allowed",
+      status: "failed",
+      detail: `WorkItem.riskClass=${args.workItem.riskClass} blocked by Writeback Policy Matrix.`,
+      remediation: "Refactor to Risk A or B with HITL approval and audit.",
+    });
+    blockReasons.push("autodispatch_risk_blocked");
+    setBlock("blocked_risk");
+  } else {
+    gates.push({
+      key: "risk_class_allowed",
+      title: "Risk class allowed",
+      status: "passed",
+      detail: `riskClass=${args.workItem.riskClass}; requireRiskA=${config.requireRiskA}`,
+    });
+    satisfiedGates.push("risk_class_allowed");
+  }
+
+  // 6. WorkItem status + not-blocked + non-destructive label heuristic
+  if (!args.workItem) {
+    gates.push({
+      key: "work_item_eligible",
+      title: "WorkItem eligible for auto-dispatch",
+      status: "warn",
+      detail: "No WorkItem context provided.",
+    });
+  } else {
+    const allowedStatuses = ["new", "triage", "planned", "in_progress"];
+    const destructiveLabelTokens = [
+      "deploy",
+      "merge",
+      "release",
+      "delete",
+      "destructive",
+      "hotfix",
+    ];
+    const labels = args.workItem.labels ?? [];
+    const hasDestructive = labels.some((label) =>
+      destructiveLabelTokens.some((token) =>
+        label.toLowerCase().includes(token)
+      )
+    );
+    if (!allowedStatuses.includes(args.workItem.status)) {
+      gates.push({
+        key: "work_item_eligible",
+        title: "WorkItem eligible for auto-dispatch",
+        status: "failed",
+        detail: `WorkItem.status=${args.workItem.status} ∉ allowedStatuses=[${allowedStatuses.join(",")}]`,
+        remediation:
+          "Pick a WorkItem in new/triage/planned/in_progress before auto-dispatching.",
+      });
+      blockReasons.push("autodispatch_work_item_status_invalid");
+      setBlock("blocked_work_item");
+    } else if (args.workItem.blockedReason) {
+      gates.push({
+        key: "work_item_eligible",
+        title: "WorkItem eligible for auto-dispatch",
+        status: "failed",
+        detail: `WorkItem.blockedReason="${args.workItem.blockedReason.slice(0, 120)}"`,
+        remediation: "Resolve the blocker before auto-dispatch.",
+      });
+      blockReasons.push("autodispatch_work_item_blocked");
+      setBlock("blocked_work_item");
+    } else if (hasDestructive) {
+      gates.push({
+        key: "work_item_eligible",
+        title: "WorkItem eligible for auto-dispatch",
+        status: "failed",
+        detail: `WorkItem.labels contains destructive token: ${labels.filter((l) => destructiveLabelTokens.some((t) => l.toLowerCase().includes(t))).join(",")}`,
+        remediation:
+          "Remove destructive labels or run manually with full HITL gate.",
+      });
+      blockReasons.push("autodispatch_work_item_destructive");
+      setBlock("blocked_work_item");
+    } else {
+      gates.push({
+        key: "work_item_eligible",
+        title: "WorkItem eligible for auto-dispatch",
+        status: "passed",
+        detail: `status=${args.workItem.status}; not blocked; no destructive labels`,
+      });
+      satisfiedGates.push("work_item_eligible");
+    }
+  }
+
+  // 7. Manual runner policy chain
+  let manualRunnerPolicyDecision: RunnerPolicyDecision | null = null;
+  if (args.workItem) {
+    const syntheticRun = {
+      id: `autodispatch-eligibility-${args.workItem.id}`,
+      workItemId: args.workItem.id,
+      workflowRunId: null,
+      agentContextId: null,
+      sourceId: args.workItem.sourceId ?? null,
+      repo,
+      branch: null,
+      workspaceRef: null,
+      runnerType: "claude_code" as AgentRunRunnerType,
+      status: "queued" as AgentRunStatus,
+      claimState: "unclaimed" as const,
+      attempt: 0,
+      startedAt: null,
+      finishedAt: null,
+      errorSummary: null,
+      prUrl: null,
+      externalRunRef: null,
+      tokensInput: null,
+      tokensOutput: null,
+      tokensTotal: null,
+      costUsd: null,
+      agentSessionId: null,
+      agentThreadId: null,
+      area: args.workItem.area,
+      riskClass: args.workItem.riskClass,
+      actionPolicy: "observe_only" as const,
+      visibility: args.workItem.visibility ?? "internal",
+      pid: null,
+      executionRef: null,
+      lastLogAt: null,
+      lastLogLineCount: null,
+      metadata: null,
+      auditTrail: [],
+      provenance: null,
+      createdAt: now(),
+      updatedAt: now(),
+    } as unknown as typeof cbAgentRuns.$inferSelect;
+    try {
+      const policy = evaluateRunnerPolicy({
+        agentRun: syntheticRun,
+        request: {
+          intent: "real_execution",
+          actor: args.actorOverride ?? config.defaultActor,
+          rationale: args.rationaleOverride ?? config.defaultRationale,
+        },
+      });
+      manualRunnerPolicyDecision = policy.decision;
+      if (policy.decision === "allowed_real_execution") {
+        gates.push({
+          key: "manual_runner_policy_passed",
+          title: "Manual runner policy passes",
+          status: "passed",
+          detail: `evaluateRunnerPolicy=${policy.decision}`,
+        });
+        satisfiedGates.push("manual_runner_policy_passed");
+      } else {
+        gates.push({
+          key: "manual_runner_policy_passed",
+          title: "Manual runner policy passes",
+          status: "failed",
+          detail: `evaluateRunnerPolicy=${policy.decision}; satisfiedGates=${policy.gates.filter((g) => g.status === "passed").length}; blockReasons=[${policy.blockReasons.join(",")}]`,
+          remediation:
+            "Fix manual runner policy gates first; auto-dispatch chains the same policy.",
+        });
+        blockReasons.push("autodispatch_runner_policy_blocked");
+        setBlock("blocked_runner_policy");
+      }
+    } catch (err) {
+      gates.push({
+        key: "manual_runner_policy_passed",
+        title: "Manual runner policy passes",
+        status: "failed",
+        detail: `evaluateRunnerPolicy threw: ${err instanceof Error ? err.message : "unknown error"}`,
+      });
+      blockReasons.push("autodispatch_runner_policy_threw");
+      setBlock("blocked_runner_policy");
+    }
+  } else {
+    gates.push({
+      key: "manual_runner_policy_passed",
+      title: "Manual runner policy passes",
+      status: "warn",
+      detail: "No WorkItem context provided; cannot chain manual runner policy.",
+    });
+  }
+
+  // 8. Concurrency cap
+  if (runtime.activeAgentRunCount >= config.maxConcurrency) {
+    gates.push({
+      key: "concurrency_under_limit",
+      title: "Concurrency under limit",
+      status: "failed",
+      detail: `activeAgentRunCount=${runtime.activeAgentRunCount} >= maxConcurrency=${config.maxConcurrency}`,
+      remediation:
+        "Wait for current AgentRuns to terminate or raise AIOS_AGENT_AUTODISPATCH_MAX_CONCURRENCY.",
+    });
+    blockReasons.push("autodispatch_concurrency_full");
+    setBlock("blocked_concurrency");
+  } else {
+    gates.push({
+      key: "concurrency_under_limit",
+      title: "Concurrency under limit",
+      status: "passed",
+      detail: `active=${runtime.activeAgentRunCount}/${config.maxConcurrency}`,
+    });
+    satisfiedGates.push("concurrency_under_limit");
+  }
+
+  // 9. Cooldown
+  if (runtime.cooldownRemainingMs > 0) {
+    gates.push({
+      key: "cooldown_elapsed",
+      title: "Cooldown elapsed",
+      status: "failed",
+      detail: `cooldownRemainingMs=${runtime.cooldownRemainingMs}; lastAutoDispatchAt=${runtime.lastAutoDispatchAt}`,
+      remediation: `Wait ${Math.ceil(runtime.cooldownRemainingMs / 1000)}s before next auto-dispatch.`,
+    });
+    blockReasons.push("autodispatch_cooldown_active");
+    setBlock("blocked_cooldown");
+  } else {
+    gates.push({
+      key: "cooldown_elapsed",
+      title: "Cooldown elapsed",
+      status: "passed",
+      detail: `cooldownMs=${config.cooldownMs}; lastAutoDispatchAt=${runtime.lastAutoDispatchAt ?? "never"}`,
+    });
+    satisfiedGates.push("cooldown_elapsed");
+  }
+
+  // 10. Token budget
+  if (runtime.tokensAvailableInWindow <= 0) {
+    gates.push({
+      key: "token_budget_remaining",
+      title: "Token budget remaining",
+      status: "failed",
+      detail: `tokensSpentInWindow=${runtime.tokensSpentInWindow} >= tokenBudget=${config.tokenBudget}`,
+      remediation:
+        "Wait for cooldown window to roll over or raise AIOS_AGENT_AUTODISPATCH_TOKEN_BUDGET.",
+    });
+    blockReasons.push("autodispatch_token_budget_exhausted");
+    setBlock("blocked_token_budget");
+  } else {
+    gates.push({
+      key: "token_budget_remaining",
+      title: "Token budget remaining",
+      status: "passed",
+      detail: `available=${runtime.tokensAvailableInWindow}/${config.tokenBudget}`,
+    });
+    satisfiedGates.push("token_budget_remaining");
+  }
+
+  // 11. Actor + rationale
+  const effectiveActor = (args.actorOverride ?? config.defaultActor).trim();
+  const effectiveRationale = (args.rationaleOverride ?? config.defaultRationale).trim();
+  if (!effectiveActor || !effectiveRationale) {
+    gates.push({
+      key: "actor_rationale_present",
+      title: "Actor + rationale present",
+      status: "failed",
+      detail: `actor="${effectiveActor}"; rationale length=${effectiveRationale.length}`,
+      remediation:
+        "Set AIOS_AGENT_AUTODISPATCH_DEFAULT_ACTOR and AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE.",
+    });
+    blockReasons.push("autodispatch_actor_or_rationale_missing");
+    setBlock("blocked_actor_rationale");
+  } else {
+    gates.push({
+      key: "actor_rationale_present",
+      title: "Actor + rationale present",
+      status: "passed",
+      detail: `actor=${effectiveActor}; rationale=${effectiveRationale.slice(0, 80)}`,
+    });
+    satisfiedGates.push("actor_rationale_present");
+  }
+
+  const decision: AutoDispatchDecision = firstBlockDecision ?? "eligible";
+  const eligible = decision === "eligible" && !blockReasons.length;
+
+  return {
+    generatedAt,
+    agentRunSuggestionId: args.suggestion?.id ?? null,
+    workItemId: args.workItem?.id ?? null,
+    decision,
+    eligible,
+    gates,
+    blockReasons,
+    satisfiedGates,
+    config,
+    runtime,
+    manualRunnerPolicyDecision,
+  };
+}
+
+function buildAutoDispatchPolicySummary(): AutoDispatchPolicySummary {
+  const config = autoDispatchConfig();
+  const runtime = buildAutoDispatchRuntimeState(config);
+
+  // Optional eligibilityPreview: top suggestion if present
+  let eligibilityPreview: AutoDispatchEligibility | null = null;
+  try {
+    const db = getDb();
+    const top = db
+      .select()
+      .from(cbAgentRunSuggestions)
+      .where(eq(cbAgentRunSuggestions.status, "active"))
+      .orderBy(desc(cbAgentRunSuggestions.createdAt))
+      .limit(1)
+      .get() as AgentRunSuggestion | undefined;
+    if (top) {
+      const data = listAll();
+      const wi = (data.workItems as WorkItem[]).find((w) => w.id === top.workItemId) ?? null;
+      eligibilityPreview = evaluateAutoDispatchEligibility({
+        workItem: wi,
+        suggestion: top,
+      });
+    } else {
+      // Global preview without WorkItem context (only env gates evaluated).
+      eligibilityPreview = evaluateAutoDispatchEligibility({
+        workItem: null,
+        suggestion: null,
+      });
+    }
+  } catch (err) {
+    console.error("[company-brain] buildAutoDispatchPolicySummary preview failed", err);
+  }
+
+  return {
+    generatedAt: now(),
+    config,
+    runtime,
+    eligibilityPreview,
+  };
+}
+
+app.get("/auto-dispatch/policy", (c) => {
+  const data = buildAutoDispatchPolicySummary();
+  return c.json({ data });
+});
+
+app.post("/auto-dispatch/eligibility", async (c) => {
+  const body = (await c.req
+    .json<EvaluateAutoDispatchEligibilityRequest>()
+    .catch(() => ({}))) as EvaluateAutoDispatchEligibilityRequest;
+  const db = getDb();
+  let workItem: WorkItem | null = null;
+  let suggestion: AgentRunSuggestion | null = null;
+  if (body.agentRunSuggestionId) {
+    suggestion =
+      (db
+        .select()
+        .from(cbAgentRunSuggestions)
+        .where(eq(cbAgentRunSuggestions.id, body.agentRunSuggestionId))
+        .get() as AgentRunSuggestion | undefined) ?? null;
+    if (!suggestion) {
+      return c.json(
+        {
+          error: "not_found",
+          message: `agent run suggestion ${body.agentRunSuggestionId} not found`,
+        },
+        404
+      );
+    }
+  }
+  const targetWorkItemId = body.workItemId ?? suggestion?.workItemId ?? null;
+  if (targetWorkItemId) {
+    workItem =
+      (db
+        .select()
+        .from(cbWorkItems)
+        .where(eq(cbWorkItems.id, targetWorkItemId))
+        .get() as WorkItem | undefined) ?? null;
+    if (!workItem) {
+      return c.json(
+        {
+          error: "not_found",
+          message: `work item ${targetWorkItemId} not found`,
+        },
+        404
+      );
+    }
+  }
+  const data = evaluateAutoDispatchEligibility({
+    workItem,
+    suggestion,
+    actorOverride: body.actorOverride,
+    rationaleOverride: body.rationaleOverride,
+  });
+  return c.json({ data });
+});
 
 const RUNNER_DEFAULT_REDACTED_KEYS = [
   "GITHUB_TOKEN",

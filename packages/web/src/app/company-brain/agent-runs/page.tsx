@@ -21,6 +21,7 @@ import {
   useCompanyBrainAgentRunSuggestions,
   useCompanyBrainAgentRunsList,
   useCompanyBrainAgentRunsSummary,
+  useCompanyBrainAutoDispatchPolicy,
   useDismissCompanyBrainAgentRunSuggestion,
   useEvaluateCompanyBrainAgentRunPolicy,
   useExecuteCompanyBrainAgentRun,
@@ -420,10 +421,47 @@ function SuggestionRow({ suggestion }: { suggestion: AgentRunSuggestionRow }) {
   );
 }
 
+interface AutoDispatchGate {
+  key: string;
+  title: string;
+  status: "passed" | "failed" | "warn";
+  detail: string;
+}
+
+interface AutoDispatchPolicySummaryRow {
+  config: {
+    enabled: boolean;
+    repoAllowlist: string[];
+    workflowAllowlist: string[];
+    areaAllowlist: string[];
+    requireRiskA: boolean;
+    maxConcurrency: number;
+    tokenBudget: number;
+    cooldownMs: number;
+    maxRuntimeMs: number;
+  };
+  runtime: {
+    activeAgentRunCount: number;
+    lastAutoDispatchAt: number | null;
+    cooldownRemainingMs: number;
+    tokensSpentInWindow: number;
+    tokensAvailableInWindow: number;
+  };
+  eligibilityPreview: {
+    decision: string;
+    eligible: boolean;
+    gates: AutoDispatchGate[];
+    blockReasons: string[];
+    workItemId: string | null;
+  } | null;
+}
+
 export default function CompanyBrainAgentRunsPage() {
   const { data: summaryRes } = useCompanyBrainAgentRunsSummary();
   const { data: listRes, isLoading } = useCompanyBrainAgentRunsList({ limit: 50 });
   const { data: suggestionsRes } = useCompanyBrainAgentRunSuggestions("active");
+  const { data: autoDispatchRes } = useCompanyBrainAutoDispatchPolicy();
+  const autoDispatch = autoDispatchRes?.data as AutoDispatchPolicySummaryRow | undefined;
   const [expanded, setExpanded] = useState<string | null>(null);
   const summary = summaryRes?.data as AgentRunSummary | undefined;
   const list = listRes?.data as { items: AgentRunRow[]; total: number } | undefined;
@@ -480,6 +518,107 @@ export default function CompanyBrainAgentRunsPage() {
               <p className="text-xs text-muted-foreground">stale</p>
               <p className="text-lg font-semibold">{summary.staleCount}</p>
             </article>
+          </section>
+        ) : null}
+
+        {autoDispatch ? (
+          <section className="rounded-md border border-border">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
+              <h2 className="text-lg font-semibold">Auto-Dispatch policy</h2>
+              <Badge
+                variant={autoDispatch.config.enabled ? "default" : "destructive"}
+                className="text-[10px]"
+              >
+                {autoDispatch.config.enabled ? "ENV ENABLED" : "DEFAULT-OFF"}
+              </Badge>
+            </div>
+            <div className="grid gap-3 p-3 md:grid-cols-2 lg:grid-cols-3">
+              <article className="text-sm">
+                <p className="text-xs text-muted-foreground">repo allowlist</p>
+                <p className="font-mono text-[11px]">
+                  {autoDispatch.config.repoAllowlist.length
+                    ? autoDispatch.config.repoAllowlist.join(", ")
+                    : "(empty)"}
+                </p>
+              </article>
+              <article className="text-sm">
+                <p className="text-xs text-muted-foreground">workflow allowlist</p>
+                <p className="font-mono text-[11px]">
+                  {autoDispatch.config.workflowAllowlist.length
+                    ? autoDispatch.config.workflowAllowlist.join(", ")
+                    : "(empty)"}
+                </p>
+              </article>
+              <article className="text-sm">
+                <p className="text-xs text-muted-foreground">area allowlist</p>
+                <p className="font-mono text-[11px]">
+                  {autoDispatch.config.areaAllowlist.length
+                    ? autoDispatch.config.areaAllowlist.join(", ")
+                    : "(empty)"}
+                </p>
+              </article>
+              <article className="text-sm">
+                <p className="text-xs text-muted-foreground">concurrency</p>
+                <p className="font-mono text-[11px]">
+                  {autoDispatch.runtime.activeAgentRunCount} / {autoDispatch.config.maxConcurrency}
+                </p>
+              </article>
+              <article className="text-sm">
+                <p className="text-xs text-muted-foreground">token budget</p>
+                <p className="font-mono text-[11px]">
+                  {autoDispatch.runtime.tokensSpentInWindow} spent /{" "}
+                  {autoDispatch.config.tokenBudget} window
+                </p>
+              </article>
+              <article className="text-sm">
+                <p className="text-xs text-muted-foreground">cooldown</p>
+                <p className="font-mono text-[11px]">
+                  {autoDispatch.runtime.cooldownRemainingMs > 0
+                    ? `${Math.ceil(autoDispatch.runtime.cooldownRemainingMs / 1000)}s remaining`
+                    : `${autoDispatch.config.cooldownMs}ms (idle)`}
+                </p>
+              </article>
+            </div>
+            {autoDispatch.eligibilityPreview ? (
+              <div className="border-t border-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-muted-foreground">eligibility preview:</p>
+                  <Badge
+                    variant={autoDispatch.eligibilityPreview.eligible ? "default" : "destructive"}
+                    className="text-[10px]"
+                  >
+                    {autoDispatch.eligibilityPreview.decision}
+                  </Badge>
+                  {autoDispatch.eligibilityPreview.workItemId ? (
+                    <code className="text-[11px]">
+                      WorkItem {autoDispatch.eligibilityPreview.workItemId}
+                    </code>
+                  ) : (
+                    <span className="text-[11px] text-muted-foreground">global preview (no WorkItem)</span>
+                  )}
+                </div>
+                <ul className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
+                  {autoDispatch.eligibilityPreview.gates.map((gate) => (
+                    <li key={gate.key} className="flex items-start gap-2">
+                      <span
+                        className={
+                          gate.status === "passed"
+                            ? "text-emerald-500"
+                            : gate.status === "warn"
+                              ? "text-amber-500"
+                              : "text-destructive"
+                        }
+                      >
+                        {gate.status === "passed" ? "✓" : gate.status === "warn" ? "⚠" : "✗"}
+                      </span>
+                      <span>
+                        <span className="font-medium">{gate.title}</span>: {gate.detail}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         ) : null}
 

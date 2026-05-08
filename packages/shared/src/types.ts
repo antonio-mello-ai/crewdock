@@ -1555,6 +1555,82 @@ export type AgentRunRunnerType =
   | "manual"
   | "other";
 
+export type AutoDispatchDecision =
+  | "blocked_default_off"
+  | "blocked_repo"
+  | "blocked_workflow"
+  | "blocked_area"
+  | "blocked_risk"
+  | "blocked_work_item"
+  | "blocked_runner_policy"
+  | "blocked_concurrency"
+  | "blocked_cooldown"
+  | "blocked_token_budget"
+  | "blocked_actor_rationale"
+  | "eligible";
+
+export type AutoDispatchGateStatus = "passed" | "failed" | "warn";
+
+export interface AutoDispatchGate {
+  key: string;
+  title: string;
+  status: AutoDispatchGateStatus;
+  detail: string;
+  remediation?: string;
+}
+
+export interface AutoDispatchPolicyConfig {
+  enabled: boolean;
+  repoAllowlist: string[];
+  workflowAllowlist: string[];
+  areaAllowlist: string[];
+  requireRiskA: boolean;
+  maxConcurrency: number;
+  tokenBudget: number;
+  cooldownMs: number;
+  maxRuntimeMs: number;
+  defaultActor: string;
+  defaultRationale: string;
+}
+
+export interface AutoDispatchRuntimeState {
+  generatedAt: number;
+  activeAgentRunCount: number;
+  lastAutoDispatchAt: number | null;
+  cooldownExpiresAt: number | null;
+  cooldownRemainingMs: number;
+  tokensSpentInWindow: number;
+  tokensAvailableInWindow: number;
+}
+
+export interface AutoDispatchEligibility {
+  generatedAt: number;
+  agentRunSuggestionId: string | null;
+  workItemId: string | null;
+  decision: AutoDispatchDecision;
+  eligible: boolean;
+  gates: AutoDispatchGate[];
+  blockReasons: string[];
+  satisfiedGates: string[];
+  config: AutoDispatchPolicyConfig;
+  runtime: AutoDispatchRuntimeState;
+  manualRunnerPolicyDecision: RunnerPolicyDecision | null;
+}
+
+export interface AutoDispatchPolicySummary {
+  generatedAt: number;
+  config: AutoDispatchPolicyConfig;
+  runtime: AutoDispatchRuntimeState;
+  eligibilityPreview: AutoDispatchEligibility | null;
+}
+
+export interface EvaluateAutoDispatchEligibilityRequest {
+  workItemId?: string;
+  agentRunSuggestionId?: string;
+  actorOverride?: string;
+  rationaleOverride?: string;
+}
+
 export type AgentRunSuggestionStatus = "active" | "dismissed" | "superseded";
 
 export interface AgentRunSuggestionGeneratedFrom {
@@ -3669,6 +3745,7 @@ export interface CompanyBrainOperatingSnapshot {
   timeline: CompanyBrainTimeline;
   recentEvents: CompanyBrainTimelineEvent[];
   agentRunSuggestions: AgentRunSuggestion[];
+  autoDispatchPolicy: AutoDispatchPolicySummary;
 }
 
 export type CompanyBrainSavedAuditViewSurface =
