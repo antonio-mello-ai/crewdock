@@ -630,6 +630,10 @@ CREATE TABLE IF NOT EXISTS cb_agent_run_suggestions (
   rationale TEXT NOT NULL,
   policy_decision TEXT NOT NULL,
   generated_from TEXT NOT NULL,
+  promoted_agent_run_id TEXT,
+  promoted_by TEXT,
+  promoted_at INTEGER,
+  promotion_rationale TEXT,
   dismiss_reason TEXT,
   dismissed_by TEXT,
   dismissed_at INTEGER,
@@ -1040,6 +1044,31 @@ export function getDb() {
     }
     if (!agentRunColNames.has("last_log_line_count")) {
       sqlite.exec("ALTER TABLE cb_agent_runs ADD COLUMN last_log_line_count INTEGER");
+    }
+
+    const suggestionCols = sqlite
+      .prepare("PRAGMA table_info(cb_agent_run_suggestions)")
+      .all() as Array<{ name: string }>;
+    const suggestionColNames = new Set(suggestionCols.map((c) => c.name));
+    if (!suggestionColNames.has("promoted_agent_run_id")) {
+      sqlite.exec(
+        "ALTER TABLE cb_agent_run_suggestions ADD COLUMN promoted_agent_run_id TEXT"
+      );
+    }
+    if (!suggestionColNames.has("promoted_by")) {
+      sqlite.exec(
+        "ALTER TABLE cb_agent_run_suggestions ADD COLUMN promoted_by TEXT"
+      );
+    }
+    if (!suggestionColNames.has("promoted_at")) {
+      sqlite.exec(
+        "ALTER TABLE cb_agent_run_suggestions ADD COLUMN promoted_at INTEGER"
+      );
+    }
+    if (!suggestionColNames.has("promotion_rationale")) {
+      sqlite.exec(
+        "ALTER TABLE cb_agent_run_suggestions ADD COLUMN promotion_rationale TEXT"
+      );
     }
 
     const guidanceCols = sqlite.prepare("PRAGMA table_info(cb_guidance_items)").all() as Array<{

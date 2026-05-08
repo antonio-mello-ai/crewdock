@@ -561,6 +561,26 @@ export function useCompanyBrainAgentRunSuggestions(status: string = "active") {
   });
 }
 
+export function usePromoteCompanyBrainAgentRunSuggestion() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<unknown>, Error, {
+    suggestionId: string;
+    actor: string;
+    rationale: string;
+  }>({
+    mutationFn: ({ suggestionId, ...rest }) =>
+      api(`/api/company-brain/agent-run-suggestions/${suggestionId}/promote`, {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-run-suggestions"] });
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-runs"] });
+      qc.invalidateQueries({ queryKey: ["company-brain", "operating-snapshot"] });
+    },
+  });
+}
+
 export function useDismissCompanyBrainAgentRunSuggestion() {
   const qc = useQueryClient();
   return useMutation<ApiResponse<unknown>, Error, {

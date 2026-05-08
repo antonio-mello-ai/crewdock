@@ -728,6 +728,10 @@ export const cbAgentRunSuggestions = sqliteTable("cb_agent_run_suggestions", {
       operatingLoopScheduledAt: number | null;
     }>()
     .notNull(),
+  promotedAgentRunId: text("promoted_agent_run_id"),
+  promotedBy: text("promoted_by"),
+  promotedAt: integer("promoted_at", { mode: "number" }),
+  promotionRationale: text("promotion_rationale"),
   dismissReason: text("dismiss_reason"),
   dismissedBy: text("dismissed_by"),
   dismissedAt: integer("dismissed_at", { mode: "number" }),
