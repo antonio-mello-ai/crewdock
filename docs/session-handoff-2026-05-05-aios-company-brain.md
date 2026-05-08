@@ -3448,8 +3448,27 @@ Validacao:
   passou;
 - `npx turbo build --filter=@aios/daemon` passou apos fix de selecao do marker.
 
-Pendencia antes de fechar o ciclo:
+Fechamento:
 
-- abrir PR com `Closes #130`;
-- merge/deploy;
-- rodar production sync e confirmar PR `#125` no intake/Operating Surface.
+- PR `#135` mergeado em `main` no commit `8580f5d`;
+- issue `#130` fechada;
+- CT165 daemon/MCP deployado em `8580f5d`, `aios-daemon` ativo;
+- Cloudflare Pages deployado em `https://c2b12e8b.crewdock.pages.dev`;
+- `GET https://api.felhen.ai/api/health` -> `200`;
+- production sync `POST /api/company-brain/adapters/github/aios-pr-reviews/sync`
+  retornou `pullRequestsSeen=3`, `aiosPullRequestsSeen=3`,
+  `pendingHumanReviewCount=3`, `artifactsCreated=3`, `signalsCreated=3`;
+- PR `#125` em producao ficou `awaiting_human_review`, ligado a WorkItem
+  `bqA5AghugOJn`, patch packet `kn6hZSKvfl0C`, proposal
+  `1VrS7duqMhpF`, AgentRun `fJAlfYi8SmPi`, Artifact `JQJKive2XewV`
+  e Signal `hnzB5PRJndHU`;
+- intake em producao confirmou `total=3`, `awaiting=3`;
+- Operating Snapshot ficou `healthy`, `5/5 operating cards ready`;
+- UI canonica `https://ai.felhen.ai/company-brain/operating` -> `200`;
+- session_result de producao artifact `qHiYgpww2QUm`;
+- WorkItem `Qmr3m7dFDNss` marcado `done` via status artifact
+  `_UEihjN9d7tW`;
+- sync GitHub Issues `state=open` retornou `issuesSeen=1`,
+  `lastIssueNumbers=[131]`;
+- `Next Work` agora recomenda `#131 AIOS-RUN-43` com WorkItem
+  `c3WjOKHFdW-e`.

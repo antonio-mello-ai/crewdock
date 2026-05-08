@@ -95,8 +95,44 @@ Intake result:
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web` passed.
 - `npx turbo build --filter=@aios/daemon` passed after marker selection fix.
 
-## Next
+## Production deployment
 
-- Open PR with `Closes #130`.
-- After merge/deploy, run production sync against `antonio-mello-ai/crewdock`
-  and confirm PR `#125` appears in `/company-brain/operating`.
+- PR `#135` merged into `main` at `8580f5d`.
+- Issue `#130` closed.
+- CT165 daemon/MCP deployed at `8580f5d`; `aios-daemon` active.
+- Cloudflare Pages deployed at `https://c2b12e8b.crewdock.pages.dev`.
+- `GET https://api.felhen.ai/api/health` -> `200`.
+- `GET https://ai.felhen.ai/company-brain/operating` -> `200`.
+- `GET https://c2b12e8b.crewdock.pages.dev/company-brain/operating` -> `200`.
+
+Production sync:
+
+```json
+{
+  "pullRequestsSeen": 3,
+  "aiosPullRequestsSeen": 3,
+  "pendingHumanReviewCount": 3,
+  "artifactsCreated": 3,
+  "artifactsUpdated": 0,
+  "signalsCreated": 3,
+  "pr125": {
+    "number": 125,
+    "reviewStatus": "awaiting_human_review",
+    "workItemId": "bqA5AghugOJn",
+    "patchPacketArtifactId": "kn6hZSKvfl0C",
+    "artifactId": "JQJKive2XewV",
+    "signalId": "hnzB5PRJndHU",
+    "proposalId": "1VrS7duqMhpF",
+    "agentRunId": "fJAlfYi8SmPi"
+  }
+}
+```
+
+Production reconciliation:
+
+- session result artifact `qHiYgpww2QUm`;
+- WorkItem `Qmr3m7dFDNss` marked `done` via status artifact
+  `_UEihjN9d7tW`;
+- GitHub Issues open sync returned `issuesSeen=1`, `lastIssueNumbers=[131]`;
+- Next Work now recommends `#131 AIOS-RUN-43` with WorkItem
+  `c3WjOKHFdW-e`.
