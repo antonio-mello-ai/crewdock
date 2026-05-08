@@ -544,6 +544,24 @@ export function useCompanyBrainOperatingMap() {
   });
 }
 
+export function useSubmitCompanyBrainSessionResult() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<unknown>,
+    Error,
+    Record<string, unknown>
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/session-results", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain"] });
+    },
+  });
+}
+
 export function useRouteCompanyBrainCommand() {
   const qc = useQueryClient();
   return useMutation<
