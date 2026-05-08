@@ -3015,3 +3015,57 @@ Merge/deploy:
 - canonical `https://ai.felhen.ai/company-brain` -> 302 para CF Access,
   esperado;
 - `GET https://api.felhen.ai/api/health` -> 200.
+
+### AIOS-RUN-36 implementation checkpoint
+
+Issue `#117` foi implementada localmente em
+`aios-run-36-autodispatch-pr-proposal-chain`.
+
+Entregue:
+
+- endpoint `POST /api/company-brain/agent-runs/:id/github-pr-proposal/chain`;
+- MCP tool `chain_company_brain_agent_run_github_pr_proposal`;
+- helper compartilhado para gerar/reusar `github_pr_create` a partir de
+  `AgentRun` + patch packet;
+- resposta `AgentRunPrProposalChainResponse` com links de proveniencia:
+  WorkItem, suggestion, AgentRun, patch packet Artifact e proposal;
+- patch packet idempotente por `packetSignature`;
+- auto-dispatch agora chama `/workspace/prepare` antes de `execute-async`;
+- auto-chain opcional e default-off por
+  `AIOS_AGENT_AUTODISPATCH_PR_PROPOSAL_ENABLED=true`;
+- profile `dogfood-empty-commit`, que cria apenas um commit local vazio no
+  worktree preparado;
+- fix de log stream para runner async rapido (`ERR_STREAM_WRITE_AFTER_END`);
+- fix de idempotencia para nao gerar nova suggestion quando ja existe
+  suggestion ativa promovida para um AgentRun nao-failed/nao-cancelled.
+
+Dogfood local com DB `/tmp/aios-run36-smoke.sqlite`:
+
+- WorkItem: `JmuPjFTH_8zK`;
+- Suggestion: `_FvY15rlQ-P2`;
+- AgentRun: `JVxaDk1OJF7e`, status `completed`;
+- workspace:
+  `/Users/antoniomello/.aios/agent-workspaces/antonio-mello-ai_crewdock/aios-run-36-dogfood-1778269691-jvxadk1o`;
+- branch: `aios-aios-run-36-dogfood-1778269691-jvxadk1o`;
+- patch packet Artifact: `BM7C_N07MsKe`;
+- proposal: `2ngMDUvbNJGJ`, `actionType=github_pr_create`,
+  `approvalStatus=pending`, `executionStatus=not_started`;
+- payload: `commitCount=1`, `changedFileCount=1`,
+  `patchPacketSignature=6de52f8c706ae790e90d22660a0fdd1089dbd4d8eb260d43483aa49c826129ba`;
+- explicit chain re-run retornou `status=reused`, `alreadyExisted=true`;
+- repeated Operating Cadence tick manteve `suggestions active=1`,
+  `AgentRuns total=1`, `ExternalActionProposals total=1`.
+
+Validacao parcial:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server`
+  passou;
+- `npx turbo build` passou.
+
+Pendente antes de merge/deploy:
+
+- abrir PR com `Closes #117`;
+- mergear/deployar daemon e MCP no CT165;
+- validar rota nova em producao/loopback;
+- submeter/registrar session_result apos merge.
