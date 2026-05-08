@@ -83,6 +83,28 @@ remaining listeners.
   passed.
 - `npx turbo build` passed.
 
+## Production Deployment
+
+- PR: `#133`.
+- Merge commit: `5efe8a0 feat: add pilot target registry (#133)`.
+- CT165 daemon/MCP deployed at `5efe8a0`; `aios-daemon` active.
+- Cloudflare Pages deploy:
+  `https://3a699129.crewdock.pages.dev`.
+- Production smoke:
+  - `GET https://api.felhen.ai/api/health` -> `200`;
+  - `GET /api/company-brain/pilot-targets?repo=antonio-mello-ai/crewdock`
+    returned `total=1`, `active=1`, `readyForManualLaunch=0`, `blocked=1`;
+  - canonical UI `https://ai.felhen.ai/company-brain/agent-runs` -> `200`;
+  - deployed preview `https://3a699129.crewdock.pages.dev/company-brain/agent-runs`
+    -> `200`.
+- Production Company Brain reconciliation:
+  - session result artifact `fzEHlY3Cnm1H`;
+  - WorkItem `M7fupGPuVrxN` marked `done`;
+  - internal status artifact `CWi3XLPVFgiH`;
+  - GitHub Issues sync `state=open` returned `issuesSeen=3`;
+  - Next Work now recommends `#129 AIOS-RUN-41` with WorkItem
+    `v5QSUqfLBFp_`.
+
 ## Constraints
 
 - No customer repo added.

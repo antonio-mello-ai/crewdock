@@ -3322,8 +3322,18 @@ Validacao:
   passou;
 - `npx turbo build` passou.
 
-Ainda pendente neste corte:
+Fechamento:
 
-- abrir PR com `Closes #128`;
-- merge/deploy;
-- session_result para WorkItem `M7fupGPuVrxN` e status `done`.
+- PR `#133` mergeado em `main` no commit `5efe8a0`;
+- CT165 daemon/MCP deployado em `5efe8a0`, `aios-daemon` ativo;
+- Cloudflare Pages deployado em `https://3a699129.crewdock.pages.dev`;
+- `GET https://api.felhen.ai/api/health` -> `200`;
+- production pilot targets:
+  `total=1`, `active=1`, `readyForManualLaunch=0`, `blocked=1`;
+- UI canonica `https://ai.felhen.ai/company-brain/agent-runs` -> `200`;
+- session_result de producao artifact `fzEHlY3Cnm1H`;
+- WorkItem `M7fupGPuVrxN` marcado `done` via status artifact
+  `CWi3XLPVFgiH`;
+- sync GitHub Issues `state=open` retornou `issuesSeen=3`;
+- `Next Work` agora recomenda `#129 AIOS-RUN-41` com WorkItem
+  `v5QSUqfLBFp_`.
