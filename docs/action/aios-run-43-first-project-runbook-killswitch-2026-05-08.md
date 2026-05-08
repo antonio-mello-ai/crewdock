@@ -43,7 +43,35 @@ repo docs, API, MCP and UI without relying on chat history.
 
 ## Production Evidence
 
-Pending.
+- PR `#136` merged into `main`.
+- Merge commit: `e8a47db`.
+- Issue `#131` is closed.
+- CT165 daemon/MCP deployed at `e8a47db`; `aios-daemon` active.
+- Cloudflare Pages deployed:
+  `https://64a83cfd.crewdock.pages.dev`.
+- `GET https://api.felhen.ai/api/health` -> `200`.
+- `GET /api/company-brain/first-project-readiness?repo=antonio-mello-ai/crewdock&area=development&riskClass=B`
+  returned:
+  - `overallStatus=warn`
+  - `summary="First-project readiness is warn: 6/9 ready, 3 warn, 0 blocked. Production default-off preserved."`
+  - `pendingAiosPrReviews=3`
+  - `pilotTargets=1`
+  - `launchReadyPilotTargets=0`
+  - `realAgentReadyProfiles=0`
+  - `runnerEnabled=false`
+  - `workspaceWritesEnabled=false`
+  - `autoDispatchEnabled=false`
+  - `prWritebackEnabled=false`
+- `GET https://ai.felhen.ai/company-brain/agent-runs` -> `200`.
+- `GET https://64a83cfd.crewdock.pages.dev/company-brain/agent-runs` -> `200`.
+- Production `session_result` artifact: `Bc0RS2m-qG_Y`.
+- WorkItem `c3WjOKHFdW-e` marked `done` internally for issue `#131`.
+- GitHub Issues sync `state=open` returned `issuesSeen=0`.
+- GitHub milestone `AIOS Agent Execution v8` has no open issues.
+- Reconciled stale Company Brain WorkItems for already-closed v7 GitHub
+  issues `#115`, `#116`, `#117` and `#118` to `done` internally.
+- `GET /api/company-brain/next-work` now returns empty state:
+  `activeWorkItemCount=0`, `blockedWorkItemCount=0`, `doneWorkItemCount=79`.
 
 ## Local Evidence
 

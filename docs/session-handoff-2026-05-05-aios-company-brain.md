@@ -3378,6 +3378,29 @@ Validacao:
 - `git diff --check` passou;
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
   passou.
+
+Fechamento:
+
+- PR `#136` mergeado em `main` no commit `e8a47db`;
+- issue `#131` fechada;
+- CT165 daemon/MCP deployado em `e8a47db`, `aios-daemon` ativo;
+- Cloudflare Pages deployado em `https://64a83cfd.crewdock.pages.dev`
+  usando `NODE_OPTIONS=--dns-result-order=ipv4first` apos erro de fetch do
+  Wrangler;
+- `GET https://api.felhen.ai/api/health` -> `200`;
+- first-project readiness em producao retornou `overallStatus=warn`,
+  `6/9 ready`, `3 warn`, `0 blocked`, `pendingAiosPrReviews=3`,
+  `pilotTargets=1`, `launchReadyPilotTargets=0`,
+  `realAgentReadyProfiles=0`, default-off preservado;
+- UI canonica `https://ai.felhen.ai/company-brain/agent-runs` -> `200`;
+- session_result de producao Artifact `Bc0RS2m-qG_Y`;
+- WorkItem `c3WjOKHFdW-e` marcado `done` internamente;
+- sync GitHub Issues `state=open` retornou `issuesSeen=0`;
+- milestone GitHub `AIOS Agent Execution v8` nao tem issues abertas;
+- reconciliados internamente para `done` os WorkItems antigos de issues GitHub
+  ja fechadas `#115`, `#116`, `#117` e `#118`;
+- `Next Work` agora retorna empty state com `activeWorkItemCount=0`,
+  `blockedWorkItemCount=0`, `doneWorkItemCount=79`.
 - `npx turbo build` passou.
 
 Fechamento:
