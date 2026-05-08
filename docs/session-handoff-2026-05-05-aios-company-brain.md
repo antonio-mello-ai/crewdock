@@ -2907,3 +2907,43 @@ parar em docs, APIs internas, UI/MCP, PR writeback preflight, governance UI para
 `github_pr_create`, chain auto-dispatch -> PR proposal, same-PR iteration e
 dogfood semantico controlado. Deve parar antes de auto-merge/deploy, customer
 repo, novo segredo/permissao, servico pago ou broad multi-issue auto-dispatch.
+
+### AIOS-RUN-34 implementation checkpoint
+
+Issue `#115` foi implementada localmente em
+`aios-run-34-pr-writeback-preflight`.
+
+Entregue:
+
+- API `POST /api/company-brain/external-action-proposals/:id/github-pr/preflight`;
+- MCP `preflight_company_brain_github_pr_writeback`;
+- helper interno de preflight reaproveitado por
+  `POST /external-action-proposals/:id/execute-pr`;
+- gates para action type, payload, master switch, repo allowlist, token source,
+  auth scheme `x-access-token`, base branch visibility, workspace readiness e
+  push probe opcional;
+- response com remote URL pattern redigido, dry-run limitations e
+  `safePushProbePossible`;
+- Artifact/audit para cada preflight.
+
+Dogfood local com DB `/tmp/aios-run34-smoke.sqlite`:
+
+- caminho pronto: proposal `gEh-8kFUWGhh`, artifact `x_VjY1Om_PtD`,
+  repo `antonio-mello-ai/crewdock`, `ready=true`, `workspaceReady=true`,
+  `baseBranchVisible=true`, `safePushProbePossible=true`,
+  `pushProbe.status=passed`, comando redigido com
+  `https://x-access-token:[REDACTED]@github.com/antonio-mello-ai/crewdock.git`;
+- caminho bloqueado: proposal `9qjBaZqGE54f`, artifact `ph-Rjv3Mmwl9`,
+  repo `openai/symphony`, HTTP 400, `failedGates=[repo_allowlist]`;
+- executor com proposal bloqueada aprovada internamente retornou HTTP 400
+  `preflight_blocked`.
+
+Validacao parcial:
+
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server`
+  passou.
+
+Antes de merge/deploy, rodar:
+
+- `git diff --check`;
+- `npx turbo build`.
