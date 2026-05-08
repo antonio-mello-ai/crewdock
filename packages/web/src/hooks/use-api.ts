@@ -37,6 +37,7 @@ import type {
   ExecuteExternalActionProposalRequest,
   ExecuteGitHubPrProposalRequest,
   ExecuteGitHubPrProposalResponse,
+  FirstProjectReadinessChecklist,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateImprovementProposalRequest,
@@ -688,6 +689,24 @@ export function useCompanyBrainPilotTargets(filters?: {
     queryKey: ["company-brain", "pilot-targets", filters],
     queryFn: () =>
       api(`/api/company-brain/pilot-targets${query ? `?${query}` : ""}`),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useCompanyBrainFirstProjectReadiness(filters?: {
+  repo?: string;
+  area?: string;
+  riskClass?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.repo) params.set("repo", filters.repo);
+  if (filters?.area) params.set("area", filters.area);
+  if (filters?.riskClass) params.set("riskClass", filters.riskClass);
+  const query = params.toString();
+  return useQuery<ApiResponse<FirstProjectReadinessChecklist>>({
+    queryKey: ["company-brain", "first-project-readiness", filters],
+    queryFn: () =>
+      api(`/api/company-brain/first-project-readiness${query ? `?${query}` : ""}`),
     refetchInterval: 10_000,
   });
 }

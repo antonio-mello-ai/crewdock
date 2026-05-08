@@ -3472,3 +3472,43 @@ Fechamento:
   `lastIssueNumbers=[131]`;
 - `Next Work` agora recomenda `#131 AIOS-RUN-43` com WorkItem
   `c3WjOKHFdW-e`.
+
+### AIOS-RUN-43 First-project operating runbook and kill-switch pack checkpoint
+
+Issue `#131` fecha a milestone AIOS Agent Execution v8 preparando o primeiro
+piloto real interno com um contrato operacional duravel.
+
+Entregue no branch `aios-run-43-first-project-runbook-killswitch`:
+
+- runbook canonico `docs/aios-first-project-operating-runbook.md`;
+- tipos compartilhados `FirstProjectReadinessChecklist` e itens/status;
+- API `GET /api/company-brain/first-project-readiness`;
+- MCP tool `get_company_brain_first_project_readiness`;
+- UI `First-project readiness` em `/company-brain/agent-runs`;
+- action doc
+  `docs/action/aios-run-43-first-project-runbook-killswitch-2026-05-08.md`.
+
+Contrato:
+
+- checklist agrega operating snapshot, runner profile readiness, pilot target
+  registry, AIOS-authored PR review intake e default-off evidence;
+- runbook define boundary do piloto, env gates, kill switches CT165,
+  cancel/quarantine, stop conditions e fechamento;
+- este corte nao adiciona executor, segredo, servico pago, writeback externo,
+  merge/deploy automatico ou auto-dispatch amplo.
+
+Dogfood local:
+
+- DB temporario `/tmp/aios-run43-smoke.sqlite`, porta `43213`;
+- endpoint first-project readiness retornou `overallStatus=warn`,
+  `6/9 ready`, `3 warn`, `0 blocked`;
+- default-off preservado: `runner=false`, `workspace=false`,
+  `autoDispatch=false`, `prWriteback=false`;
+- `pilotTargets=1`, `launchReadyPilotTargets=0`,
+  `realAgentReadyProfiles=0`.
+
+Validacao:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
+  passou.

@@ -22,6 +22,7 @@ import {
   useCompanyBrainAgentRunsList,
   useCompanyBrainAgentRunsSummary,
   useCompanyBrainAutoDispatchPolicy,
+  useCompanyBrainFirstProjectReadiness,
   useCompanyBrainPilotTargets,
   useCompanyBrainRunnerProfileReadiness,
   useDismissCompanyBrainAgentRunSuggestion,
@@ -34,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatTimeAgo } from "@/lib/utils";
+import type { FirstProjectReadinessChecklist } from "@aios/shared";
 
 interface AgentRunRow {
   id: string;
@@ -923,6 +925,11 @@ export default function CompanyBrainAgentRunsPage() {
   const { data: suggestionsRes } = useCompanyBrainAgentRunSuggestions("active");
   const { data: autoDispatchRes } = useCompanyBrainAutoDispatchPolicy();
   const { data: pilotTargetsRes } = useCompanyBrainPilotTargets({ status: "all" });
+  const { data: firstProjectRes } = useCompanyBrainFirstProjectReadiness({
+    repo: "antonio-mello-ai/crewdock",
+    area: "development",
+    riskClass: "B",
+  });
   const { data: readinessRes } = useCompanyBrainRunnerProfileReadiness({
     repo: "antonio-mello-ai/crewdock",
     area: "development",
@@ -930,6 +937,8 @@ export default function CompanyBrainAgentRunsPage() {
   });
   const autoDispatch = autoDispatchRes?.data as AutoDispatchPolicySummaryRow | undefined;
   const pilotTargets = pilotTargetsRes?.data as PilotTargetsResponse | undefined;
+  const firstProject =
+    firstProjectRes?.data as FirstProjectReadinessChecklist | undefined;
   const readiness = readinessRes?.data as RunnerProfileReadinessMatrix | undefined;
   const [expanded, setExpanded] = useState<string | null>(null);
   const summary = summaryRes?.data as AgentRunSummary | undefined;
@@ -987,6 +996,137 @@ export default function CompanyBrainAgentRunsPage() {
               <p className="text-xs text-muted-foreground">stale</p>
               <p className="text-lg font-semibold">{summary.staleCount}</p>
             </article>
+          </section>
+        ) : null}
+
+        {firstProject ? (
+          <section className="rounded-md border border-primary/60 bg-primary/5">
+            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border p-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold">First-project readiness</h2>
+                  <Badge
+                    variant={readinessVariant(firstProject.overallStatus)}
+                    className="text-[10px]"
+                  >
+                    {firstProject.overallStatus}
+                  </Badge>
+                </div>
+                <p className="mt-1 max-w-4xl text-xs text-muted-foreground">
+                  {firstProject.summary}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/company-brain/operating"
+                  className="inline-flex items-center rounded-md border border-border px-2 py-1 text-xs hover:bg-background"
+                >
+                  Operating
+                </Link>
+                <a
+                  href={`/api/company-brain/first-project-readiness?repo=${encodeURIComponent(firstProject.repo)}&area=${encodeURIComponent(firstProject.area)}&riskClass=${encodeURIComponent(firstProject.riskClass)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center rounded-md border border-border px-2 py-1 text-xs hover:bg-background"
+                >
+                  API
+                </a>
+              </div>
+            </div>
+            <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.8fr)]">
+              <div className="grid gap-2 md:grid-cols-2">
+                {firstProject.items.map((item) => (
+                  <article
+                    key={item.key}
+                    className="rounded-md border border-border bg-background/80 p-3 text-sm"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{item.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
+                      </div>
+                      <Badge variant={readinessVariant(item.status)} className="shrink-0 text-[10px]">
+                        {item.status}
+                      </Badge>
+                    </div>
+                    {item.nextAction ? (
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        Next: {item.nextAction}
+                      </p>
+                    ) : null}
+                    <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
+                      {item.route ? (
+                        <Link
+                          href={item.route}
+                          className="rounded border border-border px-1.5 py-0.5 hover:bg-muted"
+                        >
+                          {item.route}
+                        </Link>
+                      ) : null}
+                      {item.apiPath ? (
+                        <code className="rounded border border-border px-1.5 py-0.5">
+                          {item.apiPath}
+                        </code>
+                      ) : null}
+                      {item.docPath ? (
+                        <code className="rounded border border-border px-1.5 py-0.5">
+                          {item.docPath}
+                        </code>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <aside className="space-y-3 rounded-md border border-border bg-background/80 p-3 text-sm">
+                <div>
+                  <h3 className="font-semibold">Default-off evidence</h3>
+                  <dl className="mt-2 grid grid-cols-2 gap-1 text-[11px]">
+                    <dt className="text-muted-foreground">runner</dt>
+                    <dd className="font-mono">{String(firstProject.productionDefaultOffEvidence.runnerEnabled)}</dd>
+                    <dt className="text-muted-foreground">workspace</dt>
+                    <dd className="font-mono">{String(firstProject.productionDefaultOffEvidence.workspaceWritesEnabled)}</dd>
+                    <dt className="text-muted-foreground">auto-dispatch</dt>
+                    <dd className="font-mono">{String(firstProject.productionDefaultOffEvidence.autoDispatchEnabled)}</dd>
+                    <dt className="text-muted-foreground">PR writeback</dt>
+                    <dd className="font-mono">{String(firstProject.productionDefaultOffEvidence.prWritebackEnabled)}</dd>
+                  </dl>
+                </div>
+                <div>
+                  <h3 className="font-semibold">Totals</h3>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    <Badge variant="default" className="text-[10px]">
+                      ready {firstProject.totals.ready}
+                    </Badge>
+                    {firstProject.totals.warn ? (
+                      <Badge variant="secondary" className="text-[10px]">
+                        warn {firstProject.totals.warn}
+                      </Badge>
+                    ) : null}
+                    {firstProject.totals.blocked ? (
+                      <Badge variant="destructive" className="text-[10px]">
+                        blocked {firstProject.totals.blocked}
+                      </Badge>
+                    ) : null}
+                    <Badge variant="outline" className="text-[10px]">
+                      pending PR reviews {firstProject.totals.pendingAiosPrReviews}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      launch-ready targets {firstProject.totals.launchReadyPilotTargets}
+                    </Badge>
+                  </div>
+                </div>
+                {firstProject.nextActions.length ? (
+                  <div>
+                    <h3 className="font-semibold">Next actions</h3>
+                    <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+                      {firstProject.nextActions.map((action) => (
+                        <li key={action}>- {action}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </aside>
+            </div>
           </section>
         ) : null}
 

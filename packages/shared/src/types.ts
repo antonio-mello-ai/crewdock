@@ -1862,6 +1862,60 @@ export interface ListPilotTargetsResponse {
   targets: PilotTargetWithReadiness[];
 }
 
+export type FirstProjectReadinessStatus = "ready" | "warn" | "blocked";
+
+export interface FirstProjectReadinessChecklistItem {
+  key: string;
+  title: string;
+  status: FirstProjectReadinessStatus;
+  detail: string;
+  route?: string | null;
+  apiPath?: string | null;
+  docPath?: string | null;
+  nextAction?: string | null;
+  blockReasons?: string[];
+}
+
+export interface FirstProjectReadinessChecklist {
+  generatedAt: number;
+  repo: string;
+  area: CompanyBrainArea;
+  riskClass: RiskClass;
+  overallStatus: FirstProjectReadinessStatus;
+  summary: string;
+  runbookPath: string;
+  productionDefaultOffEvidence: {
+    runnerEnabled: boolean;
+    workspaceWritesEnabled: boolean;
+    autoDispatchEnabled: boolean;
+    prWritebackEnabled: boolean;
+    runnerRepoAllowlist: string[];
+    workspaceAllowlist: string[];
+    commandAllowlist: string[];
+    autoDispatchRepoAllowlist: string[];
+  };
+  linkedSurfaces: {
+    operatingSurface: string;
+    agentRuns: string;
+    runnerReadinessApi: string;
+    pilotTargetsApi: string;
+    aiosPrReviewIntakeApi: string;
+    operatingSnapshotApi: string;
+  };
+  totals: {
+    itemCount: number;
+    ready: number;
+    warn: number;
+    blocked: number;
+    pendingAiosPrReviews: number;
+    pilotTargets: number;
+    launchReadyPilotTargets: number;
+    realAgentReadyProfiles: number;
+  };
+  items: FirstProjectReadinessChecklistItem[];
+  nextActions: string[];
+}
+
 export interface AgentRunLauncherWriteBoundaries {
   repo: string;
   workspacePath: string;
