@@ -1586,6 +1586,83 @@ export type AgentRunRunnerType =
   | "manual"
   | "other";
 
+export type RunnerProfileAuthMode =
+  | "none"
+  | "github_token"
+  | "anthropic_api_key"
+  | "openai_api_key"
+  | "shell_only";
+
+export type RunnerProfileCapability =
+  | "no_op"
+  | "shell_command"
+  | "code_edit"
+  | "git_commit"
+  | "github_pr_open"
+  | "github_pr_writeback"
+  | "github_status_check"
+  | "test_runner";
+
+export interface RunnerProfileOutputContract {
+  /** structured = expects JSON session_result on stdout; fallback = parses last lines */
+  format: "structured" | "fallback" | "noop";
+  expectedExitCodes: number[];
+  description: string;
+}
+
+export interface RunnerProfile {
+  id: string;
+  title: string;
+  description: string;
+  command: string;
+  args: string[];
+  capabilities: RunnerProfileCapability[];
+  authMode: RunnerProfileAuthMode;
+  allowedRepos: string[] | "*";
+  allowedAreas: CompanyBrainArea[] | "*";
+  maxConcurrency: number;
+  riskCeiling: RiskClass;
+  outputContract: RunnerProfileOutputContract;
+  /**
+   * Whether this profile is selectable by default (no env opt-in needed).
+   * Real coding profiles default to false; noop/dogfood profiles default
+   * to true so smoke tests can use them without extra config.
+   */
+  defaultEnabled: boolean;
+  /**
+   * Env var that toggles this profile (when defaultEnabled=false). Setting
+   * it to "true" makes the profile available to auto-dispatch and manual
+   * runs.
+   */
+  enabledEnvVar?: string;
+  /** Audit/UI label */
+  category: "noop" | "dogfood" | "real_agent";
+}
+
+export type RunnerProfileBlockReason =
+  | "profile_not_found"
+  | "profile_not_enabled"
+  | "profile_command_not_allowlisted"
+  | "profile_repo_not_allowed"
+  | "profile_area_not_allowed"
+  | "profile_risk_ceiling_exceeded";
+
+export interface RunnerProfileEvaluation {
+  profileId: string;
+  available: boolean;
+  reason: RunnerProfileBlockReason | null;
+  detail: string;
+  enabledEnvVar?: string;
+}
+
+export interface ListRunnerProfilesResponse {
+  generatedAt: number;
+  profiles: Array<{
+    profile: RunnerProfile;
+    evaluation: RunnerProfileEvaluation;
+  }>;
+}
+
 export type AutoDispatchDecision =
   | "blocked_default_off"
   | "blocked_repo"
@@ -1635,6 +1712,14 @@ export interface AutoDispatchPolicyConfig {
    * WORKFLOW.md `agent.command`.
    */
   commandOverride: string | null;
+  /**
+   * Optional runner profile id selected via
+   * AIOS_AGENT_AUTODISPATCH_PROFILE_ID. When set, auto-dispatch uses the
+   * profile's command/args (taking precedence over commandOverride and
+   * WORKFLOW.md agent.command). Eligibility additionally checks the
+   * profile is enabled and that repo/area/risk are within profile bounds.
+   */
+  profileId: string | null;
 }
 
 export interface AutoDispatchRuntimeState {

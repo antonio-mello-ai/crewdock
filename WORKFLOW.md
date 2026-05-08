@@ -90,6 +90,22 @@ Auto-dispatch is **default-off** in production. Opt-in requires the following en
 | `AIOS_AGENT_AUTODISPATCH_DEFAULT_ACTOR` | string | `operating-loop:auto-dispatch` | Audit actor for promote + execute-async calls. |
 | `AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE` | string | `Auto-dispatched by Operating Loop after eligibility evaluation` | Default rationale recorded on AgentRun. |
 | `AIOS_AGENT_AUTODISPATCH_COMMAND_OVERRIDE` | string (optional) | `echo` | When set, auto-dispatch passes this binary as `commandOverride` to `/execute-async` instead of `WORKFLOW.md` `agent.command`. Must still be present in `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST`. Useful for dogfood smoke runs with benign commands. |
+| `AIOS_AGENT_AUTODISPATCH_PROFILE_ID` | runner profile id (optional) | `noop-echo` | Selects a typed runner profile from the registry (`GET /runner-profiles`). Takes precedence over `COMMAND_OVERRIDE`. Profile's `command`/`args` thread through to `/execute-async`. Eligibility additionally checks the profile is enabled and that repo/area/risk are within profile bounds. |
+| `AIOS_AGENT_RUNNER_PROFILE_CLAUDE_CODE_ENABLED` | boolean string (optional) | `false` | Toggles the `claude-code-real` runner profile. Default-OFF. |
+| `AIOS_AGENT_RUNNER_PROFILE_CODEX_CLI_ENABLED` | boolean string (optional) | `false` | Toggles the `codex-cli-real` runner profile. Default-OFF. |
+
+## Runner profile registry
+
+Built-in profiles queryable via `GET /runner-profiles?repo=...&area=...&riskClass=...`:
+
+| id | category | command | defaultEnabled | risk ceiling | capabilities |
+|---|---|---|---|---|---|
+| `noop-echo` | noop | `echo aios-noop-runner-heartbeat` | true | A | `no_op` |
+| `dogfood-true` | dogfood | `true` | true | A | `no_op` |
+| `claude-code-real` | real_agent | `claude -p` | false | B | `shell_command`, `code_edit`, `git_commit`, `github_pr_open`, `test_runner` |
+| `codex-cli-real` | real_agent | `codex` | false | B | same as `claude-code-real` |
+
+Real-agent profiles are explicitly OFF by default. Each carries an `enabledEnvVar` the operator must set to `true` before the profile becomes selectable. The eligibility evaluator chains the runner profile gate after all other auto-dispatch gates so policy hints stay specific.
 
 ## Manual runner env vars
 

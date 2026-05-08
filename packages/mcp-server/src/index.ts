@@ -1583,6 +1583,45 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_runner_profiles",
+  {
+    title: "List Company Brain runner profiles",
+    description:
+      "List registered runner profiles (noop-echo, dogfood-true, claude-code-real, codex-cli-real) with availability evaluation against optional repo/area/risk filters. Profiles are typed alternatives to raw command overrides.",
+    inputSchema: {
+      repo: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+    },
+  },
+  async ({ repo, area, riskClass }) => {
+    const params = new URLSearchParams();
+    if (repo) params.set("repo", repo);
+    if (area) params.set("area", area);
+    if (riskClass) params.set("riskClass", riskClass);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/runner-profiles${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_auto_dispatch_policy",
   {
     title: "Get Company Brain Auto-Dispatch policy",
