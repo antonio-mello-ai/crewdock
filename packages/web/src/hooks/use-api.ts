@@ -655,6 +655,24 @@ export function useCompanyBrainAgentRunsSummary() {
   });
 }
 
+export function useCompanyBrainRunnerProfileReadiness(filters?: {
+  repo?: string;
+  area?: string;
+  riskClass?: string;
+}) {
+  const params = new URLSearchParams();
+  if (filters?.repo) params.set("repo", filters.repo);
+  if (filters?.area) params.set("area", filters.area);
+  if (filters?.riskClass) params.set("riskClass", filters.riskClass);
+  const query = params.toString();
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "runner-profile-readiness", filters],
+    queryFn: () =>
+      api(`/api/company-brain/runner-profile-readiness${query ? `?${query}` : ""}`),
+    refetchInterval: 10_000,
+  });
+}
+
 export function useCompanyBrainAgentRun(id: string | null) {
   return useQuery<ApiResponse<unknown>>({
     queryKey: ["company-brain", "agent-run", id],

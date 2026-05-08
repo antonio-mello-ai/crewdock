@@ -13,9 +13,9 @@ Boundary local: `docs/company-brain-direction.md`. Backlog implementacional:
 
 ## Estado da fila
 
-- Milestone ativa: `AIOS Agent Execution v1` (number=4).
-- Milestone anterior `AIOS Execution Loop v0` (number=3) foi fechada em
-  2026-05-07 com issues `#25` a `#31` e `#37` a `#40` concluídas.
+- Milestone ativa: `AIOS Agent Execution v8` (number=11).
+- Milestone anterior `AIOS Agent Execution v7` (number=10) foi fechada em
+  2026-05-08 com issues `#115` a `#119` concluídas.
 - Active queue: issues abertas com label `aios` + milestone ativa.
 - Legacy queue: issues fechadas marcadas com pelo menos uma de
   `legacy-runtime`, `runtime-admin`, `icebox` ou `superseded`. Permanecem

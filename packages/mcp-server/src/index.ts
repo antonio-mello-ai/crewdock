@@ -1747,6 +1747,45 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_runner_profile_readiness",
+  {
+    title: "Get Company Brain runner profile readiness",
+    description:
+      "Read the runner profile readiness matrix for a repo/area/risk context. Shows command presence, allowlists, auth env readiness, profile gates, production default-off hints and recommended next actions without launching a subprocess.",
+    inputSchema: {
+      repo: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+    },
+  },
+  async ({ repo, area, riskClass }) => {
+    const params = new URLSearchParams();
+    if (repo) params.set("repo", repo);
+    if (area) params.set("area", area);
+    if (riskClass) params.set("riskClass", riskClass);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/runner-profile-readiness${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_auto_dispatch_policy",
   {
     title: "Get Company Brain Auto-Dispatch policy",
