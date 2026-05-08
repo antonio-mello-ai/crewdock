@@ -1664,6 +1664,28 @@ export interface AgentRunSuggestion {
   updatedAt: number;
 }
 
+export type OperatingLoopAutoDispatchStatus =
+  | "skipped_disabled"
+  | "skipped_no_suggestion"
+  | "blocked_eligibility"
+  | "blocked_concurrency"
+  | "blocked_cooldown"
+  | "promoted_only"
+  | "dispatched"
+  | "error";
+
+export interface OperatingLoopAutoDispatchOutcome {
+  generatedAt: number;
+  status: OperatingLoopAutoDispatchStatus;
+  scheduleId: string | null;
+  scheduledAt: number | null;
+  suggestionId: string | null;
+  agentRunId: string | null;
+  blockReasons: string[];
+  errorSummary: string | null;
+  decision: AutoDispatchDecision | null;
+}
+
 export interface PromoteAgentRunSuggestionRequest {
   actor: string;
   rationale: string;
@@ -2741,6 +2763,10 @@ export interface CompanyBrainOperatingLoopState {
     signalsCreated: number;
     runs: RunOperatingCadenceResponse["runs"];
   } | null;
+  lastAutoDispatchOutcome: OperatingLoopAutoDispatchOutcome | null;
+  autoDispatchTickCount: number;
+  autoDispatchSuccessCount: number;
+  autoDispatchBlockedCount: number;
 }
 
 export interface CompanyBrainOperatingCadence {

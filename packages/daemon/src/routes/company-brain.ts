@@ -100,6 +100,7 @@ import type {
   DismissAgentRunSuggestionResponse,
   EvaluateAutoDispatchEligibilityRequest,
   ListAgentRunSuggestionsResponse,
+  OperatingLoopAutoDispatchOutcome,
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
   CreateAgentRunRequest,
@@ -304,6 +305,10 @@ const operatingLoopState: CompanyBrainOperatingLoopState = {
   skippedTickCount: 0,
   lastDueWatcherIds: [],
   lastRun: null,
+  lastAutoDispatchOutcome: null,
+  autoDispatchTickCount: 0,
+  autoDispatchSuccessCount: 0,
+  autoDispatchBlockedCount: 0,
 };
 let operatingLoopTimer: ReturnType<typeof setTimeout> | null = null;
 let operatingLoopTickInFlight = false;
@@ -17953,6 +17958,43 @@ export async function runCompanyBrainOperatingCadence(
     );
   }
 
+  // Single-run controlled auto-dispatch (default-blocked).
+  // Spawns a subprocess only when AIOS_AGENT_AUTODISPATCH_ENABLED=true and
+  // every gate in evaluateAutoDispatchEligibility passes. Max one per tick.
+  try {
+    const autoOutcome = await runOperatingLoopAutoDispatchTick({
+      scheduleId,
+      scheduledAt,
+    });
+    operatingLoopState.lastAutoDispatchOutcome = autoOutcome;
+    operatingLoopState.autoDispatchTickCount += 1;
+    if (autoOutcome.status === "dispatched") {
+      operatingLoopState.autoDispatchSuccessCount += 1;
+    } else if (
+      autoOutcome.status === "blocked_eligibility" ||
+      autoOutcome.status === "blocked_concurrency" ||
+      autoOutcome.status === "blocked_cooldown"
+    ) {
+      operatingLoopState.autoDispatchBlockedCount += 1;
+    }
+  } catch (err) {
+    console.error(
+      "[company-brain] runOperatingLoopAutoDispatchTick failed",
+      err
+    );
+    operatingLoopState.lastAutoDispatchOutcome = {
+      generatedAt: now(),
+      status: "error",
+      scheduleId,
+      scheduledAt,
+      suggestionId: null,
+      agentRunId: null,
+      blockReasons: [],
+      errorSummary: err instanceof Error ? err.message : "unknown error",
+      decision: null,
+    };
+  }
+
   const response: RunOperatingCadenceResponse = {
     scheduleId,
     scheduledAt,
@@ -17986,6 +18028,205 @@ function buildAgentRunSuggestionSignature(args: {
     workItemUpdatedAt: args.workItemUpdatedAt,
   });
   return createHash("sha256").update(payload).digest("hex");
+}
+
+async function runOperatingLoopAutoDispatchTick(args: {
+  scheduleId: string | null;
+  scheduledAt: number | null;
+}): Promise<OperatingLoopAutoDispatchOutcome> {
+  const generatedAt = now();
+  const baseOutcome: OperatingLoopAutoDispatchOutcome = {
+    generatedAt,
+    status: "skipped_disabled",
+    scheduleId: args.scheduleId,
+    scheduledAt: args.scheduledAt,
+    suggestionId: null,
+    agentRunId: null,
+    blockReasons: [],
+    errorSummary: null,
+    decision: null,
+  };
+
+  if (!autoDispatchEnabled()) {
+    return baseOutcome;
+  }
+
+  const db = getDb();
+
+  // Pick the oldest active suggestion that has not been promoted yet,
+  // ordered by createdAt ascending (FIFO). Limit to 1 — single-run dispatch.
+  const candidates = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(eq(cbAgentRunSuggestions.status, "active"))
+    .orderBy(cbAgentRunSuggestions.createdAt)
+    .all() as AgentRunSuggestion[];
+  const target = candidates.find((s) => !s.promotedAgentRunId) ?? null;
+  if (!target) {
+    return { ...baseOutcome, status: "skipped_no_suggestion" };
+  }
+
+  const workItem =
+    (db
+      .select()
+      .from(cbWorkItems)
+      .where(eq(cbWorkItems.id, target.workItemId))
+      .get() as WorkItem | undefined) ?? null;
+  if (!workItem) {
+    return {
+      ...baseOutcome,
+      status: "error",
+      suggestionId: target.id,
+      errorSummary: `WorkItem ${target.workItemId} not found`,
+    };
+  }
+
+  const eligibility = evaluateAutoDispatchEligibility({
+    workItem,
+    suggestion: target,
+  });
+
+  if (!eligibility.eligible) {
+    return {
+      ...baseOutcome,
+      status:
+        eligibility.decision === "blocked_concurrency"
+          ? "blocked_concurrency"
+          : eligibility.decision === "blocked_cooldown"
+            ? "blocked_cooldown"
+            : "blocked_eligibility",
+      suggestionId: target.id,
+      blockReasons: eligibility.blockReasons,
+      decision: eligibility.decision,
+    };
+  }
+
+  const autoActor = eligibility.config.defaultActor;
+  const autoRationale = eligibility.config.defaultRationale;
+
+  // Promote internally via the existing endpoint (preserves auto-dispatch
+  // policy chain + audit trail).
+  let promotedAgentRunId: string | null = null;
+  try {
+    const promoteResp = await app.request(
+      "/agent-run-suggestions/" + target.id + "/promote",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actor: autoActor, rationale: autoRationale }),
+      }
+    );
+    if (!promoteResp.ok) {
+      const errBody = (await promoteResp.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      return {
+        ...baseOutcome,
+        status: "error",
+        suggestionId: target.id,
+        errorSummary: `promote failed: ${errBody.message ?? promoteResp.status}`,
+        decision: eligibility.decision,
+      };
+    }
+    const promoted = (await promoteResp.json()) as {
+      data: PromoteAgentRunSuggestionResponse;
+    };
+    promotedAgentRunId = promoted.data.agentRun.id;
+  } catch (err) {
+    return {
+      ...baseOutcome,
+      status: "error",
+      suggestionId: target.id,
+      errorSummary: `promote threw: ${err instanceof Error ? err.message : "unknown"}`,
+      decision: eligibility.decision,
+    };
+  }
+
+  if (!promotedAgentRunId) {
+    return {
+      ...baseOutcome,
+      status: "promoted_only",
+      suggestionId: target.id,
+      decision: eligibility.decision,
+    };
+  }
+
+  // Trigger async execution.
+  try {
+    const execResp = await app.request(
+      "/agent-runs/" + promotedAgentRunId + "/execute-async",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: autoActor,
+          rationale: autoRationale,
+        }),
+      }
+    );
+    if (!execResp.ok) {
+      const errBody = (await execResp.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      return {
+        ...baseOutcome,
+        status: "error",
+        suggestionId: target.id,
+        agentRunId: promotedAgentRunId,
+        errorSummary: `execute-async failed: ${errBody.message ?? execResp.status}`,
+        decision: eligibility.decision,
+      };
+    }
+  } catch (err) {
+    return {
+      ...baseOutcome,
+      status: "error",
+      suggestionId: target.id,
+      agentRunId: promotedAgentRunId,
+      errorSummary: `execute-async threw: ${err instanceof Error ? err.message : "unknown"}`,
+      decision: eligibility.decision,
+    };
+  }
+
+  // Append audit entry on the AgentRun marking it as auto-dispatched.
+  try {
+    const refreshed = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, promotedAgentRunId))
+      .get() as AgentRun | undefined;
+    if (refreshed) {
+      const updatedAudit = appendAgentRunAuditEntry(refreshed.auditTrail ?? [], {
+        actor: autoActor,
+        event: "agent_run_auto_dispatched",
+        note: autoRationale,
+        metadata: {
+          suggestionId: target.id,
+          signature: target.signature,
+          decision: eligibility.decision,
+          scheduleId: args.scheduleId,
+          scheduledAt: args.scheduledAt,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail: updatedAudit, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, promotedAgentRunId))
+        .run();
+    }
+  } catch (err) {
+    console.error(
+      "[company-brain] auto-dispatch audit append failed",
+      err
+    );
+  }
+
+  return {
+    ...baseOutcome,
+    status: "dispatched",
+    suggestionId: target.id,
+    agentRunId: promotedAgentRunId,
+    decision: eligibility.decision,
+  };
 }
 
 function generateAgentRunSuggestionsForOperatingLoop(args: {
