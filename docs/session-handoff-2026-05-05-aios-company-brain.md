@@ -3276,3 +3276,54 @@ Validacao e deploy:
   `EUpITeaGxoxp`, com `prLinkRecorded=true` e `guidanceItemsCreated=1`;
 - WorkItem `EUpITeaGxoxp` marcado `done` via status artifact
   `DnDfQHWI6ntu`.
+
+### AIOS-RUN-40 pilot target registry checkpoint
+
+Issue `#128` adiciona o registry governado para o primeiro piloto real em
+projeto interno, evitando que o launcher futuro dependa de env vars soltas ou
+chat context.
+
+Entregue no branch:
+
+- nova tabela `cb_pilot_targets`;
+- tipos `PilotTarget`, `PilotTargetReadiness` e `ListPilotTargetsResponse`;
+- seed `pilot-target-aios-crewdock`;
+- API `GET /api/company-brain/pilot-targets`;
+- MCP `list_company_brain_pilot_targets`;
+- UI `/company-brain/agent-runs` com seção `Pilot targets`;
+- action doc `docs/action/aios-run-40-pilot-target-registry-2026-05-08.md`.
+
+Target seedado:
+
+- projeto `AIOS / CrewDock`;
+- repo `antonio-mello-ai/crewdock`;
+- area `development`;
+- default blueprint `development-blueprint-v0`;
+- allowed profiles `dogfood-semantic-doc-change`, `claude-code-real`,
+  `codex-cli-real`;
+- risk ceiling `B`;
+- owner `Antonio`;
+- status `active`;
+- metadata `customerRepo=false` e `autoDispatchDefaultOff=true`.
+
+Dogfood local:
+
+- default-off em `/tmp/aios-run40-smoke.sqlite`, porta `43199`:
+  `total=1`, `active=1`, `readyForManualLaunch=0`, `blocked=1`;
+- opt-in controlado em `/tmp/aios-run40-ready-smoke.sqlite`, porta `43200`:
+  `readyForManualLaunch=1`, readiness `ready`, ready profiles
+  `claude-code-real` e `codex-cli-real`;
+- ambos os daemons encerrados; portas `43199` e `43200` sem listener.
+
+Validacao:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
+  passou;
+- `npx turbo build` passou.
+
+Ainda pendente neste corte:
+
+- abrir PR com `Closes #128`;
+- merge/deploy;
+- session_result para WorkItem `M7fupGPuVrxN` e status `done`.

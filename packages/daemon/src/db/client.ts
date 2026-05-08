@@ -643,6 +643,26 @@ CREATE TABLE IF NOT EXISTS cb_agent_run_suggestions (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cb_agent_run_suggestions_signature ON cb_agent_run_suggestions(signature);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_run_suggestions_work_item ON cb_agent_run_suggestions(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_run_suggestions_status ON cb_agent_run_suggestions(status);
+
+CREATE TABLE IF NOT EXISTS cb_pilot_targets (
+  id TEXT PRIMARY KEY,
+  project_name TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT 'development',
+  default_workflow_blueprint_id TEXT NOT NULL,
+  allowed_runner_profile_ids TEXT NOT NULL DEFAULT '[]',
+  risk_ceiling TEXT NOT NULL DEFAULT 'B',
+  owner TEXT,
+  owner_type TEXT NOT NULL DEFAULT 'human',
+  status TEXT NOT NULL DEFAULT 'active',
+  notes TEXT,
+  visibility TEXT NOT NULL DEFAULT 'internal',
+  metadata TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_cb_pilot_targets_repo ON cb_pilot_targets(repo);
+CREATE INDEX IF NOT EXISTS idx_cb_pilot_targets_status ON cb_pilot_targets(status);
 `;
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;
@@ -786,6 +806,52 @@ function seedCompanyBrain(sqlite: Database.Database) {
         DEVELOPMENT_BLUEPRINT_STAGES.map((stage) => stage.artifactExpected)
       ),
       visibility: "internal",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+  sqlite
+    .prepare(
+      `INSERT OR IGNORE INTO cb_pilot_targets (
+        id, project_name, repo, area, default_workflow_blueprint_id,
+        allowed_runner_profile_ids, risk_ceiling, owner, owner_type, status,
+        notes, visibility, metadata, created_at, updated_at
+      ) VALUES (
+        @id, @projectName, @repo, @area, @defaultWorkflowBlueprintId,
+        @allowedRunnerProfileIds, @riskCeiling, @owner, @ownerType, @status,
+        @notes, @visibility, @metadata, @createdAt, @updatedAt
+      )`
+    )
+    .run({
+      id: "pilot-target-aios-crewdock",
+      projectName: "AIOS / CrewDock",
+      repo: "antonio-mello-ai/crewdock",
+      area: "development",
+      defaultWorkflowBlueprintId: "development-blueprint-v0",
+      allowedRunnerProfileIds: JSON.stringify([
+        "dogfood-semantic-doc-change",
+        "claude-code-real",
+        "codex-cli-real",
+      ]),
+      riskCeiling: "B",
+      owner: "Antonio",
+      ownerType: "human",
+      status: "active",
+      notes:
+        "First controlled internal pilot target. No customer repo. Manual launch only until readiness, review intake and kill-switch pack are complete.",
+      visibility: "internal",
+      metadata: JSON.stringify({
+        seed: "aios-agent-execution-v8",
+        customerRepo: false,
+        autoDispatchDefaultOff: true,
+        allowedActions: [
+          "readiness_review",
+          "manual_agent_run_preview",
+          "human_approved_agent_run",
+          "github_pr_create_proposal",
+        ],
+        blockedActions: ["auto_merge", "auto_deploy", "customer_repo"],
+      }),
       createdAt: now,
       updatedAt: now,
     });

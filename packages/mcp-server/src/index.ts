@@ -1786,6 +1786,29 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_pilot_targets",
+  {
+    title: "List Company Brain pilot targets",
+    description:
+      "List internal pilot targets with runner profile readiness. Read-only: it evaluates repo/profile readiness and does not launch subprocesses or mutate external systems.",
+    inputSchema: {
+      repo: z.string().optional(),
+      status: z.enum(["active", "paused", "disabled", "all"]).optional(),
+    },
+  },
+  async ({ repo, status }) => {
+    const params = new URLSearchParams();
+    if (repo) params.set("repo", repo);
+    if (status) params.set("status", status);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/pilot-targets${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_auto_dispatch_policy",
   {
     title: "Get Company Brain Auto-Dispatch policy",
