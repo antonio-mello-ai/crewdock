@@ -1824,6 +1824,22 @@ export interface PreviewGitHubPrProposalResponse {
   proposal: ExternalActionProposal;
 }
 
+export interface ExecuteGitHubPrProposalRequest {
+  actor: string;
+  rationale: string;
+}
+
+export interface ExecuteGitHubPrProposalResponse {
+  generatedAt: number;
+  proposalId: string;
+  alreadyExecuted: boolean;
+  prNumber: number | null;
+  prUrl: string | null;
+  pushedBranch: string | null;
+  errorSummary: string | null;
+  proposal: ExternalActionProposal;
+}
+
 export type AgentRunPatchPacketStatus =
   | "clean"
   | "dirty"

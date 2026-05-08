@@ -1583,6 +1583,30 @@ server.registerTool(
 );
 
 server.registerTool(
+  "execute_company_brain_github_pr_proposal",
+  {
+    title: "Execute approved Company Brain GitHub PR proposal",
+    description:
+      "Push the AgentRun branch and open a GitHub PR for an APPROVED github_pr_create proposal. Idempotent: detects existing PR via AIOS marker. Default-OFF; requires AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED + repo allowlist + GITHUB_TOKEN. No merge/deploy/auto-close.",
+    inputSchema: {
+      proposalId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+    },
+  },
+  async ({ proposalId, ...rest }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${proposalId}/execute-pr`,
+      {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "preview_company_brain_agent_run_github_pr_proposal",
   {
     title: "Preview Company Brain AgentRun GitHub PR proposal",
