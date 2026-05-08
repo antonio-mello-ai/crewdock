@@ -2344,6 +2344,15 @@ export interface WorkflowBlueprint {
 }
 
 export interface CreateWorkflowBlueprintRequest {
+  /**
+   * Optional stable client-supplied identity. When provided, becomes the
+   * cb_workflow_blueprints.id directly so operators can reference it from
+   * AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST. Must match
+   * /^[a-z0-9][a-z0-9._-]{1,62}$/ (lowercase, alphanumeric, dot/dash/
+   * underscore, 2-63 chars). Collisions return 409. Omit to fall back to
+   * a generated nanoid (legacy behavior).
+   */
+  id?: string;
   title: string;
   description?: string | null;
   workflowArea?: CompanyBrainArea;

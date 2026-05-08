@@ -25227,13 +25227,50 @@ app.get("/workflow-blueprints", (c) => {
   return c.json({ data, total: data.length });
 });
 
+const STABLE_BLUEPRINT_ID_REGEX = /^[a-z0-9][a-z0-9._-]{1,62}$/;
+
 app.post("/workflow-blueprints", async (c) => {
   try {
     const body = await c.req.json<CreateWorkflowBlueprintRequest>();
     const timestamp = now();
     const stages = body.stages ?? [];
+
+    let resolvedId = nanoid(12);
+    let stableIdRequested = false;
+    if (body.id !== undefined && body.id !== null && body.id !== "") {
+      stableIdRequested = true;
+      const candidate = String(body.id).trim();
+      if (!STABLE_BLUEPRINT_ID_REGEX.test(candidate)) {
+        return c.json(
+          {
+            error: "validation",
+            message:
+              "id must match /^[a-z0-9][a-z0-9._-]{1,62}$/ (lowercase, alphanumeric, dot/dash/underscore, 2-63 chars)",
+            data: { receivedId: body.id },
+          },
+          400
+        );
+      }
+      const existing = getDb()
+        .select()
+        .from(cbWorkflowBlueprints)
+        .where(eq(cbWorkflowBlueprints.id, candidate))
+        .get();
+      if (existing) {
+        return c.json(
+          {
+            error: "id_collision",
+            message: `workflow blueprint id ${candidate} already exists; pick a different stable id or PATCH the existing blueprint`,
+            data: { existingId: candidate },
+          },
+          409
+        );
+      }
+      resolvedId = candidate;
+    }
+
     const row = {
-      id: nanoid(12),
+      id: resolvedId,
       title: requireText(body.title, "title"),
       description: body.description ?? null,
       workflowArea: body.workflowArea ?? "unknown",
@@ -25252,7 +25289,10 @@ app.post("/workflow-blueprints", async (c) => {
       updatedAt: timestamp,
     };
     getDb().insert(cbWorkflowBlueprints).values(row).run();
-    return c.json({ data: row }, 201);
+    return c.json(
+      { data: row, meta: { stableIdHonored: stableIdRequested } },
+      201
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "create_failed", message }, 400);
