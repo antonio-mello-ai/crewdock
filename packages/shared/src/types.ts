@@ -668,6 +668,84 @@ export interface SyncGitHubPrCiResponse {
   failingChecksSeen: number;
 }
 
+export type AiosAuthoredPrReviewStatus =
+  | "awaiting_human_review"
+  | "approved"
+  | "changes_requested"
+  | "merged"
+  | "closed"
+  | "draft";
+
+export interface AiosAuthoredPrReviewMarker {
+  proposalId: string;
+  agentRunId: string;
+  patchPacketSignature: string;
+}
+
+export interface AiosAuthoredPrReviewItem {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: "open" | "closed";
+  draft: boolean;
+  mergedAt: string | null;
+  author: string | null;
+  headRef: string;
+  baseRef: string;
+  headSha: string;
+  updatedAt: string;
+  marker: AiosAuthoredPrReviewMarker;
+  workItemId: string | null;
+  patchPacketArtifactId: string | null;
+  reviewStatus: AiosAuthoredPrReviewStatus;
+  reviewDecision: string | null;
+  approvals: number;
+  changesRequested: number;
+  comments: number;
+  reviewComments: number;
+  staleReviewAgeMs: number;
+  artifactId: string | null;
+  signalId: string | null;
+}
+
+export interface SyncAiosPrReviewsRequest {
+  repo: string;
+  state?: "open" | "closed" | "all";
+  limit?: number;
+  sourceId?: string | null;
+  sourceName?: string | null;
+  area?: CompanyBrainArea;
+  owner?: string | null;
+  visibility?: Visibility;
+  createSignals?: boolean;
+}
+
+export interface SyncAiosPrReviewsResponse {
+  source: Source;
+  artifactsCreated: Artifact[];
+  artifactsUpdated: Artifact[];
+  signalsCreated: Signal[];
+  pullRequestsSeen: number;
+  aiosPullRequestsSeen: number;
+  pendingHumanReviewCount: number;
+  items: AiosAuthoredPrReviewItem[];
+}
+
+export interface ListAiosPrReviewIntakeResponse {
+  generatedAt: number;
+  totals: {
+    total: number;
+    awaitingHumanReview: number;
+    approved: number;
+    changesRequested: number;
+    merged: number;
+    closed: number;
+    draft: number;
+  };
+  items: AiosAuthoredPrReviewItem[];
+}
+
 export interface SyncGitHubNotificationsRequest {
   all?: boolean;
   participating?: boolean;

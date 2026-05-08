@@ -62,6 +62,9 @@ import type {
   RunOperatingCadenceResponse,
   RunWatcherRequest,
   RunWatcherResponse,
+  ListAiosPrReviewIntakeResponse,
+  SyncAiosPrReviewsRequest,
+  SyncAiosPrReviewsResponse,
   SyncGitHubIssuesRequest,
   SyncGitHubIssuesResponse,
   SyncGitHubNotificationsRequest,
@@ -993,6 +996,30 @@ export function useSyncCompanyBrainGitHubPrCi() {
   >({
     mutationFn: (body) =>
       api("/api/company-brain/adapters/github/pr-ci/sync", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useCompanyBrainAiosPrReviewIntake() {
+  return useQuery<ApiResponse<ListAiosPrReviewIntakeResponse>>({
+    queryKey: ["company-brain", "aios-pr-review-intake"],
+    queryFn: () => api("/api/company-brain/aios-pr-review-intake"),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useSyncCompanyBrainAiosPrReviews() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<SyncAiosPrReviewsResponse>,
+    Error,
+    SyncAiosPrReviewsRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/adapters/github/aios-pr-reviews/sync", {
         method: "POST",
         body: JSON.stringify(body),
       }),
