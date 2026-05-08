@@ -59,11 +59,13 @@ import {
   usePreviewCompanyBrainGitHubIssueCreateProposal,
   usePreviewCompanyBrainGitHubLabelProposal,
   usePreviewCompanyBrainGitHubStatusCheckProposal,
+  usePreflightCompanyBrainGitHubPrWriteback,
   usePreviewCompanyBrainSlackThreadReplyWriteback,
   useCompanyBrainWritebackAuditTrail,
   useCompanyBrainWritebackEvidenceIntegrityGaps,
   useCompanyBrainWritebackEvidenceRemediationSuggestions,
   useExecuteCompanyBrainGitHubStatusCheckWriteback,
+  useExecuteCompanyBrainGitHubPrWriteback,
   useUpdateCompanyBrainDecision,
   useUpdateCompanyBrainExternalActionProposal,
   useUpdateCompanyBrainGuidanceItem,
@@ -90,6 +92,9 @@ import type {
   ArtifactInsightExtractionMode,
   ExternalActionDestination,
   ExternalActionKind,
+  ExternalActionProposal,
+  GitHubPrProposalPayload,
+  GitHubPrWritebackPreflightResponse,
   ImprovementChangeClass,
 } from "@aios/shared";
 
@@ -352,6 +357,32 @@ function FieldLabel({ children }: { children: ReactNode }) {
   return <label className="text-xs font-medium text-neutral-500">{children}</label>;
 }
 
+function isGitHubPrCreateProposal(proposal: ExternalActionProposal) {
+  return (
+    proposal.destinationType === "github" &&
+    proposal.actionType === "github_pr_create"
+  );
+}
+
+function getGitHubPrProposalPayload(
+  proposal: ExternalActionProposal
+): Partial<GitHubPrProposalPayload> | null {
+  if (!isGitHubPrCreateProposal(proposal)) return null;
+  return proposal.payload as Partial<GitHubPrProposalPayload>;
+}
+
+function proposalText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function latestPrPreflightAudit(proposal: ExternalActionProposal) {
+  return (
+    proposal.auditTrail
+      .filter((event) => event.event === "github_pr_writeback_preflight_checked")
+      .at(-1) ?? null
+  );
+}
+
 export default function CompanyBrainPage() {
   const { data, isLoading } = useCompanyBrainSummary();
   const createSource = useCreateCompanyBrainSource();
@@ -380,6 +411,8 @@ export default function CompanyBrainPage() {
     usePreviewCompanyBrainGitHubStatusCheckProposal();
   const executeGitHubStatusCheckWriteback =
     useExecuteCompanyBrainGitHubStatusCheckWriteback();
+  const preflightGitHubPrWriteback = usePreflightCompanyBrainGitHubPrWriteback();
+  const executeGitHubPrWriteback = useExecuteCompanyBrainGitHubPrWriteback();
   const executeGitHubCommentWriteback =
     useExecuteCompanyBrainGitHubCommentWriteback();
   const previewSlackThreadReplyWriteback =
@@ -468,6 +501,9 @@ export default function CompanyBrainPage() {
     proposalId: "",
     limit: "25",
   });
+  const [prProposalReviewDrafts, setPrProposalReviewDrafts] = useState<
+    Record<string, { actor: string; rationale: string }>
+  >({});
   const writebackAuditQueryFilters =
     useMemo<CompanyBrainWritebackAuditTrailFilters>(() => {
       const fromAt = writebackAuditFilters.fromDate
@@ -1202,23 +1238,60 @@ export default function CompanyBrainPage() {
     });
   };
 
-  const reviewExternalActionProposal = (
+  const prProposalReviewDraft = (id: string) =>
+    prProposalReviewDrafts[id] ?? { actor: "Antonio", rationale: "" };
+
+  const updatePrProposalReviewDraft = (
     id: string,
+    patch: Partial<{ actor: string; rationale: string }>
+  ) => {
+    setPrProposalReviewDrafts((current) => ({
+      ...current,
+      [id]: {
+        actor: current[id]?.actor ?? "Antonio",
+        rationale: current[id]?.rationale ?? "",
+        ...patch,
+      },
+    }));
+  };
+
+  const requirePrProposalReviewDraft = (id: string) => {
+    const draft = prProposalReviewDraft(id);
+    const actor = draft.actor.trim();
+    const rationale = draft.rationale.trim();
+    if (!actor || !rationale) {
+      if (typeof window !== "undefined") {
+        window.alert("Fill actor and rationale before reviewing this PR proposal.");
+      }
+      return null;
+    }
+    return { actor, rationale };
+  };
+
+  const reviewExternalActionProposal = (
+    proposal: ExternalActionProposal,
     approvalStatus: "approved" | "rejected"
   ) => {
+    const prDraft = isGitHubPrCreateProposal(proposal)
+      ? requirePrProposalReviewDraft(proposal.id)
+      : null;
+    if (isGitHubPrCreateProposal(proposal) && !prDraft) return;
+    const actor = prDraft?.actor ?? "Antonio";
+    const rationale =
+      prDraft?.rationale ??
+      (approvalStatus === "approved"
+        ? "Approved in Company Brain UI. Adapter-specific execution gates still apply."
+        : "Rejected from Company Brain UI before external execution.");
     updateExternalActionProposal.mutate({
-      id,
+      id: proposal.id,
       body: {
         approvalStatus,
-        actor: "Antonio",
+        actor,
         rejectionReason:
           approvalStatus === "rejected"
-            ? "Rejected from Company Brain UI before external execution."
+            ? rationale
             : undefined,
-        note:
-          approvalStatus === "approved"
-            ? "Approved in Company Brain UI. Adapter-specific execution gates still apply."
-            : undefined,
+        note: rationale,
       },
     });
   };
@@ -1283,6 +1356,21 @@ export default function CompanyBrainPage() {
     proposal.actionPolicy === "writeback_allowed" &&
     proposal.executionStatus === "dry_run" &&
     writebackReviewByProposalId.get(proposal.id) === "ready_to_execute";
+
+  const canPreflightGitHubPrWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    isGitHubPrCreateProposal(proposal) &&
+    !["cancelled", "completed", "executed"].includes(proposal.executionStatus) &&
+    proposal.approvalStatus !== "rejected" &&
+    proposal.approvalStatus !== "blocked";
+
+  const canExecuteGitHubPrWriteback = (
+    proposal: (typeof externalActionProposals)[number]
+  ) =>
+    isGitHubPrCreateProposal(proposal) &&
+    proposal.approvalStatus === "approved" &&
+    !["cancelled", "completed", "executed"].includes(proposal.executionStatus);
 
   const canPreviewGitHubStatusCheckProposal = (
     proposal: (typeof externalActionProposals)[number]
@@ -1369,6 +1457,37 @@ export default function CompanyBrainPage() {
     executeGitHubIssueCreateWriteback.mutate({
       id,
       body: { actor: "Antonio" },
+    });
+  };
+
+  const preflightGitHubPrProposal = (id: string) => {
+    const draft = requirePrProposalReviewDraft(id);
+    if (!draft) return;
+    preflightGitHubPrWriteback.mutate({
+      id,
+      body: {
+        actor: draft.actor,
+        rationale: draft.rationale,
+        pushProbe: true,
+      },
+    });
+  };
+
+  const executeGitHubPrProposal = (id: string) => {
+    const draft = requirePrProposalReviewDraft(id);
+    if (!draft) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Open this approved AIOS-authored GitHub PR now?")
+    ) {
+      return;
+    }
+    executeGitHubPrWriteback.mutate({
+      id,
+      body: {
+        actor: draft.actor,
+        rationale: draft.rationale,
+      },
     });
   };
 
@@ -3809,6 +3928,47 @@ export default function CompanyBrainPage() {
                     </p>
                   </div>
                 ) : null}
+                {preflightGitHubPrWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      {preflightGitHubPrWriteback.data.data.repo} ·{" "}
+                      {preflightGitHubPrWriteback.data.data.sourceBranch} →{" "}
+                      {preflightGitHubPrWriteback.data.data.baseBranch}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-neutral-300">
+                      preflight {preflightGitHubPrWriteback.data.data.status} ·{" "}
+                      push probe{" "}
+                      {preflightGitHubPrWriteback.data.data.pushProbe.status}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-600">
+                      {preflightGitHubPrWriteback.data.data.remoteUrlPattern ??
+                        "remote pattern unavailable"}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-600">
+                      failed gates{" "}
+                      {preflightGitHubPrWriteback.data.data.gates
+                        .filter((gate) => gate.status === "failed")
+                        .map((gate) => gate.key)
+                        .join(", ") || "none"}
+                    </p>
+                  </div>
+                ) : null}
+                {executeGitHubPrWriteback.data?.data ? (
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
+                    <p className="truncate text-xs text-neutral-500">
+                      proposal {executeGitHubPrWriteback.data.data.proposalId} ·{" "}
+                      {executeGitHubPrWriteback.data.data.alreadyExecuted
+                        ? "already executed"
+                        : "executed"}
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-neutral-300">
+                      PR #{executeGitHubPrWriteback.data.data.prNumber ?? "-"}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-neutral-500">
+                      {executeGitHubPrWriteback.data.data.prUrl ?? "no PR URL"}
+                    </p>
+                  </div>
+                ) : null}
                 {previewGitHubStatusCheckProposal.data?.data ? (
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/40 p-3">
                     <p className="truncate text-xs text-neutral-500">
@@ -3974,6 +4134,15 @@ export default function CompanyBrainPage() {
                   externalActionProposals.slice(0, 8).map((proposal) => {
                     const lastAudit =
                       proposal.auditTrail[proposal.auditTrail.length - 1] ?? null;
+                    const prPayload = getGitHubPrProposalPayload(proposal);
+                    const prDraft = prProposalReviewDraft(proposal.id);
+                    const prPreflight = (
+                      preflightGitHubPrWriteback.data?.data?.proposalId ===
+                      proposal.id
+                        ? preflightGitHubPrWriteback.data.data
+                        : null
+                    ) as GitHubPrWritebackPreflightResponse | null;
+                    const prPreflightAudit = latestPrPreflightAudit(proposal);
                     return (
                       <div key={proposal.id} className="px-5 py-4">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -4012,6 +4181,168 @@ export default function CompanyBrainPage() {
                               <p className="mt-2 text-xs text-neutral-600">
                                 {lastAudit.event} · {formatTimeAgo(lastAudit.at)}
                               </p>
+                            ) : null}
+                            {prPayload ? (
+                              <div className="mt-3 rounded-md border border-neutral-800 bg-neutral-950/35 p-3">
+                                <div className="grid gap-2 text-xs text-neutral-500 sm:grid-cols-2 lg:grid-cols-3">
+                                  <p className="truncate">
+                                    repo{" "}
+                                    <span className="text-neutral-300">
+                                      {proposalText(prPayload.repo) ?? "-"}
+                                    </span>
+                                  </p>
+                                  <p className="truncate">
+                                    branch{" "}
+                                    <span className="text-neutral-300">
+                                      {proposalText(prPayload.sourceBranch) ?? "-"}
+                                    </span>
+                                  </p>
+                                  <p className="truncate">
+                                    base{" "}
+                                    <span className="text-neutral-300">
+                                      {proposalText(prPayload.baseBranch) ?? "-"}
+                                    </span>
+                                  </p>
+                                  <p className="truncate">
+                                    work item{" "}
+                                    <span className="text-neutral-300">
+                                      {prPayload.workItemId ?? proposal.workItemId ?? "-"}
+                                    </span>
+                                  </p>
+                                  <p className="truncate">
+                                    agent run{" "}
+                                    <span className="text-neutral-300">
+                                      {proposalText(prPayload.agentRunId) ?? "-"}
+                                    </span>
+                                  </p>
+                                  <p className="truncate">
+                                    patch packet{" "}
+                                    <span className="text-neutral-300">
+                                      {prPayload.patchPacketArtifactId ?? "-"}
+                                    </span>
+                                  </p>
+                                </div>
+                                <p className="mt-3 text-xs font-medium text-neutral-300">
+                                  {proposalText(prPayload.title) ?? proposal.title}
+                                </p>
+                                <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded border border-neutral-800/60 bg-black/20 p-2 text-xs leading-5 text-neutral-400">
+                                  {proposalText(prPayload.body) ?? "No PR body preview"}
+                                </pre>
+                                <div className="mt-3 grid gap-2 text-xs text-neutral-500 sm:grid-cols-2">
+                                  <p>
+                                    diff{" "}
+                                    <span className="text-neutral-300">
+                                      {prPayload.diffStat?.filesChanged ?? 0} files / +
+                                      {prPayload.diffStat?.insertions ?? 0} / -
+                                      {prPayload.diffStat?.deletions ?? 0}
+                                    </span>
+                                  </p>
+                                  <p>
+                                    commits{" "}
+                                    <span className="text-neutral-300">
+                                      {prPayload.commitCount ?? 0}
+                                    </span>
+                                  </p>
+                                  <p className="sm:col-span-2">
+                                    validations{" "}
+                                    <span className="text-neutral-300">
+                                      {proposalText(prPayload.validationsSummary) ??
+                                        "none recorded"}
+                                    </span>
+                                  </p>
+                                  <p className="sm:col-span-2">
+                                    signature{" "}
+                                    <span className="font-mono text-neutral-400">
+                                      {proposalText(prPayload.patchPacketSignature)?.slice(
+                                        0,
+                                        24
+                                      ) ?? "-"}
+                                    </span>
+                                  </p>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <StatusBadge value={`risk_${proposal.riskClass}`} />
+                                  <StatusBadge value={proposal.actionPolicy} />
+                                  <StatusBadge value={proposal.approvalStatus} />
+                                  <StatusBadge value={proposal.executionStatus} />
+                                  <StatusBadge
+                                    value={
+                                      prPreflight
+                                        ? `preflight_${prPreflight.status}`
+                                        : prPreflightAudit
+                                          ? `preflight_${
+                                              String(
+                                                prPreflightAudit.metadata?.status ??
+                                                  "checked"
+                                              )
+                                            }`
+                                          : "preflight_not_run"
+                                    }
+                                  />
+                                </div>
+                                {prPreflight ? (
+                                  <div className="mt-3 grid gap-2 text-xs text-neutral-500 sm:grid-cols-2">
+                                    <p>
+                                      token{" "}
+                                      <span className="text-neutral-300">
+                                        {prPreflight.tokenSource ?? "missing"}
+                                      </span>
+                                    </p>
+                                    <p>
+                                      push probe{" "}
+                                      <span className="text-neutral-300">
+                                        {prPreflight.pushProbe.status}
+                                      </span>
+                                    </p>
+                                    <p className="sm:col-span-2">
+                                      gates{" "}
+                                      <span className="text-neutral-300">
+                                        {prPreflight.gates
+                                          .map(
+                                            (gate) => `${gate.key}:${gate.status}`
+                                          )
+                                          .join(", ")}
+                                      </span>
+                                    </p>
+                                  </div>
+                                ) : prPreflightAudit ? (
+                                  <p className="mt-3 text-xs text-neutral-600">
+                                    last preflight{" "}
+                                    {String(
+                                      prPreflightAudit.metadata?.status ?? "checked"
+                                    )}{" "}
+                                    · {formatTimeAgo(prPreflightAudit.at)}
+                                  </p>
+                                ) : null}
+                                {proposal.approvalStatus !== "rejected" &&
+                                proposal.approvalStatus !== "blocked" &&
+                                !["cancelled", "completed", "executed"].includes(
+                                  proposal.executionStatus
+                                ) ? (
+                                  <div className="mt-3 grid gap-2 md:grid-cols-[180px_1fr]">
+                                    <Input
+                                      value={prDraft.actor}
+                                      onChange={(event) =>
+                                        updatePrProposalReviewDraft(proposal.id, {
+                                          actor: event.target.value,
+                                        })
+                                      }
+                                      placeholder="actor"
+                                    />
+                                    <textarea
+                                      value={prDraft.rationale}
+                                      onChange={(event) =>
+                                        updatePrProposalReviewDraft(proposal.id, {
+                                          rationale: event.target.value,
+                                        })
+                                      }
+                                      placeholder="review rationale"
+                                      rows={2}
+                                      className="min-h-[2.5rem] rounded-md border border-input bg-background px-3 py-2 text-sm text-neutral-200 shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
                             ) : null}
                           </div>
                           <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
@@ -4139,6 +4470,44 @@ export default function CompanyBrainPage() {
                                 </Button>
                               </>
                             ) : proposal.destinationType === "github" &&
+                              proposal.actionType === "github_pr_create" ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={
+                                    preflightGitHubPrWriteback.isPending ||
+                                    !canPreflightGitHubPrWriteback(proposal) ||
+                                    !prDraft.actor.trim() ||
+                                    !prDraft.rationale.trim()
+                                  }
+                                  onClick={() =>
+                                    preflightGitHubPrProposal(proposal.id)
+                                  }
+                                >
+                                  <FileText className="h-4 w-4" />
+                                  Preflight PR
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={
+                                    executeGitHubPrWriteback.isPending ||
+                                    !canExecuteGitHubPrWriteback(proposal) ||
+                                    !prDraft.actor.trim() ||
+                                    !prDraft.rationale.trim()
+                                  }
+                                  onClick={() =>
+                                    executeGitHubPrProposal(proposal.id)
+                                  }
+                                >
+                                  <GitPullRequest className="h-4 w-4" />
+                                  Open PR
+                                </Button>
+                              </>
+                            ) : proposal.destinationType === "github" &&
                               (proposal.actionType === "github_status" ||
                                 proposal.actionType === "github_check") ? (
                               <>
@@ -4219,10 +4588,13 @@ export default function CompanyBrainPage() {
                                 updateExternalActionProposal.isPending ||
                                 proposal.approvalStatus === "approved" ||
                                 proposal.approvalStatus === "rejected" ||
-                                proposal.approvalStatus === "blocked"
+                                proposal.approvalStatus === "blocked" ||
+                                (isGitHubPrCreateProposal(proposal) &&
+                                  (!prDraft.actor.trim() ||
+                                    !prDraft.rationale.trim()))
                               }
                               onClick={() =>
-                                reviewExternalActionProposal(proposal.id, "approved")
+                                reviewExternalActionProposal(proposal, "approved")
                               }
                             >
                               <CheckCircle2 className="h-4 w-4" />
@@ -4235,10 +4607,13 @@ export default function CompanyBrainPage() {
                               disabled={
                                 updateExternalActionProposal.isPending ||
                                 proposal.approvalStatus === "approved" ||
-                                proposal.approvalStatus === "rejected"
+                                proposal.approvalStatus === "rejected" ||
+                                (isGitHubPrCreateProposal(proposal) &&
+                                  (!prDraft.actor.trim() ||
+                                    !prDraft.rationale.trim()))
                               }
                               onClick={() =>
-                                reviewExternalActionProposal(proposal.id, "rejected")
+                                reviewExternalActionProposal(proposal, "rejected")
                               }
                             >
                               <AlertTriangle className="h-4 w-4" />

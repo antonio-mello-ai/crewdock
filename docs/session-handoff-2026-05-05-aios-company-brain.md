@@ -2960,3 +2960,44 @@ Merge/deploy:
 - rota nova validada em loopback CT165:
   `/api/company-brain/external-action-proposals/not-found/github-pr/preflight`
   -> 404 esperado (`proposal not-found not found`).
+
+### AIOS-RUN-35 implementation checkpoint
+
+Issue `#116` foi implementada localmente em
+`aios-run-35-pr-proposal-governance`.
+
+Entregue:
+
+- hooks web para preflight/execute PR:
+  `usePreflightCompanyBrainGitHubPrWriteback` e
+  `useExecuteCompanyBrainGitHubPrWriteback`;
+- preflight hook preserva respostas HTTP 400 com `data` estruturado para a UI
+  mostrar gates bloqueados;
+- Safety Dashboard renderiza `github_pr_create` como proposta first-class:
+  repo/source/base, WorkItem, AgentRun, patch packet, signature, titulo, body,
+  diff stat, commits, validations, policy/preflight badges;
+- review de `github_pr_create` exige actor + rationale antes de approve,
+  reject, preflight e execute;
+- controles `Preflight PR` e `Open PR` visiveis; executor segue gated por
+  approval + policy/preflight backend.
+
+Dogfood local com DB `/tmp/aios-run35-smoke.sqlite`:
+
+- proposal aprovada via API normal, sem SQLite: `FVu4gopIQZVf`, WorkItem
+  `FZ61LXKmy4BA`, AgentRun `LQNejrEenoFm`, `approvalStatus=approved`,
+  `approvedBy=codex:run35-smoke`, audit `approved`;
+- preflight da aprovada: `status=ready`, artifact `fkFsMuTGCYSO`,
+  `pushProbe=passed`;
+- proposal rejeitada via API normal, sem SQLite: `Jogid6M8WCyt`, WorkItem
+  `Qb_h9I83CObT`, AgentRun `NhDB2sZ-UdQX`, `approvalStatus=rejected`,
+  `executionStatus=cancelled`, audit `rejected`;
+- Playwright em `http://localhost:3100/company-brain` confirmou textos
+  `github_pr_create`, `Preflight PR`, `Open PR` e `patch packet`, com 0 erros
+  de console em sessao limpa depois de subir o daemon com
+  `AIOS_CORS_ORIGINS=http://localhost:3100`.
+
+Validacao parcial:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/web --filter=@aios/shared` passou.
+- `npx turbo build` passou.
