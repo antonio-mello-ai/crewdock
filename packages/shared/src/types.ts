@@ -1163,6 +1163,77 @@ export interface DryRunExecuteAgentRunRequest {
   rationale?: string | null;
 }
 
+export type RunnerPolicyGateStatus = "passed" | "failed" | "warn" | "info";
+
+export type RunnerPolicyDecision =
+  | "blocked_by_default"
+  | "blocked_risk"
+  | "blocked_workflow"
+  | "blocked_workspace"
+  | "blocked_actor"
+  | "blocked_command"
+  | "blocked_writeback"
+  | "allowed_dry_run_only"
+  | "allowed_real_execution";
+
+export interface RunnerPolicyGate {
+  key: string;
+  title: string;
+  status: RunnerPolicyGateStatus;
+  detail: string;
+  remediation?: string | null;
+  envRefs?: string[];
+}
+
+export interface RunnerSubprocessEnvPlan {
+  allowedKeys: string[];
+  redactedKeys: string[];
+  rationale: string;
+}
+
+export interface RunnerExecutionPolicy {
+  generatedAt: number;
+  agentRunId: string;
+  decision: RunnerPolicyDecision;
+  realExecutionAllowed: boolean;
+  dryRunAllowed: boolean;
+  riskClass: RiskClass;
+  actor: string | null;
+  rationale: string | null;
+  blockReasons: string[];
+  satisfiedGates: string[];
+  gates: RunnerPolicyGate[];
+  workflowSummary: {
+    repo: string | null;
+    isValid: boolean;
+    command: string;
+    args: string[];
+    maxConcurrentAgents: number;
+  };
+  workspaceSummary: {
+    workspacePath: string;
+    branchName: string;
+    allowlistMatched: boolean;
+  };
+  subprocessEnv: RunnerSubprocessEnvPlan;
+  envFlags: {
+    runnerEnabled: boolean;
+    repoAllowlist: string[];
+    commandAllowlist: string[];
+    allowGithubToken: boolean;
+    allowSlackToken: boolean;
+  };
+  policySummary: string;
+}
+
+export interface EvaluateRunnerPolicyRequest {
+  actor?: string | null;
+  rationale?: string | null;
+  intent?: "dry_run" | "real_execution";
+  workspaceRootOverride?: string | null;
+  allowGithubTokenOverride?: boolean;
+}
+
 export type WorkspacePreparationStatus =
   | "ready_to_create"
   | "created"
