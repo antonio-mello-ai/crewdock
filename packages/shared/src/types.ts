@@ -1163,6 +1163,59 @@ export interface DryRunExecuteAgentRunRequest {
   rationale?: string | null;
 }
 
+export type WorkspaceCleanupRisk =
+  | "path_outside_root"
+  | "workspace_dirty"
+  | "branch_unmerged"
+  | "agent_run_active"
+  | "missing_worktree";
+
+export interface WorkspaceCleanupPreviewResponse {
+  generatedAt: number;
+  agentRunId: string;
+  workspacePath: string;
+  workspaceExists: boolean;
+  isDirty: boolean;
+  branchName: string | null;
+  worktreeListed: boolean;
+  agentRunStatus: AgentRunStatus;
+  risks: Array<{ kind: WorkspaceCleanupRisk; detail: string }>;
+  cleanupAllowed: boolean;
+  quarantineAllowed: boolean;
+  expectedConfirmationToken: string;
+  policySummary: string;
+}
+
+export interface QuarantineWorkspaceRequest {
+  actor: string;
+  rationale: string;
+}
+
+export interface QuarantineWorkspaceResponse {
+  generatedAt: number;
+  agentRunId: string;
+  performed: boolean;
+  fromPath: string;
+  toPath: string;
+  reason: string;
+}
+
+export interface RemoveWorkspaceRequest {
+  actor: string;
+  rationale: string;
+  confirmationToken: string;
+  allowDirty?: boolean;
+}
+
+export interface RemoveWorkspaceResponse {
+  generatedAt: number;
+  agentRunId: string;
+  performed: boolean;
+  removedPath: string | null;
+  worktreeRemoved: boolean;
+  blockReasons: string[];
+}
+
 export interface AgentRunLogTailResponse {
   generatedAt: number;
   agentRunId: string;

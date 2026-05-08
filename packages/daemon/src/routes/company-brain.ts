@@ -1,7 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
@@ -43,6 +51,12 @@ import type {
   AgentWorkspaceStatusResponse,
   CancelAgentRunRequest,
   CancelAgentRunResponse,
+  QuarantineWorkspaceRequest,
+  QuarantineWorkspaceResponse,
+  RemoveWorkspaceRequest,
+  RemoveWorkspaceResponse,
+  WorkspaceCleanupPreviewResponse,
+  WorkspaceCleanupRisk,
   DryRunExecuteAgentRunRequest,
   EvaluateRunnerPolicyRequest,
   ExecuteAgentRunRequest,
@@ -13773,6 +13787,288 @@ app.post("/agent-runs/sweep-timeouts", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "agent_run_sweep_failed", message }, 400);
+  }
+});
+
+function computeWorkspaceCleanupSummary(args: {
+  agentRun: typeof cbAgentRuns.$inferSelect;
+}): { workspacePath: string; workspaceRoot: string; workspaceExists: boolean; isDirty: boolean; branchName: string | null; worktreeListed: boolean; risks: Array<{ kind: WorkspaceCleanupRisk; detail: string }> } {
+  const workflow = loadWorkflowFromRepoRoot();
+  const root = expandHome(workflow.config.workspace.root);
+  const workspacePath = args.agentRun.workspaceRef ?? "";
+  const branchName = args.agentRun.branch ?? null;
+  const risks: Array<{ kind: WorkspaceCleanupRisk; detail: string }> = [];
+  let workspaceExists = false;
+  let isDirty = false;
+  let worktreeListed = false;
+  if (workspacePath) {
+    const rel = relative(resolve(root), workspacePath);
+    if (rel.startsWith("..") || rel.includes("\0")) {
+      risks.push({
+        kind: "path_outside_root",
+        detail: `workspace path ${workspacePath} is not inside ${root}`,
+      });
+    }
+    if (existsSync(workspacePath)) {
+      workspaceExists = true;
+      try {
+        isDirty = workspaceIsDirty(workspacePath);
+      } catch {
+        isDirty = false;
+      }
+      try {
+        worktreeListed = workspaceListed(workspacePath);
+      } catch {
+        worktreeListed = false;
+      }
+      if (isDirty) {
+        risks.push({
+          kind: "workspace_dirty",
+          detail: "git status --porcelain reports uncommitted changes",
+        });
+      }
+      if (!worktreeListed) {
+        risks.push({
+          kind: "missing_worktree",
+          detail: "directory exists but git worktree list does not include it",
+        });
+      }
+    }
+  }
+  if (
+    args.agentRun.status === "running" ||
+    args.agentRun.claimState === "running" ||
+    args.agentRun.claimState === "claimed"
+  ) {
+    risks.push({
+      kind: "agent_run_active",
+      detail: `agent run is still ${args.agentRun.status}/${args.agentRun.claimState}; cancel before cleanup`,
+    });
+  }
+  return {
+    workspacePath,
+    workspaceRoot: root,
+    workspaceExists,
+    isDirty,
+    branchName,
+    worktreeListed,
+    risks,
+  };
+}
+
+app.get("/agent-runs/:id/workspace/cleanup-preview", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const summary = computeWorkspaceCleanupSummary({ agentRun: run });
+  const cleanupAllowed =
+    summary.workspaceExists &&
+    !summary.risks.some(
+      (r) =>
+        r.kind === "path_outside_root" ||
+        r.kind === "workspace_dirty" ||
+        r.kind === "agent_run_active"
+    );
+  const quarantineAllowed =
+    summary.workspaceExists &&
+    !summary.risks.some(
+      (r) => r.kind === "path_outside_root" || r.kind === "agent_run_active"
+    );
+  const response: WorkspaceCleanupPreviewResponse = {
+    generatedAt: now(),
+    agentRunId: id,
+    workspacePath: summary.workspacePath,
+    workspaceExists: summary.workspaceExists,
+    isDirty: summary.isDirty,
+    branchName: summary.branchName,
+    worktreeListed: summary.worktreeListed,
+    agentRunStatus: run.status,
+    risks: summary.risks,
+    cleanupAllowed,
+    quarantineAllowed,
+    expectedConfirmationToken: summary.workspacePath,
+    policySummary: cleanupAllowed
+      ? "Workspace is clean and the run is terminal; cleanup or quarantine allowed."
+      : quarantineAllowed
+        ? "Workspace is dirty or has missing worktree; quarantine allowed but destructive remove blocked unless allowDirty=true."
+        : "Cleanup blocked. Resolve risks (path safety / dirty / active run) before continuing.",
+  };
+  return c.json({ data: response });
+});
+
+app.post("/agent-runs/:id/workspace/quarantine", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<QuarantineWorkspaceRequest>()
+      .catch(() => ({}))) as QuarantineWorkspaceRequest;
+    if (!body.actor || !body.actor.trim()) {
+      return c.json({ error: "validation", message: "actor is required" }, 400);
+    }
+    if (!body.rationale || !body.rationale.trim()) {
+      return c.json({ error: "validation", message: "rationale is required" }, 400);
+    }
+    const run = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!run) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    const summary = computeWorkspaceCleanupSummary({ agentRun: run });
+    if (!summary.workspaceExists) {
+      return c.json(
+        { error: "validation", message: "workspace path does not exist" },
+        400
+      );
+    }
+    if (summary.risks.some((r) => r.kind === "path_outside_root")) {
+      return c.json(
+        { error: "blocked", message: "workspace path outside workspace root; refusing to move" },
+        400
+      );
+    }
+    if (summary.risks.some((r) => r.kind === "agent_run_active")) {
+      return c.json(
+        { error: "blocked", message: "agent run still active; cancel before quarantine" },
+        400
+      );
+    }
+    const fromPath = summary.workspacePath;
+    const quarantineRoot = resolve(summary.workspaceRoot, "_quarantine");
+    if (!existsSync(quarantineRoot)) {
+      mkdirSync(quarantineRoot, { recursive: true });
+    }
+    const stamp = new Date(now()).toISOString().replace(/[:.]/g, "-");
+    const toPath = resolve(quarantineRoot, `${id}-${stamp}`);
+    renameSync(fromPath, toPath);
+    const auditTrail = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+      actor: body.actor,
+      event: "agent_run_workspace_quarantined",
+      note: body.rationale,
+      metadata: { fromPath, toPath },
+    });
+    db.update(cbAgentRuns)
+      .set({
+        workspaceRef: toPath,
+        auditTrail,
+        updatedAt: now(),
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+    const response: QuarantineWorkspaceResponse = {
+      generatedAt: now(),
+      agentRunId: id,
+      performed: true,
+      fromPath,
+      toPath,
+      reason: `quarantined by ${body.actor}: ${body.rationale}`,
+    };
+    return c.json({ data: response });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "quarantine_failed", message }, 400);
+  }
+});
+
+app.post("/agent-runs/:id/workspace/remove", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<RemoveWorkspaceRequest>()
+      .catch(() => ({}))) as RemoveWorkspaceRequest;
+    if (!body.actor || !body.actor.trim()) {
+      return c.json({ error: "validation", message: "actor is required" }, 400);
+    }
+    if (!body.rationale || !body.rationale.trim()) {
+      return c.json({ error: "validation", message: "rationale is required" }, 400);
+    }
+    if (!body.confirmationToken || !body.confirmationToken.trim()) {
+      return c.json(
+        { error: "validation", message: "confirmationToken is required" },
+        400
+      );
+    }
+    const run = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!run) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    const summary = computeWorkspaceCleanupSummary({ agentRun: run });
+    const blockReasons: string[] = [];
+    if (!summary.workspaceExists) {
+      blockReasons.push("workspace_missing");
+    }
+    if (summary.risks.some((r) => r.kind === "path_outside_root")) {
+      blockReasons.push("path_outside_root");
+    }
+    if (summary.risks.some((r) => r.kind === "agent_run_active")) {
+      blockReasons.push("agent_run_active");
+    }
+    if (summary.isDirty && body.allowDirty !== true) {
+      blockReasons.push("workspace_dirty");
+    }
+    if (body.confirmationToken !== summary.workspacePath) {
+      blockReasons.push("confirmation_token_mismatch");
+    }
+    if (blockReasons.length) {
+      const blockedResponse: RemoveWorkspaceResponse = {
+        generatedAt: now(),
+        agentRunId: id,
+        performed: false,
+        removedPath: null,
+        worktreeRemoved: false,
+        blockReasons,
+      };
+      return c.json({ data: blockedResponse }, 400);
+    }
+    let worktreeRemoved = false;
+    if (summary.worktreeListed) {
+      const wtRemove = spawnSync("git", ["worktree", "remove", "--force", summary.workspacePath], {
+        encoding: "utf-8",
+      });
+      if (wtRemove.status === 0) worktreeRemoved = true;
+    }
+    rmSync(summary.workspacePath, { recursive: true, force: true });
+    const auditTrail = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+      actor: body.actor,
+      event: "agent_run_workspace_removed",
+      note: body.rationale,
+      metadata: { removedPath: summary.workspacePath, worktreeRemoved },
+    });
+    db.update(cbAgentRuns)
+      .set({
+        workspaceRef: null,
+        auditTrail,
+        updatedAt: now(),
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+    const response: RemoveWorkspaceResponse = {
+      generatedAt: now(),
+      agentRunId: id,
+      performed: true,
+      removedPath: summary.workspacePath,
+      worktreeRemoved,
+      blockReasons: [],
+    };
+    return c.json({ data: response });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "remove_failed", message }, 400);
   }
 });
 
