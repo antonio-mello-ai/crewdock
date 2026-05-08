@@ -287,11 +287,11 @@ Status AIOS-RUN-01 AgentRun schema and lifecycle v1 em 2026-05-07: issue `#48` c
 - [x] **AIOS-RUN-26 Workspace cleanup risk review UX v5** (`#96`) — expor `needs_review`/risks consolidados no cleanup preview/UI/MCP.
 - [x] **AIOS-RUN-27 Internal WorkItem status update path v5** (`#97`) — permitir update interno auditado de status para dogfood/reconciliation sem SQLite direto e sem writeback externo.
 - [x] **AIOS-RUN-28 Successful controlled auto-dispatch dogfood pack v5** (`#98`) — validar auto-dispatch com comando benigno e AgentRun `completed`, mantendo producao default-off.
-- [ ] **AIOS-RUN-29 Agent runner profile registry v6** (`#104`) — explicitar perfis `noop`/`claude`/`codex`/safe-shell com capacidades, auth mode, gates e default-off.
-- [ ] **AIOS-RUN-30 AgentRun patch and validation collector v6** (`#105`) — coletar diff/status/changed files/validations do workspace como evidence antes de qualquer push.
-- [ ] **AIOS-RUN-31 AgentRun to GitHub PR proposal preview v6** (`#106`) — gerar ExternalActionProposal preview-only para branch/PR a partir de patch packet.
-- [ ] **AIOS-RUN-32 Approved GitHub PR writeback executor v6** (`#107`) — push branch e abrir PR em repo interno allowlisted, aprovado/HITL/idempotente, sem merge/deploy.
-- [ ] **AIOS-RUN-33 First AIOS-authored PR dogfood pack v6** (`#108`) — validar WorkItem -> AgentRun -> patch packet -> approved PR proposal -> GitHub PR.
+- [x] **AIOS-RUN-29 Agent runner profile registry v6** (`#104`) — explicitar perfis `noop`/`claude`/`codex`/safe-shell com capacidades, auth mode, gates e default-off.
+- [x] **AIOS-RUN-30 AgentRun patch and validation collector v6** (`#105`) — coletar diff/status/changed files/validations do workspace como evidence antes de qualquer push.
+- [x] **AIOS-RUN-31 AgentRun to GitHub PR proposal preview v6** (`#106`) — gerar ExternalActionProposal preview-only para branch/PR a partir de patch packet.
+- [x] **AIOS-RUN-32 Approved GitHub PR writeback executor v6** (`#107`) — push branch e abrir PR em repo interno allowlisted, aprovado/HITL/idempotente, sem merge/deploy.
+- [x] **AIOS-RUN-33 First AIOS-authored PR dogfood pack v6** (`#108`) — validar WorkItem -> AgentRun -> patch packet -> approved PR proposal -> GitHub PR.
 - [x] **AIOS Agent Execution v2 Orchestrator + AgentRunner subprocess + retry queue** — concluido via issues `#62` a `#68`; continua sem auto-dispatch amplo.
 - [x] **AIOS Agent Execution v3 Background-capable runner + queued-run suggester** — concluido via issues `#76` a `#79`; continua sem auto-dispatch amplo.
 - [x] **AIOS Agent Execution v4 Controlled auto-dispatch** — concluido via issues `#84` a `#88`; objetivo foi um dispatch controlado e auditable, nao autonomia ampla.
