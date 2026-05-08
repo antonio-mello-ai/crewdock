@@ -1583,6 +1583,53 @@ server.registerTool(
 );
 
 server.registerTool(
+  "list_company_brain_agent_run_suggestions",
+  {
+    title: "List Company Brain AgentRun suggestions",
+    description:
+      "List queued-run suggestions produced by the Operating Loop suggester. Observe-only: suggestions never auto-dispatch a subprocess.",
+    inputSchema: {
+      status: z.enum(["active", "dismissed", "superseded", "all"]).optional(),
+      workItemId: z.string().optional(),
+    },
+  },
+  async ({ status, workItemId }) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (workItemId) params.set("workItemId", workItemId);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-run-suggestions${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "dismiss_company_brain_agent_run_suggestion",
+  {
+    title: "Dismiss Company Brain AgentRun suggestion",
+    description:
+      "Mark an active AgentRun suggestion as dismissed. Idempotency: same signature is suppressed until WorkItem state or policy snapshot changes.",
+    inputSchema: {
+      suggestionId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+    },
+  },
+  async ({ suggestionId, actor, rationale }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-run-suggestions/${suggestionId}/dismiss`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor, rationale }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "list_company_brain_external_action_proposals",
   {
     title: "List Company Brain writeback proposals",

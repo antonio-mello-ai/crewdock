@@ -699,6 +699,42 @@ export const cbWatcherRuns = sqliteTable("cb_watcher_runs", {
   updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });
 
+export const cbAgentRunSuggestions = sqliteTable("cb_agent_run_suggestions", {
+  id: text("id").primaryKey(),
+  workItemId: text("work_item_id").notNull(),
+  runnerType: text("runner_type")
+    .$type<AgentRunRunnerType>()
+    .notNull()
+    .default("manual"),
+  signature: text("signature").notNull(),
+  status: text("status", {
+    enum: ["active", "dismissed", "superseded"],
+  })
+    .notNull()
+    .default("active"),
+  rationale: text("rationale").notNull(),
+  policyDecision: text("policy_decision", { mode: "json" })
+    .$type<Record<string, unknown>>()
+    .notNull(),
+  generatedFrom: text("generated_from", { mode: "json" })
+    .$type<{
+      nextWorkRank: number;
+      nextWorkSource: string;
+      workItemTitle: string;
+      workItemArea: CompanyBrainArea;
+      suggestedAction: string;
+      sourceIssueRef: string | null;
+      operatingLoopScheduleId: string | null;
+      operatingLoopScheduledAt: number | null;
+    }>()
+    .notNull(),
+  dismissReason: text("dismiss_reason"),
+  dismissedBy: text("dismissed_by"),
+  dismissedAt: integer("dismissed_at", { mode: "number" }),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
 export const cbAgentRuns = sqliteTable("cb_agent_runs", {
   id: text("id").primaryKey(),
   workItemId: text("work_item_id"),

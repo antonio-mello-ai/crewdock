@@ -620,6 +620,25 @@ CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_work_item ON cb_agent_runs(work_ite
 CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_status ON cb_agent_runs(status);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_claim_state ON cb_agent_runs(claim_state);
 CREATE INDEX IF NOT EXISTS idx_cb_agent_runs_runner_type ON cb_agent_runs(runner_type);
+
+CREATE TABLE IF NOT EXISTS cb_agent_run_suggestions (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL,
+  runner_type TEXT NOT NULL DEFAULT 'manual',
+  signature TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  rationale TEXT NOT NULL,
+  policy_decision TEXT NOT NULL,
+  generated_from TEXT NOT NULL,
+  dismiss_reason TEXT,
+  dismissed_by TEXT,
+  dismissed_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cb_agent_run_suggestions_signature ON cb_agent_run_suggestions(signature);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_run_suggestions_work_item ON cb_agent_run_suggestions(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_cb_agent_run_suggestions_status ON cb_agent_run_suggestions(status);
 `;
 
 let dbInstance: ReturnType<typeof drizzle> | null = null;
