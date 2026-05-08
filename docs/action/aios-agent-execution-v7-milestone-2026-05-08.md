@@ -58,8 +58,16 @@ Stop before:
 Before opening v7, production `next-work` was empty after v6 closure. PR `#113`
 remains open and awaiting human review.
 
-After opening v7 and syncing GitHub Issues, production should recommend
-`#115 AIOS-RUN-34: GitHub PR writeback preflight and auth smoke v7`.
+After opening v7, updating CT165 to `4e5082d` and syncing GitHub Issues:
+
+- sync `state=open` returned `issuesSeen=5`;
+- `workItemsCreated=5`;
+- `lastIssueNumbers=[119,118,117,116,115]`;
+- `GET /api/company-brain/workflow-loader` returned
+  `activeMilestone=AIOS Agent Execution v7`, `isValid=true`;
+- `GET /api/company-brain/next-work` recommends
+  `#115 AIOS-RUN-34: GitHub PR writeback preflight and auth smoke v7`
+  with `candidatesConsidered=5`.
 
 ## Next Handoff Prompt
 
@@ -72,7 +80,7 @@ Estado:
 - Nova milestone tem issues #115 a #119.
 - WORKFLOW.md aponta para AIOS Agent Execution v7.
 - Company Brain já foi sincronizado em produção.
-- Next Work deve recomendar #115 AIOS-RUN-34: GitHub PR writeback preflight and auth smoke v7.
+- Next Work recomenda #115 AIOS-RUN-34: GitHub PR writeback preflight and auth smoke v7.
 - Comece de origin/main atualizado.
 
 Siga em modo contínuo issue-by-issue:

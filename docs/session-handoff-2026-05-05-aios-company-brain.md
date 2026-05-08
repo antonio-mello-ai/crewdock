@@ -2884,6 +2884,16 @@ Issues abertas:
 - `#118 AIOS-RUN-37: Same-PR iteration loop for AgentRuns v7`;
 - `#119 AIOS-RUN-38: Semantic AIOS-authored PR dogfood pack v7`.
 
+Producao apos sync:
+
+- sync GitHub Issues `state=open` retornou `issuesSeen=5`,
+  `workItemsCreated=5`, `lastIssueNumbers=[119,118,117,116,115]`;
+- `GET /api/company-brain/workflow-loader` mostra
+  `activeMilestone=AIOS Agent Execution v7` e `isValid=true`;
+- `GET /api/company-brain/next-work` recomenda
+  `#115 AIOS-RUN-34: GitHub PR writeback preflight and auth smoke v7`
+  com `candidatesConsidered=5`.
+
 Direcional da v7: tornar o loop de PR revisavel e iteravel. A v7 deve fechar
 as friccoes do dogfood v6: smoke de pushability/auth, aprovacao de
 `github_pr_create` via UI/API em vez de SQLite, chain auto-dispatch -> PR
