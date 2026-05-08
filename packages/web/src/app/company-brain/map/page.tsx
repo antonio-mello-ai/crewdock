@@ -86,6 +86,21 @@ function AreaCard({ area }: { area: CompanyOperatingMapArea }) {
         {area.description}
       </p>
 
+      <div className="mt-2 flex flex-wrap gap-1 text-[10px]">
+        {area.readiness ? (
+          <Badge variant="outline">readiness: {area.readiness}</Badge>
+        ) : null}
+        {area.ownerRole ? (
+          <Badge variant="outline">
+            owner: {area.ownerRole}
+            {area.ownerName ? ` (${area.ownerName})` : ""}
+          </Badge>
+        ) : null}
+        {area.cadence ? (
+          <Badge variant="outline">cadence: {area.cadence}</Badge>
+        ) : null}
+      </div>
+
       {isEmpty ? (
         <p className="mt-3 text-xs italic text-muted-foreground">
           {area.emptyStateReason ??
@@ -219,6 +234,28 @@ function AreaCard({ area }: { area: CompanyOperatingMapArea }) {
                   </li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {area.expectedAgentRoles?.length ? (
+            <div className="mt-3 text-[11px]">
+              <span className="font-semibold uppercase tracking-wide text-muted-foreground">
+                Expected agents:
+              </span>{" "}
+              <span className="text-muted-foreground">
+                {area.expectedAgentRoles.slice(0, 4).join(", ")}
+              </span>
+            </div>
+          ) : null}
+
+          {area.defaultGates?.length ? (
+            <div className="mt-1 text-[11px]">
+              <span className="font-semibold uppercase tracking-wide text-muted-foreground">
+                Gates:
+              </span>{" "}
+              <span className="text-muted-foreground">
+                {area.defaultGates.slice(0, 3).join(", ")}
+              </span>
             </div>
           ) : null}
 
