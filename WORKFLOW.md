@@ -89,6 +89,7 @@ Auto-dispatch is **default-off** in production. Opt-in requires the following en
 | `AIOS_AGENT_AUTODISPATCH_MAX_RUNTIME_MS` | int (ms) | `600000` | Per-run timeout. Reconciler marks runs `failed` when exceeded. |
 | `AIOS_AGENT_AUTODISPATCH_DEFAULT_ACTOR` | string | `operating-loop:auto-dispatch` | Audit actor for promote + execute-async calls. |
 | `AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE` | string | `Auto-dispatched by Operating Loop after eligibility evaluation` | Default rationale recorded on AgentRun. |
+| `AIOS_AGENT_AUTODISPATCH_COMMAND_OVERRIDE` | string (optional) | `echo` | When set, auto-dispatch passes this binary as `commandOverride` to `/execute-async` instead of `WORKFLOW.md` `agent.command`. Must still be present in `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST`. Useful for dogfood smoke runs with benign commands. |
 
 ## Manual runner env vars
 

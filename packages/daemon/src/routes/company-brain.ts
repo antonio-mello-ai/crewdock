@@ -12710,6 +12710,8 @@ function autoDispatchConfig(): AutoDispatchPolicyConfig {
     defaultRationale:
       process.env.AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE?.trim() ||
       "Auto-dispatched by Operating Loop after eligibility evaluation",
+    commandOverride:
+      process.env.AIOS_AGENT_AUTODISPATCH_COMMAND_OVERRIDE?.trim() || null,
   };
 }
 
@@ -13161,6 +13163,7 @@ function evaluateAutoDispatchEligibility(args: {
           intent: "real_execution",
           actor: args.actorOverride ?? config.defaultActor,
           rationale: args.rationaleOverride ?? config.defaultRationale,
+          commandOverride: config.commandOverride ?? undefined,
         },
       });
       manualRunnerPolicyDecision = policy.decision;
@@ -18323,17 +18326,24 @@ async function runOperatingLoopAutoDispatchTick(args: {
     };
   }
 
-  // Trigger async execution.
+  // Trigger async execution. When the auto-dispatch config carries a
+  // commandOverride (e.g., dogfood smoke with `echo`), pass it through to
+  // execute-async so the operator can validate the dispatch chain
+  // without invoking the real agent binary.
+  const execBody: Record<string, unknown> = {
+    actor: autoActor,
+    rationale: autoRationale,
+  };
+  if (eligibility.config.commandOverride) {
+    execBody.commandOverride = eligibility.config.commandOverride;
+  }
   try {
     const execResp = await app.request(
       "/agent-runs/" + promotedAgentRunId + "/execute-async",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actor: autoActor,
-          rationale: autoRationale,
-        }),
+        body: JSON.stringify(execBody),
       }
     );
     if (!execResp.ok) {

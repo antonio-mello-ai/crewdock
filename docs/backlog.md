@@ -278,11 +278,11 @@ Status AIOS-RUN-01 AgentRun schema and lifecycle v1 em 2026-05-07: issue `#48` c
 - [x] **AIOS-RUN-21 Operating Loop single-run auto-dispatch v4** (`#86`) — permitir um dispatch por tick quando explicitamente habilitado e elegivel, com provenance e concurrency cap.
 - [x] **AIOS-RUN-22 AgentRun reconciliation, stall recovery and tracker refresh v4** (`#87`) — reconciliar runs async, stale heartbeat, daemon restart, issue/PR state e session_result evidence.
 - [x] **AIOS-RUN-23 Controlled auto-dispatch dogfood pack v4** (`#88`) — validar um auto-dispatch controlado end-to-end e registrar evidencia/friccoes.
-- [ ] **AIOS-RUN-24 Auto-dispatch config clarity and policy hints v5** (`#94`) — explicar allowlists/env gates no contrato, API/MCP e UI para operador nao precisar ler codigo.
-- [ ] **AIOS-RUN-25 Stable WorkflowBlueprint identity for auto-dispatch v5** (`#95`) — permitir identidade estavel de blueprint em allowlists sem depender de ids gerados opacos.
-- [ ] **AIOS-RUN-26 Workspace cleanup risk review UX v5** (`#96`) — expor `needs_review`/risks consolidados no cleanup preview/UI/MCP.
-- [ ] **AIOS-RUN-27 Internal WorkItem status update path v5** (`#97`) — permitir update interno auditado de status para dogfood/reconciliation sem SQLite direto e sem writeback externo.
-- [ ] **AIOS-RUN-28 Successful controlled auto-dispatch dogfood pack v5** (`#98`) — validar auto-dispatch com comando benigno e AgentRun `completed`, mantendo producao default-off.
+- [x] **AIOS-RUN-24 Auto-dispatch config clarity and policy hints v5** (`#94`) — explicar allowlists/env gates no contrato, API/MCP e UI para operador nao precisar ler codigo.
+- [x] **AIOS-RUN-25 Stable WorkflowBlueprint identity for auto-dispatch v5** (`#95`) — permitir identidade estavel de blueprint em allowlists sem depender de ids gerados opacos.
+- [x] **AIOS-RUN-26 Workspace cleanup risk review UX v5** (`#96`) — expor `needs_review`/risks consolidados no cleanup preview/UI/MCP.
+- [x] **AIOS-RUN-27 Internal WorkItem status update path v5** (`#97`) — permitir update interno auditado de status para dogfood/reconciliation sem SQLite direto e sem writeback externo.
+- [x] **AIOS-RUN-28 Successful controlled auto-dispatch dogfood pack v5** (`#98`) — validar auto-dispatch com comando benigno e AgentRun `completed`, mantendo producao default-off.
 - [x] **AIOS Agent Execution v2 Orchestrator + AgentRunner subprocess + retry queue** — concluido via issues `#62` a `#68`; continua sem auto-dispatch amplo.
 - [x] **AIOS Agent Execution v3 Background-capable runner + queued-run suggester** — concluido via issues `#76` a `#79`; continua sem auto-dispatch amplo.
 - [x] **AIOS Agent Execution v4 Controlled auto-dispatch** — concluido via issues `#84` a `#88`; objetivo foi um dispatch controlado e auditable, nao autonomia ampla.
