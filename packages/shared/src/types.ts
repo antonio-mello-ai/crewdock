@@ -1170,6 +1170,11 @@ export type WorkspaceCleanupRisk =
   | "agent_run_active"
   | "missing_worktree";
 
+export type WorkspaceCleanupReviewStatus =
+  | "clear"
+  | "needs_review"
+  | "blocked";
+
 export interface WorkspaceCleanupPreviewResponse {
   generatedAt: number;
   agentRunId: string;
@@ -1184,6 +1189,32 @@ export interface WorkspaceCleanupPreviewResponse {
   quarantineAllowed: boolean;
   expectedConfirmationToken: string;
   policySummary: string;
+  /**
+   * Combined review state derived from risks + isDirty + agentRunStatus +
+   * workspaceExists. `clear` = no risks and workspace is in a known-safe
+   * shape; `needs_review` = at least one risk requires operator review
+   * before destructive action; `blocked` = cleanup not allowed because the
+   * agent run is still running/queued or the workspace path escapes the
+   * configured root.
+   */
+  reviewStatus: WorkspaceCleanupReviewStatus;
+  /**
+   * Short human-readable explanation of `reviewStatus`. Mirrors the
+   * console copy so MCP consumers and CLI operators see the same hint.
+   */
+  reviewSummary: string;
+  /**
+   * Recommended next action for the operator: `proceed_remove`,
+   * `proceed_quarantine`, `inspect_dirty_changes`, `wait_for_run`,
+   * `verify_path_root` or `noop_already_clean`.
+   */
+  recommendedAction:
+    | "proceed_remove"
+    | "proceed_quarantine"
+    | "inspect_dirty_changes"
+    | "wait_for_run"
+    | "verify_path_root"
+    | "noop_already_clean";
 }
 
 export interface QuarantineWorkspaceRequest {
