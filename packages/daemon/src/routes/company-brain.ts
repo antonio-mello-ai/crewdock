@@ -98,7 +98,12 @@ import type {
   AutoDispatchRuntimeState,
   DismissAgentRunSuggestionRequest,
   DismissAgentRunSuggestionResponse,
+  AgentRunPatchPacket,
+  AgentRunPatchPacketChangedFile,
+  AgentRunPatchPacketCommit,
+  AgentRunPatchPacketValidation,
   AgentRunReconciliationFinding,
+  CollectAgentRunPatchPacketResponse,
   EvaluateAutoDispatchEligibilityRequest,
   ListAgentRunSuggestionsResponse,
   ListRunnerProfilesResponse,
@@ -12409,6 +12414,301 @@ function workspaceListed(workspacePath: string): boolean {
   return stdout.split("\n").some((line) => line.startsWith("worktree ") && line.slice(9).trim() === workspacePath);
 }
 
+function collectAgentRunPatchPacket(args: {
+  agentRun: typeof cbAgentRuns.$inferSelect;
+}): AgentRunPatchPacket {
+  const generatedAt = now();
+  const run = args.agentRun;
+  const workspacePath = run.workspaceRef ?? null;
+  const branch = run.branch ?? null;
+  const workflow = loadWorkflowFromRepoRoot();
+  const baseRef = workflow.config.workspace.baseBranch ?? null;
+  const logFilePath = (() => {
+    if (!workspacePath) return null;
+    const candidate = resolve(workspacePath, ".aios-run", `${run.id}.log`);
+    return existsSync(candidate) ? candidate : null;
+  })();
+  const baseLogRefs = {
+    logFilePath,
+    lastLogAt: run.lastLogAt ?? null,
+    lastLogLineCount: run.lastLogLineCount ?? null,
+  };
+
+  // Helpers reading metadata.validations populated by session_result intake.
+  const validationsFromMetadata = ((): AgentRunPatchPacketValidation[] => {
+    const md = run.metadata as Record<string, unknown> | null;
+    const raw = md && Array.isArray(md.validations) ? (md.validations as unknown[]) : [];
+    const out: AgentRunPatchPacketValidation[] = [];
+    for (const v of raw) {
+      if (typeof v === "object" && v !== null) {
+        const rec = v as Record<string, unknown>;
+        const kind = typeof rec.kind === "string" ? rec.kind : "unknown";
+        const statusRaw = typeof rec.status === "string" ? rec.status : "skipped";
+        const status: AgentRunPatchPacketValidation["status"] =
+          statusRaw === "passed" || statusRaw === "failed" || statusRaw === "skipped"
+            ? statusRaw
+            : "skipped";
+        const notes = typeof rec.notes === "string" ? rec.notes : null;
+        out.push({ kind, status, notes });
+      }
+    }
+    return out;
+  })();
+
+  if (!workspacePath) {
+    return {
+      agentRunId: run.id,
+      workItemId: run.workItemId,
+      artifactId: null,
+      generatedAt,
+      status: "no_workspace",
+      workspacePath: null,
+      branch,
+      baseRef,
+      changedFiles: [],
+      diffStat: { filesChanged: 0, insertions: 0, deletions: 0 },
+      commits: [],
+      validations: validationsFromMetadata,
+      logRefs: baseLogRefs,
+      errorSummary: "AgentRun has no workspaceRef recorded",
+    };
+  }
+
+  if (!existsSync(workspacePath)) {
+    return {
+      agentRunId: run.id,
+      workItemId: run.workItemId,
+      artifactId: null,
+      generatedAt,
+      status: "no_workspace",
+      workspacePath,
+      branch,
+      baseRef,
+      changedFiles: [],
+      diffStat: { filesChanged: 0, insertions: 0, deletions: 0 },
+      commits: [],
+      validations: validationsFromMetadata,
+      logRefs: baseLogRefs,
+      errorSummary: "Workspace path does not exist",
+    };
+  }
+
+  // Verify a .git or .git file exists (worktrees use a .git pointer file).
+  if (!existsSync(resolve(workspacePath, ".git"))) {
+    return {
+      agentRunId: run.id,
+      workItemId: run.workItemId,
+      artifactId: null,
+      generatedAt,
+      status: "no_git",
+      workspacePath,
+      branch,
+      baseRef,
+      changedFiles: [],
+      diffStat: { filesChanged: 0, insertions: 0, deletions: 0 },
+      commits: [],
+      validations: validationsFromMetadata,
+      logRefs: baseLogRefs,
+      errorSummary: "Workspace exists but is not a git checkout (no .git)",
+    };
+  }
+
+  const errorSummary: string[] = [];
+
+  // git status --porcelain
+  let isDirty = false;
+  const changedFiles: AgentRunPatchPacketChangedFile[] = [];
+  try {
+    const st = spawnSync("git", ["-C", workspacePath, "status", "--porcelain"], {
+      encoding: "utf-8",
+    });
+    if (st.status === 0 && st.stdout) {
+      const lines = st.stdout.split("\n").filter((l) => l.length > 0);
+      for (const line of lines) {
+        const status = line.slice(0, 2).trim();
+        const path = line.slice(3).trim();
+        if (path) changedFiles.push({ path, status });
+      }
+      isDirty = lines.length > 0;
+    } else if (st.status !== 0) {
+      errorSummary.push(`git status failed: ${(st.stderr ?? "").trim().slice(0, 200)}`);
+    }
+  } catch (err) {
+    errorSummary.push(
+      `git status threw: ${err instanceof Error ? err.message : "unknown"}`
+    );
+  }
+
+  // git diff --stat (against base ref)
+  let diffStat = { filesChanged: 0, insertions: 0, deletions: 0 };
+  try {
+    const args = baseRef
+      ? ["-C", workspacePath, "diff", "--shortstat", baseRef + "..HEAD"]
+      : ["-C", workspacePath, "diff", "--shortstat"];
+    const ds = spawnSync("git", args, { encoding: "utf-8" });
+    if (ds.status === 0 && ds.stdout) {
+      // " 2 files changed, 13 insertions(+), 1 deletion(-)"
+      const m = ds.stdout.trim();
+      const filesMatch = m.match(/(\d+) files? changed/);
+      const insMatch = m.match(/(\d+) insertions?\(\+\)/);
+      const delMatch = m.match(/(\d+) deletions?\(-\)/);
+      diffStat = {
+        filesChanged: filesMatch ? Number(filesMatch[1]) : 0,
+        insertions: insMatch ? Number(insMatch[1]) : 0,
+        deletions: delMatch ? Number(delMatch[1]) : 0,
+      };
+    }
+  } catch (err) {
+    errorSummary.push(
+      `git diff --shortstat threw: ${err instanceof Error ? err.message : "unknown"}`
+    );
+  }
+
+  // git log against base ref (commits ahead of base)
+  const commits: AgentRunPatchPacketCommit[] = [];
+  try {
+    const args = baseRef
+      ? [
+          "-C",
+          workspacePath,
+          "log",
+          baseRef + "..HEAD",
+          "--no-merges",
+          "--pretty=format:%H%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b%x1e",
+          "-50",
+        ]
+      : [
+          "-C",
+          workspacePath,
+          "log",
+          "-10",
+          "--no-merges",
+          "--pretty=format:%H%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b%x1e",
+        ];
+    const log = spawnSync("git", args, { encoding: "utf-8" });
+    if (log.status === 0 && log.stdout) {
+      const records = log.stdout.split("\x1e").filter((r) => r.trim().length > 0);
+      for (const record of records) {
+        const fields = record.trim().split("\x1f");
+        if (fields.length >= 5) {
+          const sha = fields[0];
+          const authorName = fields[1];
+          const authorEmail = fields[2];
+          const committedAtSec = Number(fields[3]);
+          const subject = fields[4];
+          const body = fields[5] ?? "";
+          commits.push({
+            sha,
+            authorName,
+            authorEmail,
+            subject,
+            bodySnippet: body.trim().slice(0, 500) || null,
+            committedAt: Number.isFinite(committedAtSec)
+              ? committedAtSec * 1000
+              : null,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    errorSummary.push(
+      `git log threw: ${err instanceof Error ? err.message : "unknown"}`
+    );
+  }
+
+  return {
+    agentRunId: run.id,
+    workItemId: run.workItemId,
+    artifactId: null,
+    generatedAt,
+    status: errorSummary.length > 0 ? "error" : isDirty ? "dirty" : "clean",
+    workspacePath,
+    branch,
+    baseRef,
+    changedFiles,
+    diffStat,
+    commits,
+    validations: validationsFromMetadata,
+    logRefs: baseLogRefs,
+    errorSummary: errorSummary.length > 0 ? errorSummary.join("; ") : null,
+  };
+}
+
+function persistAgentRunPatchPacket(args: {
+  packet: AgentRunPatchPacket;
+  agentRun: typeof cbAgentRuns.$inferSelect;
+}): { artifactId: string } {
+  const db = getDb();
+  const timestamp = args.packet.generatedAt;
+  const sourceArea = args.agentRun.area;
+  const sourceVisibility = args.agentRun.visibility;
+  const sourceId = ensureSessionResultsSource(
+    sourceArea,
+    sourceVisibility,
+    timestamp
+  );
+  const artifactId = nanoid(12);
+  const rawRef = `aios://agent-run-patch-packet/${args.agentRun.id}/${timestamp}`;
+  const titleParts = [
+    `AgentRun ${args.agentRun.id} patch packet`,
+    args.packet.status,
+    `${args.packet.changedFiles.length} files`,
+    `${args.packet.commits.length} commits`,
+  ];
+  const summary = (() => {
+    const lines: string[] = [];
+    lines.push(`status=${args.packet.status}`);
+    lines.push(`branch=${args.packet.branch ?? "-"}`);
+    lines.push(`baseRef=${args.packet.baseRef ?? "-"}`);
+    lines.push(
+      `diffStat=${args.packet.diffStat.filesChanged}f/${args.packet.diffStat.insertions}+${args.packet.diffStat.deletions}-`
+    );
+    lines.push(
+      `commits=${args.packet.commits
+        .map((c) => `${c.sha.slice(0, 7)} ${c.subject.slice(0, 60)}`)
+        .join("; ") || "(none)"}`
+    );
+    if (args.packet.errorSummary) lines.push(`errorSummary=${args.packet.errorSummary}`);
+    return lines.join(" | ").slice(0, 800);
+  })();
+  const artifactRow: Artifact = {
+    id: artifactId,
+    sourceId,
+    artifactType: "session_result",
+    area: sourceArea,
+    title: titleParts.join(": ").slice(0, 240),
+    summary,
+    contentRef: null,
+    rawRef,
+    author: "operating-loop:patch-packet",
+    occurredAt: timestamp,
+    ingestedAt: timestamp,
+    hash: createHash("sha256")
+      .update(JSON.stringify(args.packet))
+      .digest("hex"),
+    visibility: sourceVisibility,
+    provenance: {
+      sourceId,
+      rawRef,
+      artifactId,
+      createdFrom: "company_brain:agent_run_patch_packet",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "pending",
+      visibility: sourceVisibility,
+      notes: `agentRun=${args.agentRun.id}; status=${args.packet.status}; files=${args.packet.changedFiles.length}; commits=${args.packet.commits.length}`,
+    },
+    humanReviewStatus: "pending",
+    confidence: 1,
+    metadata: {
+      kind: "agent_run_patch_packet",
+      packet: args.packet,
+    },
+  };
+  db.insert(cbArtifacts).values(artifactRow as never).run();
+  return { artifactId };
+}
+
 function buildWorkspacePreparationResult(args: {
   agentRunId: string | null;
   workItemId: string | null;
@@ -13657,6 +13957,34 @@ function buildAutoDispatchPolicySummary(): AutoDispatchPolicySummary {
   };
 }
 
+app.get("/agent-runs/:id/patch-packet", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const persistFlag = c.req.query("persist") === "true";
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const packet = collectAgentRunPatchPacket({ agentRun: run });
+  if (persistFlag) {
+    try {
+      const { artifactId } = persistAgentRunPatchPacket({ packet, agentRun: run });
+      packet.artifactId = artifactId;
+    } catch (err) {
+      console.error("[company-brain] persistAgentRunPatchPacket failed", err);
+    }
+  }
+  const response: CollectAgentRunPatchPacketResponse = {
+    generatedAt: now(),
+    packet,
+  };
+  return c.json({ data: response });
+});
+
 app.get("/runner-profiles", (c) => {
   const repo = c.req.query("repo")?.trim() || null;
   const area = (c.req.query("area")?.trim() as CompanyBrainArea | undefined) || null;
@@ -14728,6 +15056,25 @@ function startAgentRunSubprocess(entry: Omit<AgentRunProcessEntry, "child" | "st
       });
     } catch {
       // intake failure logged inside helper
+    }
+
+    // Collect patch/validation packet from the workspace state and persist
+    // as an Artifact for downstream PR proposal preview (#106).
+    try {
+      const refreshed = getDb()
+        .select()
+        .from(cbAgentRuns)
+        .where(eq(cbAgentRuns.id, entry.agentRunId))
+        .get() as typeof cbAgentRuns.$inferSelect | undefined;
+      if (refreshed) {
+        const packet = collectAgentRunPatchPacket({ agentRun: refreshed });
+        persistAgentRunPatchPacket({ packet, agentRun: refreshed });
+      }
+    } catch (err) {
+      console.error(
+        "[company-brain] collectAgentRunPatchPacket on exit failed",
+        err
+      );
     }
   });
 
