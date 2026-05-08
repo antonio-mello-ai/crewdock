@@ -12822,6 +12822,10 @@ function evaluateAutoDispatchEligibility(args: {
         "AIOS_AGENT_AUTODISPATCH_ENABLED is not set to true; auto-dispatch is default-off.",
       remediation:
         "Set AIOS_AGENT_AUTODISPATCH_ENABLED=true on a controlled environment after the rest of the gates pass.",
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_ENABLED"],
+      expectedFormat: "boolean string ('true' or unset)",
+      exampleValue: "true",
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_disabled");
     setBlock("blocked_default_off");
@@ -12847,6 +12851,10 @@ function evaluateAutoDispatchEligibility(args: {
         "AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST is empty; auto-dispatch refuses to act on any repo.",
       remediation:
         "Set AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST to a CSV of allowlisted repos (owner/name).",
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST"],
+      expectedFormat: "CSV of GitHub repo identifiers in `owner/name` form (NOT filesystem paths)",
+      exampleValue: "antonio-mello-ai/crewdock",
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_repo_allowlist_empty");
     setBlock("blocked_repo");
@@ -12858,6 +12866,7 @@ function evaluateAutoDispatchEligibility(args: {
       detail: "WORKFLOW.md tracker.repo is missing.",
       remediation:
         "Set tracker.repo in WORKFLOW.md before enabling auto-dispatch.",
+      docsLink: "WORKFLOW.md#tracker",
     });
     blockReasons.push("autodispatch_repo_missing");
     setBlock("blocked_repo");
@@ -12868,6 +12877,10 @@ function evaluateAutoDispatchEligibility(args: {
       status: "failed",
       detail: `repo=${repo} is not in AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST.`,
       remediation: `Add ${repo} to AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST or fix tracker.repo.`,
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST"],
+      expectedFormat: "CSV of GitHub repo identifiers in `owner/name` form",
+      exampleValue: repo,
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_repo_not_allowed");
     setBlock("blocked_repo");
@@ -12890,7 +12903,11 @@ function evaluateAutoDispatchEligibility(args: {
       detail:
         "AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST is empty; auto-dispatch refuses to act on any workflow blueprint.",
       remediation:
-        "Set AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST to a CSV of workflow blueprint refs registered in cbWorkflowBlueprints.",
+        "Set AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST to a CSV of workflow blueprint ids registered in cb_workflow_blueprints.",
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST"],
+      expectedFormat: "CSV of workflow blueprint ids (matches cb_workflow_blueprints.id, NOT a free-form ref string)",
+      exampleValue: "development-blueprint-v0",
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_workflow_allowlist_empty");
     setBlock("blocked_workflow");
@@ -12908,9 +12925,13 @@ function evaluateAutoDispatchEligibility(args: {
         key: "workflow_allowed",
         title: "Workflow allowlisted for auto-dispatch",
         status: "failed",
-        detail: `Allowlist=[${config.workflowAllowlist.join(",")}] does not match any registered workflow blueprint ref (registered=${blueprintRefs.length}).`,
+        detail: `Allowlist=[${config.workflowAllowlist.join(",")}] does not match any registered workflow blueprint id (registered=${blueprintRefs.length}; first 3=[${blueprintRefs.slice(0, 3).join(",")}]).`,
         remediation:
-          "Register a workflow blueprint with one of the allowlisted refs, or update the allowlist to a registered ref.",
+          "Register a workflow blueprint with one of the allowlisted ids (POST /workflow-blueprints + #95 stable id contract), or update the allowlist to a registered id.",
+        envRefs: ["AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST"],
+        expectedFormat: "CSV of workflow blueprint ids (must match cb_workflow_blueprints.id exactly)",
+        exampleValue: blueprintRefs[0] ?? "development-blueprint-v0",
+        docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
       });
       blockReasons.push("autodispatch_workflow_not_allowed");
       setBlock("blocked_workflow");
@@ -12943,6 +12964,11 @@ function evaluateAutoDispatchEligibility(args: {
         "AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST is empty; auto-dispatch refuses to act on any area.",
       remediation:
         "Set AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST to a CSV of allowlisted areas.",
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST"],
+      expectedFormat:
+        "CSV of CompanyBrainArea values: strategy, development, operations, product, marketing, sales, finance, people, customer, platform",
+      exampleValue: "development,platform",
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_area_allowlist_empty");
     setBlock("blocked_area");
@@ -12953,6 +12979,10 @@ function evaluateAutoDispatchEligibility(args: {
       status: "failed",
       detail: `WorkItem.area=${args.workItem.area} ∉ allowlist=[${config.areaAllowlist.join(",")}]`,
       remediation: `Add ${args.workItem.area} to AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST or pick a different WorkItem.`,
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST"],
+      expectedFormat: "CSV of CompanyBrainArea values",
+      exampleValue: [...config.areaAllowlist, args.workItem.area].join(","),
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_area_not_allowed");
     setBlock("blocked_area");
@@ -12983,6 +13013,10 @@ function evaluateAutoDispatchEligibility(args: {
       detail: `requireRiskA=true and WorkItem.riskClass=${args.workItem.riskClass} (need A).`,
       remediation:
         "Reduce risk class to A with documented rationale, or disable requireRiskA after independent review.",
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_REQUIRE_RISK_A"],
+      expectedFormat: "boolean string (default 'true' enforces Risk A only; set 'false' to allow Risk B)",
+      exampleValue: "false",
+      docsLink: "WORKFLOW.md#auto-dispatch-env-vars",
     });
     blockReasons.push("autodispatch_risk_not_a");
     setBlock("blocked_risk");
@@ -12996,6 +13030,7 @@ function evaluateAutoDispatchEligibility(args: {
       status: "failed",
       detail: `WorkItem.riskClass=${args.workItem.riskClass} blocked by Writeback Policy Matrix.`,
       remediation: "Refactor to Risk A or B with HITL approval and audit.",
+      docsLink: "docs/decisions/writeback-policy-matrix.md",
     });
     blockReasons.push("autodispatch_risk_blocked");
     setBlock("blocked_risk");
@@ -13136,13 +13171,53 @@ function evaluateAutoDispatchEligibility(args: {
         });
         satisfiedGates.push("manual_runner_policy_passed");
       } else {
+        // Pull blocked manual gates so operators can see the exact env var
+        // they need to fix without re-evaluating /policy/evaluate.
+        const failedManualGates = policy.gates
+          .filter((g) => g.status === "failed")
+          .map((g) => g.key);
+        const manualEnvHint = (() => {
+          const hints: string[] = [];
+          if (policy.blockReasons.includes("workspace_not_allowlisted")) {
+            hints.push(
+              "AIOS_AGENT_WORKSPACE_ALLOWLIST=<owner/name> (CSV of GitHub repo identifiers, NOT filesystem paths)"
+            );
+          }
+          if (policy.blockReasons.includes("command_not_allowlisted")) {
+            hints.push(
+              "AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST=claude,echo,true (CSV of allowed binaries; must include WORKFLOW.md agent.command)"
+            );
+          }
+          if (policy.blockReasons.includes("runner_disabled")) {
+            hints.push("AIOS_AGENT_RUNNER_ENABLED=true (master switch for manual runner)");
+          }
+          if (policy.blockReasons.includes("repo_not_allowlisted")) {
+            hints.push(
+              "AIOS_AGENT_RUNNER_REPO_ALLOWLIST=<owner/name> (CSV mirrors AUTODISPATCH_REPO_ALLOWLIST)"
+            );
+          }
+          return hints;
+        })();
         gates.push({
           key: "manual_runner_policy_passed",
           title: "Manual runner policy passes",
           status: "failed",
-          detail: `evaluateRunnerPolicy=${policy.decision}; satisfiedGates=${policy.gates.filter((g) => g.status === "passed").length}; blockReasons=[${policy.blockReasons.join(",")}]`,
+          detail: `evaluateRunnerPolicy=${policy.decision}; satisfiedGates=${policy.gates.filter((g) => g.status === "passed").length}; manualBlockReasons=[${policy.blockReasons.join(",")}]; failedGates=[${failedManualGates.join(",")}]`,
           remediation:
-            "Fix manual runner policy gates first; auto-dispatch chains the same policy.",
+            manualEnvHint.length > 0
+              ? `Fix manual runner policy first: ${manualEnvHint.join("; ")}`
+              : "Fix manual runner policy gates first; auto-dispatch chains the same policy. Run POST /agent-runs/:id/policy/evaluate for full gate detail.",
+          envRefs: [
+            "AIOS_AGENT_RUNNER_ENABLED",
+            "AIOS_AGENT_RUNNER_REPO_ALLOWLIST",
+            "AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST",
+            "AIOS_AGENT_WORKSPACE_ALLOWLIST",
+          ],
+          expectedFormat:
+            "All four manual runner env vars must be set; AIOS_AGENT_WORKSPACE_ALLOWLIST takes repo identifiers (owner/name), NOT filesystem paths",
+          exampleValue:
+            "AIOS_AGENT_WORKSPACE_ALLOWLIST=" + (repo ?? "antonio-mello-ai/crewdock"),
+          docsLink: "WORKFLOW.md#manual-runner-env-vars",
         });
         blockReasons.push("autodispatch_runner_policy_blocked");
         setBlock("blocked_runner_policy");

@@ -1577,6 +1577,10 @@ export interface AutoDispatchGate {
   status: AutoDispatchGateStatus;
   detail: string;
   remediation?: string;
+  envRefs?: string[];
+  expectedFormat?: string;
+  exampleValue?: string;
+  docsLink?: string;
 }
 
 export interface AutoDispatchPolicyConfig {
