@@ -25,6 +25,7 @@ import {
   useDismissCompanyBrainAgentRunSuggestion,
   useEvaluateCompanyBrainAgentRunPolicy,
   useExecuteCompanyBrainAgentRun,
+  usePromoteCompanyBrainAgentRunSuggestion,
 } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -333,14 +334,21 @@ interface AgentRunSuggestionRow {
     operatingLoopScheduleId: string | null;
     operatingLoopScheduledAt: number | null;
   };
+  promotedAgentRunId: string | null;
+  promotedBy: string | null;
+  promotedAt: number | null;
   createdAt: number;
 }
 
 function SuggestionRow({ suggestion }: { suggestion: AgentRunSuggestionRow }) {
   const dismissMutation = useDismissCompanyBrainAgentRunSuggestion();
+  const promoteMutation = usePromoteCompanyBrainAgentRunSuggestion();
   const [actor, setActor] = useState("");
   const [rationale, setRationale] = useState("");
   const [open, setOpen] = useState(false);
+  const [promoteOpen, setPromoteOpen] = useState(false);
+  const [promoteActor, setPromoteActor] = useState("");
+  const [promoteRationale, setPromoteRationale] = useState("");
   return (
     <li className="border-t border-border first:border-t-0">
       <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
@@ -368,12 +376,94 @@ function SuggestionRow({ suggestion }: { suggestion: AgentRunSuggestionRow }) {
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             Created {formatTimeAgo(suggestion.createdAt)} · Observe-only — no subprocess will start.
+            {suggestion.promotedAgentRunId ? (
+              <>
+                {" · "}
+                <span className="text-emerald-500">
+                  Promoted → AgentRun <code className="text-[11px]">{suggestion.promotedAgentRunId}</code>
+                  {suggestion.promotedBy ? ` by ${suggestion.promotedBy}` : ""}
+                </span>
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-col gap-1 sm:w-64">
-          <Button size="sm" variant="ghost" onClick={() => setOpen(!open)} className="self-end">
-            {open ? "Cancel" : "Dismiss"}
-          </Button>
+          <div className="flex gap-1 self-end">
+            {!suggestion.promotedAgentRunId ? (
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() => {
+                  setPromoteOpen(!promoteOpen);
+                  setOpen(false);
+                }}
+              >
+                {promoteOpen ? "Cancel" : "Promote"}
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setOpen(!open);
+                setPromoteOpen(false);
+              }}
+            >
+              {open ? "Cancel" : "Dismiss"}
+            </Button>
+          </div>
+          {promoteOpen ? (
+            <div className="flex flex-col gap-1 rounded border border-border p-2">
+              <input
+                type="text"
+                value={promoteActor}
+                onChange={(e) => setPromoteActor(e.target.value)}
+                placeholder="actor"
+                className="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+              />
+              <input
+                type="text"
+                value={promoteRationale}
+                onChange={(e) => setPromoteRationale(e.target.value)}
+                placeholder="rationale for promotion"
+                className="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+              />
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() =>
+                  promoteMutation.mutate(
+                    {
+                      suggestionId: suggestion.id,
+                      actor: promoteActor,
+                      rationale: promoteRationale,
+                    },
+                    {
+                      onSuccess: () => {
+                        setPromoteOpen(false);
+                        setPromoteActor("");
+                        setPromoteRationale("");
+                      },
+                    }
+                  )
+                }
+                disabled={
+                  !promoteActor.trim() ||
+                  !promoteRationale.trim() ||
+                  promoteMutation.isPending
+                }
+              >
+                {promoteMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <PlayCircle className="size-3" />}
+                Confirm promote
+              </Button>
+              {promoteMutation.isError ? (
+                <p className="text-[10px] text-destructive">{promoteMutation.error.message}</p>
+              ) : null}
+              <p className="text-[10px] text-muted-foreground">
+                Creates a queued AgentRun. No subprocess will run until you Execute manually.
+              </p>
+            </div>
+          ) : null}
           {open ? (
             <div className="flex flex-col gap-1 rounded border border-border p-2">
               <input

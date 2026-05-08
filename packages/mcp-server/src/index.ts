@@ -1647,6 +1647,30 @@ server.registerTool(
 );
 
 server.registerTool(
+  "promote_company_brain_agent_run_suggestion",
+  {
+    title: "Promote Company Brain AgentRun suggestion",
+    description:
+      "Idempotently promote an active AgentRun suggestion into a queued AgentRun. Re-promotion returns the existing AgentRun. Auto-dispatch actors require eligibility to pass. No subprocess is launched.",
+    inputSchema: {
+      suggestionId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+    },
+  },
+  async ({ suggestionId, actor, rationale }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-run-suggestions/${suggestionId}/promote`,
+      {
+        method: "POST",
+        body: JSON.stringify({ actor, rationale }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "dismiss_company_brain_agent_run_suggestion",
   {
     title: "Dismiss Company Brain AgentRun suggestion",

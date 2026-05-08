@@ -1653,11 +1653,27 @@ export interface AgentRunSuggestion {
   rationale: string;
   policyDecision: Record<string, unknown>;
   generatedFrom: AgentRunSuggestionGeneratedFrom;
+  promotedAgentRunId: string | null;
+  promotedBy: string | null;
+  promotedAt: number | null;
+  promotionRationale: string | null;
   dismissReason: string | null;
   dismissedBy: string | null;
   dismissedAt: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface PromoteAgentRunSuggestionRequest {
+  actor: string;
+  rationale: string;
+}
+
+export interface PromoteAgentRunSuggestionResponse {
+  generatedAt: number;
+  suggestion: AgentRunSuggestion;
+  agentRun: AgentRun;
+  alreadyPromoted: boolean;
 }
 
 export interface ListAgentRunSuggestionsResponse {

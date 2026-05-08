@@ -100,6 +100,8 @@ import type {
   DismissAgentRunSuggestionResponse,
   EvaluateAutoDispatchEligibilityRequest,
   ListAgentRunSuggestionsResponse,
+  PromoteAgentRunSuggestionRequest,
+  PromoteAgentRunSuggestionResponse,
   CreateAgentRunRequest,
   UpdateAgentRunRequest,
   DecomposeOperatingGoalRequest,
@@ -18144,6 +18146,10 @@ function generateAgentRunSuggestionsForOperatingLoop(args: {
     rationale,
     policyDecision: policy.decision as unknown as Record<string, unknown>,
     generatedFrom,
+    promotedAgentRunId: null,
+    promotedBy: null,
+    promotedAt: null,
+    promotionRationale: null,
     dismissReason: null,
     dismissedBy: null,
     dismissedAt: null,
@@ -18240,6 +18246,211 @@ app.post("/agent-run-suggestions/:id/dismiss", async (c) => {
     suggestion: refreshed,
   };
   return c.json({ data: response });
+});
+
+app.post("/agent-run-suggestions/:id/promote", async (c) => {
+  const id = c.req.param("id");
+  const db = getDb();
+  const existing = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(eq(cbAgentRunSuggestions.id, id))
+    .get() as AgentRunSuggestion | undefined;
+  if (!existing) {
+    return c.json(
+      { error: "not_found", message: `agent run suggestion ${id} not found` },
+      404
+    );
+  }
+  if (existing.status === "dismissed") {
+    return c.json(
+      {
+        error: "validation",
+        message: `suggestion ${id} is dismissed; cannot promote`,
+      },
+      400
+    );
+  }
+  if (existing.status === "superseded") {
+    return c.json(
+      {
+        error: "validation",
+        message: `suggestion ${id} is superseded; only the active suggestion for this WorkItem can be promoted`,
+      },
+      400
+    );
+  }
+  const body = (await c.req
+    .json<PromoteAgentRunSuggestionRequest>()
+    .catch(() => ({}))) as PromoteAgentRunSuggestionRequest;
+  const actor = body.actor?.trim();
+  const rationale = body.rationale?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  if (!rationale) {
+    return c.json(
+      { error: "validation", message: "rationale is required" },
+      400
+    );
+  }
+
+  // Idempotent path: already promoted → return existing AgentRun if it still exists.
+  if (existing.promotedAgentRunId) {
+    const priorRun = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, existing.promotedAgentRunId))
+      .get() as AgentRun | undefined;
+    if (priorRun) {
+      const response: PromoteAgentRunSuggestionResponse = {
+        generatedAt: now(),
+        suggestion: existing,
+        agentRun: priorRun,
+        alreadyPromoted: true,
+      };
+      return c.json({ data: response });
+    }
+    // promoted_agent_run_id pointed to a deleted run; reset and recreate.
+  }
+
+  // Auto-dispatch actor must pass eligibility before promotion creates an AgentRun.
+  const isAutoDispatchActor = actor.startsWith("operating-loop:auto-dispatch");
+  if (isAutoDispatchActor) {
+    const targetWorkItem =
+      (db
+        .select()
+        .from(cbWorkItems)
+        .where(eq(cbWorkItems.id, existing.workItemId))
+        .get() as WorkItem | undefined) ?? null;
+    const eligibility = evaluateAutoDispatchEligibility({
+      workItem: targetWorkItem,
+      suggestion: existing,
+      actorOverride: actor,
+      rationaleOverride: rationale,
+    });
+    if (!eligibility.eligible) {
+      return c.json(
+        {
+          error: "auto_dispatch_blocked",
+          message: `auto-dispatch actor ${actor} cannot promote: decision=${eligibility.decision}, blockReasons=[${eligibility.blockReasons.join(",")}]`,
+          data: { eligibility },
+        },
+        403
+      );
+    }
+  }
+
+  // Resolve repo + workflow context for the new AgentRun.
+  const workflow = loadWorkflowFromRepoRoot();
+  const repo = workflow.config.tracker.repo ?? null;
+  const targetWorkItem =
+    (db
+      .select()
+      .from(cbWorkItems)
+      .where(eq(cbWorkItems.id, existing.workItemId))
+      .get() as WorkItem | undefined) ?? null;
+  if (!targetWorkItem) {
+    return c.json(
+      {
+        error: "validation",
+        message: `WorkItem ${existing.workItemId} not found; cannot promote`,
+      },
+      400
+    );
+  }
+
+  const timestamp = now();
+  const newRunId = nanoid(12);
+  const auditEntry = {
+    at: timestamp,
+    actor,
+    event: "agent_run_promoted_from_suggestion",
+    note: rationale,
+    metadata: {
+      suggestionId: existing.id,
+      signature: existing.signature,
+      autoDispatchActor: isAutoDispatchActor,
+    },
+  };
+  const newRun: AgentRun = {
+    id: newRunId,
+    workItemId: existing.workItemId,
+    workflowRunId: null,
+    agentContextId: null,
+    sourceId: targetWorkItem.sourceId ?? null,
+    repo,
+    branch: null,
+    workspaceRef: null,
+    runnerType: existing.runnerType,
+    status: "queued",
+    claimState: "unclaimed",
+    attempt: 0,
+    startedAt: null,
+    finishedAt: null,
+    errorSummary: null,
+    prUrl: null,
+    externalRunRef: null,
+    tokensInput: null,
+    tokensOutput: null,
+    tokensTotal: null,
+    costUsd: null,
+    agentSessionId: null,
+    agentThreadId: null,
+    area: targetWorkItem.area,
+    riskClass: targetWorkItem.riskClass,
+    actionPolicy: "observe_only",
+    visibility: targetWorkItem.visibility ?? "internal",
+    pid: null,
+    executionRef: null,
+    lastLogAt: null,
+    lastLogLineCount: null,
+    metadata: {
+      promotedFromSuggestionId: existing.id,
+      suggestionSignature: existing.signature,
+      promotedBy: actor,
+      promotionRationale: rationale,
+      sourceIssueRef: existing.generatedFrom.sourceIssueRef,
+      operatingLoopScheduleId: existing.generatedFrom.operatingLoopScheduleId,
+      operatingLoopScheduledAt: existing.generatedFrom.operatingLoopScheduledAt,
+    },
+    auditTrail: [auditEntry],
+    provenance: {
+      sourceId: targetWorkItem.sourceId ?? "",
+      rawRef: `aios://agent-run-suggestion/${existing.id}`,
+      createdFrom: "company_brain:agent_run_suggestion_promotion",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "pending",
+      visibility: targetWorkItem.visibility ?? "internal",
+      notes: `Promoted from suggestion ${existing.id} (signature ${existing.signature.slice(0, 12)}...) by ${actor}`,
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  db.insert(cbAgentRuns).values(newRun as never).run();
+  db.update(cbAgentRunSuggestions)
+    .set({
+      promotedAgentRunId: newRunId,
+      promotedBy: actor,
+      promotedAt: timestamp,
+      promotionRationale: rationale,
+      updatedAt: timestamp,
+    } as never)
+    .where(eq(cbAgentRunSuggestions.id, id))
+    .run();
+  const refreshed = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(eq(cbAgentRunSuggestions.id, id))
+    .get() as AgentRunSuggestion;
+  const response: PromoteAgentRunSuggestionResponse = {
+    generatedAt: timestamp,
+    suggestion: refreshed,
+    agentRun: newRun,
+    alreadyPromoted: false,
+  };
+  return c.json({ data: response }, 201);
 });
 
 app.get("/gate-closure-ritual", (c) => {
