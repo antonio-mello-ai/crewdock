@@ -83,6 +83,22 @@ Playwright UI smoke:
 - `npx turbo build --filter=@aios/web --filter=@aios/shared` passed.
 - `npx turbo build` passed.
 
+## Merge And Deploy
+
+- PR: `#121` (`https://github.com/antonio-mello-ai/crewdock/pull/121`)
+- Merge commit: `43bdbda`
+- Issue `#116` closed by the merge.
+- CT165 fast-forwarded to `43bdbda` for docs/state sync.
+- Cloudflare Pages build:
+  `NEXT_PUBLIC_DAEMON_URL=https://api.felhen.ai NEXT_PUBLIC_VAPID_PUBLIC_KEY=<ct165 public key> npx turbo build --filter=@aios/web --force`
+  passed.
+- Cloudflare Pages deploy URL: `https://d74a95dc.crewdock.pages.dev`.
+- Deploy URL `GET /company-brain` -> HTTP 200 and served
+  `app/company-brain/page-c70467f344d7d2c2.js`.
+- Canonical `GET https://ai.felhen.ai/company-brain` -> HTTP 302 to
+  Cloudflare Access, as expected for protected app.
+- API health remained OK: `GET https://api.felhen.ai/api/health` -> HTTP 200.
+
 ## Constraints
 
 - No auto-merge.

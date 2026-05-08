@@ -3001,3 +3001,17 @@ Validacao parcial:
 - `git diff --check` passou;
 - `npx turbo build --filter=@aios/web --filter=@aios/shared` passou.
 - `npx turbo build` passou.
+
+Merge/deploy:
+
+- PR `#121` mergeado em `main` no commit `43bdbda`;
+- issue `#116` fechada;
+- CT165 fast-forward ate `43bdbda` para docs/estado;
+- Cloudflare Pages build prod com `NEXT_PUBLIC_DAEMON_URL=https://api.felhen.ai`
+  e VAPID public key do CT165 passou;
+- Cloudflare Pages deploy URL: `https://d74a95dc.crewdock.pages.dev`;
+- deploy URL `/company-brain` -> 200, chunk
+  `app/company-brain/page-c70467f344d7d2c2.js`;
+- canonical `https://ai.felhen.ai/company-brain` -> 302 para CF Access,
+  esperado;
+- `GET https://api.felhen.ai/api/health` -> 200.
