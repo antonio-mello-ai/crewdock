@@ -1626,6 +1626,15 @@ export interface AutoDispatchPolicyConfig {
   maxRuntimeMs: number;
   defaultActor: string;
   defaultRationale: string;
+  /**
+   * Optional binary name override for auto-dispatched runs. Useful for
+   * dogfood smoke runs with benign commands (e.g. `echo`, `true`)
+   * without modifying WORKFLOW.md `agent.command`. The override must be
+   * present in `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST` (manual runner
+   * policy still validates the command). When unset, auto-dispatch uses
+   * WORKFLOW.md `agent.command`.
+   */
+  commandOverride: string | null;
 }
 
 export interface AutoDispatchRuntimeState {
