@@ -12261,14 +12261,26 @@ function sanitizeWorkspaceKey(input: string): string {
   return input.replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
-function deriveBranchName(workItemKey: string, override?: string | null): string {
+function deriveRunSuffix(runId: string | null | undefined): string {
+  if (!runId) return "";
+  return runId.slice(0, 8).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function deriveBranchName(
+  workItemKey: string,
+  runId?: string | null,
+  override?: string | null
+): string {
   if (override && override.trim()) return override.trim();
-  return `aios-${sanitizeWorkspaceKey(workItemKey).toLowerCase()}`;
+  const base = `aios-${sanitizeWorkspaceKey(workItemKey).toLowerCase()}`;
+  const suffix = deriveRunSuffix(runId);
+  return suffix ? `${base}-${suffix}` : base;
 }
 
 function resolveWorkspaceLocation(args: {
   repo: string;
   workItemKey: string;
+  runId?: string | null;
   rootOverride?: string;
   baseBranch?: string;
   branchOverride?: string;
@@ -12279,9 +12291,13 @@ function resolveWorkspaceLocation(args: {
   const baseBranch = args.baseBranch ?? definition.config.workspace.baseBranch;
   const vcs = args.vcs ?? definition.config.workspace.vcs;
   const repoSlug = sanitizeWorkspaceKey(args.repo);
-  const workspaceKey = sanitizeWorkspaceKey(args.workItemKey);
+  const workItemKeySanitized = sanitizeWorkspaceKey(args.workItemKey);
+  const runSuffix = deriveRunSuffix(args.runId);
+  const workspaceKey = runSuffix
+    ? `${workItemKeySanitized}-${runSuffix}`
+    : workItemKeySanitized;
   const workspacePath = resolve(root, repoSlug, workspaceKey);
-  const branchName = deriveBranchName(args.workItemKey, args.branchOverride);
+  const branchName = deriveBranchName(args.workItemKey, args.runId, args.branchOverride);
   const rootAbs = resolve(root);
   const relativePath = relative(rootAbs, workspacePath);
   if (relativePath.startsWith("..") || relativePath.includes("\0")) {
@@ -12419,6 +12435,7 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
     const { location, safetyError } = resolveWorkspaceLocation({
       repo,
       workItemKey,
+      runId: existing.id,
       rootOverride: body.workspaceRootOverride,
       baseBranch: body.baseBranch,
       branchOverride: body.branchOverride ?? existing.branch ?? undefined,
@@ -12731,6 +12748,7 @@ function evaluateRunnerPolicy(args: {
     const { location, safetyError } = resolveWorkspaceLocation({
       repo,
       workItemKey,
+      runId: args.agentRun.id,
       rootOverride: args.request.workspaceRootOverride ?? undefined,
     });
     workspacePath = location.workspacePath;
@@ -13709,7 +13727,7 @@ app.post("/agent-runs/:id/execute", async (c) => {
     const workItemKey = externalIdMatch
       ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
       : workItem?.externalId ?? existing.workItemId ?? existing.id;
-    const { location } = resolveWorkspaceLocation({ repo, workItemKey });
+    const { location } = resolveWorkspaceLocation({ repo, workItemKey, runId: existing.id });
     if (!existsSync(location.workspacePath)) {
       mkdirSync(location.workspacePath, { recursive: true });
     }
@@ -14152,7 +14170,7 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
     const workItemKey = externalIdMatch
       ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
       : workItem?.externalId ?? existing.workItemId ?? existing.id;
-    const { location } = resolveWorkspaceLocation({ repo, workItemKey });
+    const { location } = resolveWorkspaceLocation({ repo, workItemKey, runId: existing.id });
     if (!existsSync(location.workspacePath)) {
       mkdirSync(location.workspacePath, { recursive: true });
     }
@@ -15052,6 +15070,7 @@ app.post("/agent-runs/:id/execute-dry-run", async (c) => {
       const { location, safetyError } = resolveWorkspaceLocation({
         repo,
         workItemKey,
+        runId: existing.id,
       });
       workspacePath = location.workspacePath;
       branchName = location.branchName;
