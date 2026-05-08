@@ -2658,3 +2658,48 @@ parar em docs, APIs internas, UI, policy, logs, cancelamento, workspace
 quarantine e dogfood controlado. Deve parar antes de auto-dispatch amplo,
 novo segredo/permissao, servico pago, writeback externo fora das policies,
 auto-merge/deploy ou cleanup destrutivo sem confirmacao explicita.
+
+## 2026-05-08 - AIOS Agent Execution v3
+
+Milestone `AIOS Agent Execution v2` foi concluida:
+
+- PRs `#69` a `#75` mergeados;
+- issues `#62` a `#68` fechadas;
+- CT165 deployado para os cortes de daemon;
+- Pages publicado para `/company-brain/agent-runs`;
+- dogfood pack documentou production default-blocked e run local controlado;
+- production sync `state=all` retornou `issuesSeen=50`, `workItemsUpdated=50`;
+- `Next Work` voltou a empty state.
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v3` (GitHub milestone number `6`).
+
+Issues abertas:
+
+- `#76 AIOS-RUN-15: Async AgentRun spawn with PID, SIGTERM and SSE logs v3`;
+- `#77 AIOS-RUN-16: Per-run workspace isolation keyed by AgentRun id v3`;
+- `#78 AIOS-RUN-17: Git worktree remove after cleanup gate v3`;
+- `#79 AIOS-RUN-18: Operating Loop queued-run suggester without auto-dispatch v3`.
+
+Direcional da v3: transformar o runner real supervisionado de request-blocking
+em background-capable. O AIOS deve conseguir iniciar um AgentRun assincrono,
+acompanhar PID/heartbeat/logs, cancelar via SIGTERM, isolar workspace por run,
+limpar worktree com gate seguro e sugerir queued runs no Operating Loop sem
+executa-los automaticamente.
+
+Producao apos sync:
+
+- sync GitHub Issues `state=open` retornou `issuesSeen=4`,
+  `workItemsCreated=4`, `lastIssueNumbers=[79,78,77,76]`;
+- `GET /api/company-brain/next-work` recomenda
+  `#76 AIOS-RUN-15: Async AgentRun spawn with PID, SIGTERM and SSE logs v3`
+  com `candidatesConsidered=4`.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#76` primeiro e
+seguir issue-by-issue pela milestone `AIOS Agent Execution v3`. Pode seguir sem
+parar em docs, APIs internas, UI, async spawn, PID/executionRef, SIGTERM,
+SSE/log streaming, workspace per-run, cleanup com `git worktree remove` gated e
+Operating Loop suggester observe-only. Deve parar antes de auto-dispatch amplo,
+novo segredo/permissao, servico pago, writeback externo fora das policies,
+auto-merge/deploy ou cleanup fora do workspace root.
