@@ -3084,10 +3084,10 @@ Merge/deploy:
 - session_result de producao submetido para WorkItem `27jBb179tDhs`:
   artifact `uPjeQTsZj_w0`, `prLinkRecorded=true`, `guidanceItemsCreated=1`.
 
-### AIOS-RUN-37 implementation checkpoint
+### AIOS-RUN-37 merge/deploy checkpoint
 
-Issue `#118` foi implementada localmente em
-`aios-run-37-same-pr-iteration`.
+Issue `#118` foi consumida via PR `#124`, mergeada em `main` no commit
+`e1b6caa` e deployada no CT165.
 
 Entregue:
 
@@ -3120,14 +3120,21 @@ existente:
 - re-chain da iteracao 2 retornou `status=reused`, `alreadyExisted=true`;
 - re-execute da iteracao 2 retornou `alreadyExecuted=true`.
 
-Validacao parcial:
+Validacao:
 
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon`;
 - dogfood local de duas iteracoes no PR interno `#123`.
-
-Ainda requerido antes de fechar a issue:
-
 - `git diff --check`;
 - `npx turbo build`;
-- abrir PR para issue `#118`, mergear, deployar CT165 e validar rota em
-  producao.
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`;
+- `aios-daemon` reiniciado e `active`;
+- `GET https://api.felhen.ai/api/health` -> 200;
+- rota nova validada em loopback CT165:
+  `/api/company-brain/agent-runs/not-found/github-pr-proposal/chain`
+  -> 404 esperado (`agent run not found`);
+- Operating Snapshot remoto: `overallStatus=healthy`,
+  `autoDispatchPolicy.config.enabled=false`;
+- session_result de producao submetido para WorkItem `kGQMOtwSiViJ`:
+  artifact `gyjEFhkwdCVP`, `workItemUpdated=true`,
+  `prLinkRecorded=true`, `guidanceItemsCreated=1`.

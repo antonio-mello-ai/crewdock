@@ -114,11 +114,27 @@ Observed final state:
 
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon`
 - dogfood API cycle above
-
-Full validation still required before merge:
-
 - `git diff --check`
 - `npx turbo build`
+
+## Merge and Deploy
+
+- PR: `#124`
+- Merge commit: `e1b6caa`
+- Issue `#118`: closed
+- CT165 fast-forwarded to `e1b6caa`
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`
+- `aios-daemon`: `active`
+- `GET https://api.felhen.ai/api/health` -> 200
+- Loopback route smoke on CT165:
+  `POST /api/company-brain/agent-runs/not-found/github-pr-proposal/chain`
+  -> 404 expected (`agent run not found`)
+- Remote Operating Snapshot with CF service token:
+  `overallStatus=healthy`, `autoDispatchPolicy.config.enabled=false`
+- Production session_result submitted for WorkItem `kGQMOtwSiViJ`:
+  artifact `gyjEFhkwdCVP`, `workItemUpdated=true`,
+  `prLinkRecorded=true`, `guidanceItemsCreated=1`
 
 ## Boundaries
 
