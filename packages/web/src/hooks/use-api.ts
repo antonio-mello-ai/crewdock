@@ -35,6 +35,8 @@ import type {
   CreateDecisionRequest,
   CreateExternalActionProposalRequest,
   ExecuteExternalActionProposalRequest,
+  ExecuteGitHubPrProposalRequest,
+  ExecuteGitHubPrProposalResponse,
   CreateGoalRequest,
   CreateGuidanceItemRequest,
   CreateImprovementProposalRequest,
@@ -81,6 +83,8 @@ import type {
   GitHubIssueCreateProposalPreviewResponse,
   GitHubIssueCreateWritebackResponse,
   GitHubLabelProposalPreviewResponse,
+  GitHubPrWritebackPreflightRequest,
+  GitHubPrWritebackPreflightResponse,
   GitHubLabelWritebackResponse,
   GitHubStatusCheckProposalPreviewResponse,
   GitHubStatusCheckWritebackResponse,
@@ -198,6 +202,33 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     }
   }
   return res.json();
+}
+
+async function apiAllowingDataStatus<T>(
+  path: string,
+  init: RequestInit | undefined,
+  allowedStatuses: number[]
+): Promise<T> {
+  const res = await fetch(`${DAEMON_URL}${path}`, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    ...init,
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok && !(allowedStatuses.includes(res.status) && body.data)) {
+    if (res.status === 401) {
+      throw new Error("unauthorized — CF Access session invalid");
+    }
+    throw new Error(body.message ?? `API error ${res.status}`);
+  }
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.removeItem("aios_reload_on_401");
+    } catch {
+      // ignore
+    }
+  }
+  return body as T;
 }
 
 // ---------------------------------------------------------------------------
@@ -1280,6 +1311,42 @@ export function useExecuteCompanyBrainGitHubIssueCreateWriteback() {
           body: JSON.stringify(body ?? {}),
         }
       ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function usePreflightCompanyBrainGitHubPrWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<GitHubPrWritebackPreflightResponse>,
+    Error,
+    { id: string; body: GitHubPrWritebackPreflightRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      apiAllowingDataStatus(
+        `/api/company-brain/external-action-proposals/${id}/github-pr/preflight`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+        [400]
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
+  });
+}
+
+export function useExecuteCompanyBrainGitHubPrWriteback() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<ExecuteGitHubPrProposalResponse>,
+    Error,
+    { id: string; body: ExecuteGitHubPrProposalRequest }
+  >({
+    mutationFn: ({ id, body }) =>
+      api(`/api/company-brain/external-action-proposals/${id}/execute-pr`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["company-brain"] }),
   });
 }
