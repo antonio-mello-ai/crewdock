@@ -2640,6 +2640,18 @@ Bug corrigido na preparacao da fila: o GitHub Issues adapter passou a usar
 atribuidas ao token, e issues abertas sem assignee nao apareciam no Company
 Brain nem no `next-work`.
 
+Producao apos deploy:
+
+- CT165 atualizado para `e803626`;
+- `npx turbo build --filter=@aios/daemon --force` passou no CT165;
+- `aios-daemon.service` reiniciado e `active`;
+- `GET /api/health` retornou `{"status":"ok"}`;
+- sync GitHub Issues `state=open` retornou `issuesSeen=7`,
+  `workItemsCreated=7`, `lastIssueNumbers=[68,67,66,65,64,63,62]`;
+- `GET /api/company-brain/next-work` recomenda
+  `#62 AIOS-RUN-08: Runner policy and execution gates v2` com
+  `candidatesConsidered=7`.
+
 Proximo prompt deve mandar a janela de implementacao consumir `#62` primeiro e
 seguir issue-by-issue pela milestone `AIOS Agent Execution v2`. Pode seguir sem
 parar em docs, APIs internas, UI, policy, logs, cancelamento, workspace

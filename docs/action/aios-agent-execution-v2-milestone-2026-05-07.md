@@ -67,6 +67,20 @@ Fix applied:
 - `WORKFLOW.md` now points at `AIOS Agent Execution v2`.
 - `docs/aios-issues-runbook.md` documents the adapter requirement.
 
+## Production Evidence
+
+- Commit deployed to CT165: `e803626`.
+- `npx turbo build --filter=@aios/daemon --force` passed on CT165.
+- `aios-daemon.service` restarted and is `active`.
+- `GET https://api.felhen.ai/api/health` returned `{"status":"ok"}`.
+- GitHub Issues sync with `state=open` returned:
+  - `issuesSeen=7`;
+  - `workItemsCreated=7`;
+  - `lastIssueNumbers=[68,67,66,65,64,63,62]`.
+- `GET /api/company-brain/next-work` recommends
+  `#62 AIOS-RUN-08: Runner policy and execution gates v2` with
+  `candidatesConsidered=7`.
+
 ## Next Handoff Prompt
 
 ```text
