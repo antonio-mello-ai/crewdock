@@ -2747,3 +2747,45 @@ single-run dispatch, reconciliation/stall recovery e dogfood controlado. Deve
 parar antes de broad auto-dispatch, novos segredos/permissoes, servico pago,
 writeback externo fora das policies, auto-merge/deploy ou cleanup fora do
 workspace root.
+
+## 2026-05-08 - AIOS Agent Execution v5
+
+Milestone `AIOS Agent Execution v4` foi concluida:
+
+- PRs `#89` a `#93` mergeados;
+- issues `#84` a `#88` fechadas;
+- CT165 daemon `active`;
+- frontend deployado em Cloudflare Pages;
+- dogfood v4 registrou WorkItem `5_ob_GjP_Up7` -> Suggestion
+  `P4zKUjHehudq` -> AgentRun `wuXBRVe899cA` em ~5s;
+- 11 gates de auto-dispatch passaram no ambiente controlado;
+- re-tick idempotente retornou `skipped_no_suggestion`;
+- producao permaneceu default-off com `decision=blocked_default_off`.
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v5` (GitHub milestone number `8`).
+
+Issues abertas:
+
+- `#94 AIOS-RUN-24: Auto-dispatch config clarity and policy hints v5`;
+- `#95 AIOS-RUN-25: Stable WorkflowBlueprint identity for auto-dispatch v5`;
+- `#96 AIOS-RUN-26: Workspace cleanup risk review UX v5`;
+- `#97 AIOS-RUN-27: Internal WorkItem status update path v5`;
+- `#98 AIOS-RUN-28: Successful controlled auto-dispatch dogfood pack v5`.
+
+Direcional da v5: hardening operacional do controlled auto-dispatch. A v5
+fecha as 5 friccoes do dogfood v4: semantica de allowlists, identidade estavel
+de WorkflowBlueprint, review UX de cleanup, update interno auditado de WorkItem
+status e dogfood com caminho `completed` usando comando benigno. Continua fora
+de escopo: autonomia ampla multi-issue, novos segredos, servicos pagos,
+writeback externo fora das policies, auto-merge/deploy e cleanup fora do
+workspace root.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#94` primeiro e
+seguir issue-by-issue pela milestone `AIOS Agent Execution v5`. Pode seguir sem
+parar em docs, APIs internas, UI/MCP, policy hints, stable blueprint identity,
+cleanup review, update interno auditado de WorkItem e dogfood controlado com
+comando benigno. Deve parar antes de broad multi-issue auto-dispatch, novos
+segredos/permissoes, servico pago, writeback externo fora das policies,
+auto-merge/deploy ou cleanup fora do workspace root.
