@@ -3170,6 +3170,13 @@ export interface CompanyOperatingMapArea {
     completedCount: number;
     note: string;
   };
+  ownerRole?: string;
+  ownerName?: string | null;
+  readiness?: AreaBlueprintReadinessStatus;
+  expectedAgentRoles?: string[];
+  defaultGates?: string[];
+  cadence?: string;
+  highLevelGoals?: string[];
 }
 
 export interface CompanyOperatingMap {

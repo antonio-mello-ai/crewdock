@@ -5279,79 +5279,6 @@ function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
   };
 }
 
-const COMPANY_OPERATING_MAP_AREAS: Array<{
-  slug: CompanyOperatingMapAreaSlug;
-  displayName: string;
-  description: string;
-  primaryArea: CompanyBrainArea;
-  alternateAreas: CompanyBrainArea[];
-}> = [
-  {
-    slug: "development",
-    displayName: "Development",
-    description:
-      "AIOS, ERP and product engineering. WorkItems, agent runs, PR/CI, gates and dogfood evidence flow here first.",
-    primaryArea: "development",
-    alternateAreas: ["platform"],
-  },
-  {
-    slug: "strategy",
-    displayName: "Strategy",
-    description:
-      "StrategicPriorities, decisions, tradeoffs, OKRs. Owns the why behind the rest of the map.",
-    primaryArea: "strategy",
-    alternateAreas: [],
-  },
-  {
-    slug: "marketing",
-    displayName: "Marketing",
-    description:
-      "Brand, demand generation, content. Connects to outbound and ad operations once those sources are wired.",
-    primaryArea: "marketing",
-    alternateAreas: [],
-  },
-  {
-    slug: "sales",
-    displayName: "Sales",
-    description:
-      "Pipeline, design partner conversations, conversion. Hooks into CRM/Slack adapters when ready.",
-    primaryArea: "sales",
-    alternateAreas: [],
-  },
-  {
-    slug: "operations",
-    displayName: "Operations",
-    description:
-      "Cadence, infrastructure, runtime health, deploy and monitoring. The Operating Loop reports here.",
-    primaryArea: "operations",
-    alternateAreas: [],
-  },
-  {
-    slug: "finance",
-    displayName: "Finance",
-    description:
-      "Cost, revenue, runway, billing. Tracks token/cost telemetry from agent runs and product spend.",
-    primaryArea: "finance",
-    alternateAreas: [],
-  },
-  {
-    slug: "support",
-    displayName: "Support",
-    description:
-      "Customer success and support tickets. Maps to CompanyBrainArea=customer until a dedicated enum exists.",
-    primaryArea: "customer",
-    alternateAreas: [],
-  },
-  {
-    slug: "legal_compliance",
-    displayName: "Legal & Compliance",
-    description:
-      "LGPD, contracts, privacy review, regulatory gates. Empty until adapters are wired; mapped to area=unknown for now.",
-    primaryArea: "unknown",
-    alternateAreas: [],
-  },
-];
-
 const COMPANY_OPERATING_MAP_PRIMARY: CompanyOperatingMapAreaSlug = "development";
 
 const SESSION_RESULT_RECENT_LIMIT = 4;
@@ -5416,7 +5343,9 @@ function buildCompanyOperatingMap(
     ReturnType<typeof buildSourceHealthReport>["sources"][number]
   >(buildSourceHealthReport(data).sources.map((source) => [source.sourceId, source]));
 
-  const areas: CompanyOperatingMapArea[] = COMPANY_OPERATING_MAP_AREAS.map((spec) => {
+  const registry = buildAreaBlueprintRegistry(data);
+
+  const areas: CompanyOperatingMapArea[] = registry.entries.map((spec) => {
     const allowedAreas = new Set<CompanyBrainArea>([
       spec.primaryArea,
       ...spec.alternateAreas,
@@ -5640,7 +5569,7 @@ function buildCompanyOperatingMap(
       displayName: spec.displayName,
       description: spec.description,
       primaryArea: spec.primaryArea,
-      isPrimary: spec.slug === COMPANY_OPERATING_MAP_PRIMARY,
+      isPrimary: spec.isPrimary,
       status,
       emptyStateReason,
       totals,
@@ -5650,6 +5579,13 @@ function buildCompanyOperatingMap(
       openGuidance,
       pendingProposals,
       agentRunsSummary,
+      ownerRole: spec.ownerRole,
+      ownerName: spec.ownerName,
+      readiness: spec.readiness,
+      expectedAgentRoles: spec.expectedAgentRoles,
+      defaultGates: spec.defaultGates,
+      cadence: spec.cadence,
+      highLevelGoals: spec.highLevelGoals,
     };
   });
 
@@ -13902,7 +13838,7 @@ function buildCommandRouterClassification(
   let primaryAreaSlug: CompanyOperatingMapAreaSlug =
     inferredArea?.slug ?? "development";
   if (request.area && !inferredArea) {
-    const matchedSlug = COMPANY_OPERATING_MAP_AREAS.find((spec) =>
+    const matchedSlug = AREA_BLUEPRINT_REGISTRY_BASE.find((spec) =>
       spec.primaryArea === request.area || spec.alternateAreas.includes(request.area as CompanyBrainArea)
     );
     primaryAreaSlug = matchedSlug?.slug ?? "development";
@@ -13997,7 +13933,7 @@ function executeCommandRouterClassification(
       clarifications: [
         {
           question: "Which area should this run in?",
-          options: COMPANY_OPERATING_MAP_AREAS.map((spec) => spec.slug),
+          options: AREA_BLUEPRINT_REGISTRY_BASE.map((spec) => spec.slug),
         },
         {
           question: "What target object should AIOS create?",
