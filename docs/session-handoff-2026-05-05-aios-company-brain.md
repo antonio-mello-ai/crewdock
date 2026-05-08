@@ -2799,3 +2799,47 @@ cleanup review, update interno auditado de WorkItem e dogfood controlado com
 comando benigno. Deve parar antes de broad multi-issue auto-dispatch, novos
 segredos/permissoes, servico pago, writeback externo fora das policies,
 auto-merge/deploy ou cleanup fora do workspace root.
+
+## 2026-05-08 - AIOS Agent Execution v6
+
+Milestone `AIOS Agent Execution v5` foi concluida:
+
+- PRs `#99` a `#103` mergeados;
+- issues `#94` a `#98` fechadas;
+- CT165 daemon `active`;
+- frontend deployado em Cloudflare Pages;
+- dogfood v5 registrou WorkItem `cgWHgooT1UCC` -> AgentRuns
+  `KNbHJQJ-rUPx` e `frfUkNpMq8gv`, ambos `completed`;
+- terminal event do caminho feliz foi `agent_run_real_execution_completed`;
+- suggestions foram superseded via reconciliation apos
+  `PATCH /work-items/:id/status`;
+- producao permaneceu default-off com `enabled=false`,
+  `commandOverride=null`, `decision=blocked_default_off` e
+  `lastOutcome.status=skipped_disabled`.
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v6` (GitHub milestone number `9`).
+
+Issues abertas:
+
+- `#104 AIOS-RUN-29: Agent runner profile registry v6`;
+- `#105 AIOS-RUN-30: AgentRun patch and validation collector v6`;
+- `#106 AIOS-RUN-31: AgentRun to GitHub PR proposal preview v6`;
+- `#107 AIOS-RUN-32: Approved GitHub PR writeback executor v6`;
+- `#108 AIOS-RUN-33: First AIOS-authored PR dogfood pack v6`.
+
+Direcional da v6: primeiro loop PR-shaped real do AIOS. A v6 deve sair do
+auto-dispatch benigno/no-op e produzir um PR revisavel em repo interno:
+WorkItem -> AgentRun -> workspace patch/validation packet -> PR proposal
+preview -> approved GitHub PR writeback -> dogfood evidence. Continua fora de
+escopo: broad multi-issue auto-dispatch, customer repos, novos segredos,
+servicos pagos, auto-merge/deploy e writeback externo fora das policies.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#104` primeiro e
+seguir issue-by-issue pela milestone `AIOS Agent Execution v6`. Pode seguir sem
+parar em docs, APIs internas, UI/MCP, runner profiles, patch/validation packet,
+PR proposal preview, approved GitHub PR writeback para `antonio-mello-ai/crewdock`
+e dogfood controlado de primeiro PR AIOS-authored. Deve parar antes de broad
+multi-issue auto-dispatch, customer repo, novo segredo/permissao, servico pago,
+auto-merge/deploy ou writeback externo fora das policies.
