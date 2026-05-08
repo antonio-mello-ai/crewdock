@@ -269,11 +269,11 @@ Status AIOS-RUN-01 AgentRun schema and lifecycle v1 em 2026-05-07: issue `#48` c
 - [x] **AIOS-RUN-16 Per-run workspace isolation keyed by AgentRun id v3** (`#77`) — evitar reuse de workspace por WorkItem e garantir paths/branches por run.
 - [x] **AIOS-RUN-17 Git worktree remove after cleanup gate v3** (`#78`) — executar `git worktree remove` seguro apos confirmation token, preservando quarantine e dirty protection.
 - [x] **AIOS-RUN-18 Operating Loop queued-run suggester without auto-dispatch v3** (`#79`) — Operating Loop sugere AgentRuns elegiveis/queued com provenance e idempotencia, mas nao executa subprocess automaticamente.
-- [ ] **AIOS-RUN-19 Auto-dispatch governance and eligibility policy v4** (`#84`) — definir policy separada para auto-dispatch com env gate, allowlists, risk limits, budget, cooldown e production default-blocked.
-- [ ] **AIOS-RUN-20 Promote Operating Loop suggestion to queued AgentRun v4** (`#85`) — promover suggestion ativa para AgentRun queued idempotente, sem executar subprocess por si so.
-- [ ] **AIOS-RUN-21 Operating Loop single-run auto-dispatch v4** (`#86`) — permitir um dispatch por tick quando explicitamente habilitado e elegivel, com provenance e concurrency cap.
-- [ ] **AIOS-RUN-22 AgentRun reconciliation, stall recovery and tracker refresh v4** (`#87`) — reconciliar runs async, stale heartbeat, daemon restart, issue/PR state e session_result evidence.
-- [ ] **AIOS-RUN-23 Controlled auto-dispatch dogfood pack v4** (`#88`) — validar um auto-dispatch controlado end-to-end e registrar evidencia/friccoes.
+- [x] **AIOS-RUN-19 Auto-dispatch governance and eligibility policy v4** (`#84`) — definir policy separada para auto-dispatch com env gate, allowlists, risk limits, budget, cooldown e production default-blocked.
+- [x] **AIOS-RUN-20 Promote Operating Loop suggestion to queued AgentRun v4** (`#85`) — promover suggestion ativa para AgentRun queued idempotente, sem executar subprocess por si so.
+- [x] **AIOS-RUN-21 Operating Loop single-run auto-dispatch v4** (`#86`) — permitir um dispatch por tick quando explicitamente habilitado e elegivel, com provenance e concurrency cap.
+- [x] **AIOS-RUN-22 AgentRun reconciliation, stall recovery and tracker refresh v4** (`#87`) — reconciliar runs async, stale heartbeat, daemon restart, issue/PR state e session_result evidence.
+- [x] **AIOS-RUN-23 Controlled auto-dispatch dogfood pack v4** (`#88`) — validar um auto-dispatch controlado end-to-end e registrar evidencia/friccoes.
 - [x] **AIOS Agent Execution v2 Orchestrator + AgentRunner subprocess + retry queue** — concluido via issues `#62` a `#68`; continua sem auto-dispatch amplo.
 - [x] **AIOS Agent Execution v3 Background-capable runner + queued-run suggester** — concluido via issues `#76` a `#79`; continua sem auto-dispatch amplo.
 - [ ] **AIOS Agent Execution v4 Controlled auto-dispatch** — em progresso via issues `#84` a `#88`; objetivo e um dispatch controlado e auditable, nao autonomia ampla.
