@@ -13215,6 +13215,8 @@ app.post("/agent-runs/:id/execute", async (c) => {
         blockReasons: policy.blockReasons,
         errorSummary: `policy decision=${policy.decision}; reasons=${policy.blockReasons.join(", ")}`,
         realExecutionPerformed: false,
+        sessionResultArtifactId: null,
+        sessionResultSource: "skipped",
       };
       return c.json({ data: blockedResponse }, 400);
     }
@@ -13388,6 +13390,157 @@ app.post("/agent-runs/:id/execute", async (c) => {
       .where(eq(cbAgentRuns.id, id))
       .run();
 
+    let sessionResultArtifactId: string | null = null;
+    let sessionResultSource: "structured_file" | "fallback_stdout" | "skipped" | null = null;
+    try {
+      let intakeBody: SubmitSessionResultRequest | null = null;
+      const structuredPath = resolve(aiosRunDir, "session-result.json");
+      if (existsSync(structuredPath)) {
+        try {
+          const parsed = JSON.parse(readFileSync(structuredPath, "utf-8")) as Partial<SubmitSessionResultRequest>;
+          intakeBody = {
+            workItemId: parsed.workItemId ?? existing.workItemId ?? undefined,
+            externalIssueRef: parsed.externalIssueRef,
+            workflowRunId: parsed.workflowRunId ?? existing.workflowRunId ?? undefined,
+            runnerType: parsed.runnerType ?? "claude_code",
+            outcome:
+              parsed.outcome ??
+              (outcome === "completed"
+                ? "completed"
+                : outcome === "timed_out"
+                  ? "blocked"
+                  : "failed"),
+            summary:
+              parsed.summary ??
+              `Agent run ${id} ended with outcome=${outcome} (exit=${exitCode ?? "null"})`,
+            detail: parsed.detail,
+            branch: parsed.branch ?? location.branchName,
+            prUrl: parsed.prUrl,
+            workspaceRef: parsed.workspaceRef ?? location.workspacePath,
+            commits: parsed.commits,
+            changedFiles: parsed.changedFiles,
+            validations: parsed.validations,
+            blockers: parsed.blockers,
+            nextSteps: parsed.nextSteps,
+            startedAt: parsed.startedAt ?? startedAt,
+            finishedAt: parsed.finishedAt ?? finishedAt,
+            tokensInput: parsed.tokensInput,
+            tokensOutput: parsed.tokensOutput,
+            tokensTotal: parsed.tokensTotal,
+            costUsd: parsed.costUsd,
+            agentSessionId: parsed.agentSessionId,
+            agentThreadId: parsed.agentThreadId,
+            area: parsed.area ?? "development",
+            visibility: parsed.visibility ?? "internal",
+            actor: parsed.actor ?? body.actor,
+          };
+          sessionResultSource = "structured_file";
+        } catch (parseErr) {
+          intakeBody = null;
+          auditTrail = appendAgentRunAuditEntry(auditTrail, {
+            actor: body.actor,
+            event: "agent_run_session_result_parse_failed",
+            note: parseErr instanceof Error ? parseErr.message : String(parseErr),
+            metadata: { path: structuredPath },
+          });
+        }
+      }
+      if (!intakeBody) {
+        const fallbackOutcome: SessionResultOutcome =
+          outcome === "completed"
+            ? "completed"
+            : outcome === "timed_out"
+              ? "blocked"
+              : "failed";
+        const stdoutSnippet = stdoutText.trim().split(/\r?\n/).slice(-3).join(" | ");
+        const stderrSnippet = stderrText.trim().split(/\r?\n/).slice(-3).join(" | ");
+        const fallbackBlockers =
+          fallbackOutcome === "failed" || fallbackOutcome === "blocked"
+            ? [
+                {
+                  kind: outcome,
+                  description:
+                    errorSummary ?? stderrSnippet ?? `Agent run ended with outcome=${outcome}`,
+                  severity: outcome === "timed_out" ? ("warn" as const) : ("critical" as const),
+                },
+              ]
+            : undefined;
+        intakeBody = {
+          workItemId: existing.workItemId ?? undefined,
+          workflowRunId: existing.workflowRunId ?? undefined,
+          runnerType: "claude_code",
+          outcome: fallbackOutcome,
+          summary:
+            fallbackOutcome === "completed"
+              ? `Agent run ${id} completed (exit=${exitCode ?? "null"}, ${durationMs}ms). ${stdoutSnippet || "(no stdout)"}`.slice(0, 480)
+              : `Agent run ${id} ended outcome=${outcome} (exit=${exitCode ?? "null"}). ${errorSummary ?? stderrSnippet ?? "(no error summary)"}`.slice(0, 480),
+          detail:
+            stdoutText || stderrText
+              ? `# stdout\n${trimForPreview(stdoutText, 2048)}\n\n# stderr\n${trimForPreview(stderrText, 2048)}`
+              : undefined,
+          branch: location.branchName,
+          workspaceRef: location.workspacePath,
+          blockers: fallbackBlockers,
+          startedAt,
+          finishedAt,
+          area: "development",
+          actor: body.actor,
+        };
+        sessionResultSource = "fallback_stdout";
+      }
+      const intakeResponse = await app.request("/session-results", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(intakeBody),
+      });
+      if (intakeResponse.ok) {
+        const intakeJson = (await intakeResponse.json()) as {
+          data?: SubmitSessionResultResponse;
+        };
+        if (intakeJson.data?.artifact?.id) {
+          sessionResultArtifactId = intakeJson.data.artifact.id;
+          auditTrail = appendAgentRunAuditEntry(auditTrail, {
+            actor: body.actor,
+            event: "agent_run_session_result_intake",
+            note: `source=${sessionResultSource}`,
+            metadata: {
+              artifactId: sessionResultArtifactId,
+              source: sessionResultSource,
+              signalsCreated: intakeJson.data.signalsCreated?.length ?? 0,
+              guidanceItemsCreated: intakeJson.data.guidanceItemsCreated?.length ?? 0,
+            },
+          });
+          db.update(cbAgentRuns)
+            .set({ auditTrail, updatedAt: now() } as never)
+            .where(eq(cbAgentRuns.id, id))
+            .run();
+        }
+      } else {
+        const intakeErr = await intakeResponse.text();
+        auditTrail = appendAgentRunAuditEntry(auditTrail, {
+          actor: body.actor,
+          event: "agent_run_session_result_intake_failed",
+          note: intakeErr.slice(0, 500),
+        });
+        db.update(cbAgentRuns)
+          .set({ auditTrail, updatedAt: now() } as never)
+          .where(eq(cbAgentRuns.id, id))
+          .run();
+        sessionResultSource = "skipped";
+      }
+    } catch (intakeErr) {
+      sessionResultSource = "skipped";
+      auditTrail = appendAgentRunAuditEntry(auditTrail, {
+        actor: body.actor,
+        event: "agent_run_session_result_intake_error",
+        note: intakeErr instanceof Error ? intakeErr.message : String(intakeErr),
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+    }
+
     const response: ExecuteAgentRunResponse = {
       generatedAt: now(),
       agentRunId: id,
@@ -13414,6 +13567,8 @@ app.post("/agent-runs/:id/execute", async (c) => {
       blockReasons: [],
       errorSummary,
       realExecutionPerformed: true,
+      sessionResultArtifactId,
+      sessionResultSource,
     };
     return c.json({ data: response });
   } catch (err) {

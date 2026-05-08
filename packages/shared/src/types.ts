@@ -1265,6 +1265,8 @@ export interface ExecuteAgentRunResponse {
   blockReasons: string[];
   errorSummary: string | null;
   realExecutionPerformed: boolean;
+  sessionResultArtifactId: string | null;
+  sessionResultSource: "structured_file" | "fallback_stdout" | "skipped" | null;
 }
 
 export type RunnerPolicyGateStatus = "passed" | "failed" | "warn" | "info";
