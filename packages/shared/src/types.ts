@@ -1813,6 +1813,31 @@ export interface GitHubPrProposalPayload {
     requiresHumanReview: boolean;
     dryRunOnly: boolean;
   };
+  iteration?: GitHubPrIterationPlan | null;
+}
+
+export type GitHubPrIterationDecision =
+  | "open_new_pr"
+  | "update_existing_pr";
+
+export interface GitHubPrIterationGate {
+  key: string;
+  status: "passed" | "failed" | "warn";
+  detail: string;
+}
+
+export interface GitHubPrIterationPlan {
+  decision: GitHubPrIterationDecision;
+  rationale: string;
+  existingProposalId: string | null;
+  existingPrNumber: number | null;
+  existingPrUrl: string | null;
+  existingSourceBranch: string | null;
+  existingBaseBranch: string | null;
+  existingState: string | null;
+  existingMerged: boolean | null;
+  markerMatched: boolean | null;
+  gates: GitHubPrIterationGate[];
 }
 
 export interface PreviewGitHubPrProposalResponse {
@@ -1967,6 +1992,8 @@ export interface AgentRunPatchPacket {
   agentRunId: string;
   workItemId: string | null;
   artifactId: string | null;
+  attempt: number;
+  previousPrUrl: string | null;
   generatedAt: number;
   status: AgentRunPatchPacketStatus;
   workspacePath: string | null;
@@ -1980,6 +2007,13 @@ export interface AgentRunPatchPacket {
   };
   commits: AgentRunPatchPacketCommit[];
   validations: AgentRunPatchPacketValidation[];
+  validationDelta: {
+    previousValidationCount: number | null;
+    currentValidationCount: number;
+    previousFailedCount: number | null;
+    currentFailedCount: number;
+    failedDelta: number | null;
+  };
   logRefs: {
     logFilePath: string | null;
     lastLogAt: number | null;
