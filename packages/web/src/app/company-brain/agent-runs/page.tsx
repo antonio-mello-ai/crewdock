@@ -27,6 +27,8 @@ import {
   useDismissCompanyBrainAgentRunSuggestion,
   useEvaluateCompanyBrainAgentRunPolicy,
   useExecuteCompanyBrainAgentRun,
+  useLaunchCompanyBrainAgentRunFromWorkItem,
+  usePreviewCompanyBrainAgentRunLauncher,
   usePromoteCompanyBrainAgentRunSuggestion,
 } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
@@ -144,6 +146,51 @@ interface PilotTargetsResponse {
     warn: number;
   };
   targets: PilotTargetWithReadiness[];
+}
+
+interface AgentRunLaunchPreview {
+  workItem: { id: string; title: string; externalUrl: string | null };
+  pilotTarget: { id: string; projectName: string; repo: string; area: string; riskCeiling: string };
+  selectedProfile: {
+    id: string;
+    title: string;
+    category: string;
+    command: string;
+    capabilities: string[];
+  };
+  profileReadiness: RunnerProfileReadinessItem | null;
+  policy: {
+    decision: string;
+    realExecutionAllowed: boolean;
+    blockReasons: string[];
+    gates: Array<{ key: string; title: string; status: string; detail: string; remediation?: string | null }>;
+    workspaceSummary: { workspacePath: string; branchName: string };
+    subprocessEnv: { allowedKeys: string[]; redactedKeys: string[] };
+  };
+  riskClass: string;
+  command: string;
+  args: string[];
+  expectedWriteBoundaries: {
+    repo: string;
+    workspacePath: string;
+    branchName: string;
+    command: string;
+    args: string[];
+    profileCapabilities: string[];
+    envAllowedKeys: string[];
+    envRedactedKeys: string[];
+    externalWritebackAllowed: boolean;
+    blockedExternalActions: string[];
+  };
+  canLaunch: boolean;
+  blockReasons: string[];
+  recommendedNextAction: string;
+}
+
+interface AgentRunLaunchResponse {
+  outcome: "queued" | "blocked";
+  preview: AgentRunLaunchPreview;
+  agentRun: AgentRunRow | null;
 }
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
@@ -618,6 +665,218 @@ function SuggestionRow({ suggestion }: { suggestion: AgentRunSuggestionRow }) {
   );
 }
 
+function HumanApprovedLauncher({ pilotTargets }: { pilotTargets?: PilotTargetsResponse }) {
+  const previewMutation = usePreviewCompanyBrainAgentRunLauncher();
+  const launchMutation = useLaunchCompanyBrainAgentRunFromWorkItem();
+  const firstTarget = pilotTargets?.targets?.[0];
+  const defaultProfile =
+    firstTarget?.readiness.readyProfileIds[0] ??
+    firstTarget?.target.allowedRunnerProfileIds.find((id) => id.includes("real")) ??
+    firstTarget?.target.allowedRunnerProfileIds[0] ??
+    "claude-code-real";
+  const [workItemId, setWorkItemId] = useState("");
+  const [pilotTargetId, setPilotTargetId] = useState(firstTarget?.target.id ?? "");
+  const [profileId, setProfileId] = useState(defaultProfile);
+  const [riskClass, setRiskClass] = useState("B");
+  const [actor, setActor] = useState("");
+  const [rationale, setRationale] = useState("");
+  const [commandOverride, setCommandOverride] = useState("");
+
+  const preview = (previewMutation.data?.data ??
+    (launchMutation.data?.data as AgentRunLaunchResponse | undefined)?.preview) as
+    | AgentRunLaunchPreview
+    | undefined;
+  const launch = launchMutation.data?.data as AgentRunLaunchResponse | undefined;
+
+  const payload = {
+    workItemId: workItemId.trim(),
+    pilotTargetId: pilotTargetId.trim() || undefined,
+    profileId: profileId.trim() || undefined,
+    riskClass,
+    actor: actor.trim() || undefined,
+    rationale: rationale.trim() || undefined,
+    commandOverride: commandOverride.trim() || undefined,
+  };
+
+  const canSubmit = Boolean(workItemId.trim() && actor.trim() && rationale.trim());
+
+  return (
+    <section className="rounded-md border border-primary/40 bg-primary/5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/20 p-3">
+        <div>
+          <h2 className="text-lg font-semibold">Human-approved launcher</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            WorkItem → approved AgentRun. Preview is read-only; create requires target, profile and runner policy gates.
+          </p>
+        </div>
+        {preview ? (
+          <Badge variant={preview.canLaunch ? "default" : "destructive"} className="text-[10px]">
+            {preview.canLaunch ? "launch allowed" : "blocked"}
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-[10px]">
+            preview first
+          </Badge>
+        )}
+      </div>
+      <div className="grid gap-3 p-3 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="space-y-2">
+          <input
+            value={workItemId}
+            onChange={(e) => setWorkItemId(e.target.value)}
+            placeholder="WorkItem id"
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          />
+          <select
+            value={pilotTargetId}
+            onChange={(e) => setPilotTargetId(e.target.value)}
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          >
+            <option value="">default pilot target</option>
+            {pilotTargets?.targets.map((item) => (
+              <option key={item.target.id} value={item.target.id}>
+                {item.target.projectName} · {item.target.repo}
+              </option>
+            ))}
+          </select>
+          <input
+            value={profileId}
+            onChange={(e) => setProfileId(e.target.value)}
+            placeholder="runner profile id"
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          />
+          <select
+            value={riskClass}
+            onChange={(e) => setRiskClass(e.target.value)}
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          >
+            <option value="A">Risk A</option>
+            <option value="B">Risk B</option>
+            <option value="C">Risk C</option>
+            <option value="unknown">unknown</option>
+          </select>
+          <input
+            value={actor}
+            onChange={(e) => setActor(e.target.value)}
+            placeholder="actor"
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          />
+          <textarea
+            value={rationale}
+            onChange={(e) => setRationale(e.target.value)}
+            placeholder="rationale"
+            rows={2}
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          />
+          <input
+            value={commandOverride}
+            onChange={(e) => setCommandOverride(e.target.value)}
+            placeholder="optional command override"
+            className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs"
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!workItemId.trim() || previewMutation.isPending}
+              onClick={() => previewMutation.mutate(payload)}
+            >
+              {previewMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <ShieldAlert className="size-3" />}
+              Preview
+            </Button>
+            <Button
+              size="sm"
+              disabled={!canSubmit || launchMutation.isPending || !preview?.canLaunch}
+              onClick={() => launchMutation.mutate(payload)}
+            >
+              {launchMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <PlayCircle className="size-3" />}
+              Create run
+            </Button>
+          </div>
+          {previewMutation.isError ? (
+            <p className="text-[11px] text-destructive">{previewMutation.error.message}</p>
+          ) : null}
+          {launchMutation.isError ? (
+            <p className="text-[11px] text-destructive">{launchMutation.error.message}</p>
+          ) : null}
+          {launch?.agentRun ? (
+            <p className="rounded-md border border-border bg-background p-2 text-[11px]">
+              Created AgentRun <code>{launch.agentRun.id}</code>. Expand it below to execute through supervised controls.
+            </p>
+          ) : null}
+        </div>
+        <div className="rounded-md border border-border bg-background p-3 text-xs">
+          {preview ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline" className="text-[10px]">
+                  {preview.pilotTarget.repo}
+                </Badge>
+                <Badge variant="outline" className="text-[10px]">
+                  {preview.selectedProfile.id}
+                </Badge>
+                <Badge variant="outline" className="text-[10px]">
+                  risk={preview.riskClass}
+                </Badge>
+                <Badge variant={preview.policy.realExecutionAllowed ? "default" : "destructive"} className="text-[10px]">
+                  {preview.policy.decision}
+                </Badge>
+              </div>
+              <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-[130px_minmax(0,1fr)]">
+                <dt className="text-muted-foreground">work item</dt>
+                <dd className="truncate">{preview.workItem.title}</dd>
+                <dt className="text-muted-foreground">command</dt>
+                <dd className="font-mono">{preview.command} {preview.args.join(" ")}</dd>
+                <dt className="text-muted-foreground">workspace</dt>
+                <dd className="truncate font-mono" title={preview.expectedWriteBoundaries.workspacePath}>
+                  {preview.expectedWriteBoundaries.workspacePath}
+                </dd>
+                <dt className="text-muted-foreground">branch</dt>
+                <dd className="truncate font-mono">{preview.expectedWriteBoundaries.branchName}</dd>
+                <dt className="text-muted-foreground">env</dt>
+                <dd>{preview.expectedWriteBoundaries.envAllowedKeys.join(", ") || "(none)"}</dd>
+                <dt className="text-muted-foreground">blocked external</dt>
+                <dd>{preview.expectedWriteBoundaries.blockedExternalActions.join(", ")}</dd>
+              </dl>
+              {preview.blockReasons.length ? (
+                <p className="rounded-md bg-destructive/10 p-2 text-destructive">
+                  blockers: {preview.blockReasons.join(", ")}
+                </p>
+              ) : null}
+              <p className="text-muted-foreground">{preview.recommendedNextAction}</p>
+              <ul className="max-h-48 space-y-1 overflow-auto">
+                {preview.policy.gates.map((gate) => (
+                  <li key={gate.key} className="flex gap-2">
+                    <Badge
+                      variant={
+                        gate.status === "passed"
+                          ? "default"
+                          : gate.status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                      className="shrink-0 text-[10px]"
+                    >
+                      {gate.status}
+                    </Badge>
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{gate.title}</span>: {gate.detail}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Enter a WorkItem id and preview the launch plan. This panel will show policy gates and write boundaries before an AgentRun can be created.
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 interface AutoDispatchGate {
   key: string;
   title: string;
@@ -943,6 +1202,8 @@ export default function CompanyBrainAgentRunsPage() {
             </div>
           </section>
         ) : null}
+
+        <HumanApprovedLauncher pilotTargets={pilotTargets} />
 
         {readiness ? (
           <section className="rounded-md border border-border">

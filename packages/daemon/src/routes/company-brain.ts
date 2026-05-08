@@ -121,10 +121,14 @@ import type {
   GitHubPrWritebackPushProbe,
   PreviewGitHubPrProposalResponse,
   ListAgentRunSuggestionsResponse,
+  AgentRunLaunchPreview,
+  LaunchAgentRunRequest,
+  LaunchAgentRunResponse,
   ListPilotTargetsResponse,
   ListRunnerProfilesResponse,
   OperatingLoopAutoDispatchOutcome,
   OperatingLoopReconciliationOutcome,
+  PreviewAgentRunLaunchRequest,
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
   PilotTarget,
@@ -13932,6 +13936,250 @@ function listPilotTargets(args: {
   };
 }
 
+const RISK_CLASS_RANK: Record<RiskClass, number> = {
+  A: 1,
+  B: 2,
+  C: 3,
+  unknown: 99,
+};
+
+function riskWithinCeiling(riskClass: RiskClass, ceiling: RiskClass): boolean {
+  return (RISK_CLASS_RANK[riskClass] ?? 99) <= (RISK_CLASS_RANK[ceiling] ?? 0);
+}
+
+function runnerTypeForProfile(profile: RunnerProfile): AgentRunRunnerType {
+  if (profile.id === "claude-code-real") return "claude_code";
+  if (profile.id === "codex-cli-real") return "codex";
+  if (profile.command === "claude") return "claude_code";
+  if (profile.command === "codex") return "codex";
+  return "other";
+}
+
+function repoFromWorkItem(workItem: WorkItem): string | null {
+  const match = workItem.externalId?.match(/^([^#]+)#\d+$/);
+  return match?.[1] ?? null;
+}
+
+function resolveAgentRunWorkItemKey(args: {
+  agentRun: Pick<typeof cbAgentRuns.$inferSelect, "id" | "workItemId">;
+  repo: string;
+}): string {
+  if (!args.agentRun.workItemId) return args.agentRun.id;
+  const workItem = getDb()
+    .select()
+    .from(cbWorkItems)
+    .where(eq(cbWorkItems.id, args.agentRun.workItemId))
+    .get() as typeof cbWorkItems.$inferSelect | undefined;
+  const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
+  return externalIdMatch
+    ? `${args.repo.replace("/", "_")}_${externalIdMatch[1]}`
+    : workItem?.externalId ?? args.agentRun.workItemId;
+}
+
+function buildLaunchPreviewAgentRun(args: {
+  id: string;
+  workItem: WorkItem;
+  target: PilotTarget;
+  profile: RunnerProfile;
+  riskClass: RiskClass;
+  metadata: Record<string, unknown>;
+}): typeof cbAgentRuns.$inferSelect {
+  const timestamp = now();
+  return {
+    id: args.id,
+    workItemId: args.workItem.id,
+    workflowRunId: null,
+    agentContextId: null,
+    sourceId: args.workItem.sourceId ?? null,
+    repo: args.target.repo,
+    branch: null,
+    workspaceRef: null,
+    runnerType: runnerTypeForProfile(args.profile),
+    status: "queued",
+    claimState: "unclaimed",
+    attempt: 0,
+    startedAt: null,
+    finishedAt: null,
+    errorSummary: null,
+    prUrl: null,
+    externalRunRef: null,
+    tokensInput: null,
+    tokensOutput: null,
+    tokensTotal: null,
+    costUsd: null,
+    agentSessionId: null,
+    agentThreadId: null,
+    area: args.target.area,
+    riskClass: args.riskClass,
+    actionPolicy: "request_human",
+    visibility: args.workItem.visibility ?? "internal",
+    metadata: args.metadata,
+    auditTrail: [],
+    provenance: {
+      sourceId: args.workItem.sourceId ?? null,
+      rawRef: `aios://agent-run-launcher/${args.workItem.id}/${args.profile.id}`,
+      artifactId: args.workItem.artifactId ?? null,
+      createdFrom: "company_brain:agent_run_launcher_preview",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "pending",
+      visibility: args.workItem.visibility ?? "internal",
+      notes: `profile=${args.profile.id}; target=${args.target.id}`,
+    } as Provenance,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    lastLogAt: null,
+    lastLogLineCount: null,
+    pid: null,
+    executionRef: null,
+  } as typeof cbAgentRuns.$inferSelect;
+}
+
+function buildAgentRunLauncherPreview(args: {
+  request: PreviewAgentRunLaunchRequest;
+  previewAgentRunId?: string;
+}): AgentRunLaunchPreview {
+  const db = getDb();
+  const generatedAt = now();
+  const workItem = db
+    .select()
+    .from(cbWorkItems)
+    .where(eq(cbWorkItems.id, requireText(args.request.workItemId, "workItemId")))
+    .get() as WorkItem | undefined;
+  if (!workItem) {
+    throw new Error(`workItem ${args.request.workItemId} not found`);
+  }
+
+  const repo = repoFromWorkItem(workItem);
+  const targets = listPilotTargets({ repo, status: "all" }).targets;
+  const target =
+    targets.find((item) => item.target.id === args.request.pilotTargetId)?.target ??
+    targets.find((item) => item.target.status === "active")?.target ??
+    targets[0]?.target;
+  if (!target) {
+    throw new Error(`no pilot target found for repo=${repo ?? "(unknown)"}`);
+  }
+
+  const targetReadiness = buildPilotTargetReadiness(target);
+  const requestedProfileId =
+    args.request.profileId?.trim() ||
+    targetReadiness.readyProfileIds[0] ||
+    target.allowedRunnerProfileIds.find((id) => getRunnerProfile(id)?.category === "real_agent") ||
+    target.allowedRunnerProfileIds[0];
+  if (!requestedProfileId) {
+    throw new Error(`pilot target ${target.id} has no allowed runner profiles`);
+  }
+  const selectedProfile = getRunnerProfile(requestedProfileId);
+  if (!selectedProfile) {
+    throw new Error(`runner profile ${requestedProfileId} not found`);
+  }
+  const riskClass = args.request.riskClass ?? target.riskCeiling;
+  const launchReadiness = filterReadinessMatrixProfiles(
+    buildRunnerProfileReadinessMatrix({
+      repo: target.repo,
+      area: target.area,
+      riskClass,
+    }),
+    target.allowedRunnerProfileIds
+  );
+  const profileReadiness =
+    launchReadiness.profiles.find((item) => item.profile.id === selectedProfile.id) ??
+    null;
+  const command = args.request.commandOverride?.trim() || selectedProfile.command;
+  const rawArgs =
+    args.request.argsOverride && args.request.argsOverride.length
+      ? args.request.argsOverride
+      : selectedProfile.args;
+  const launchMetadata = {
+    launcher: "human_approved_agent_run",
+    pilotTargetId: target.id,
+    runnerProfileId: selectedProfile.id,
+    runnerProfileCategory: selectedProfile.category,
+    command,
+    args: rawArgs,
+    expectedWriteback: "none",
+  };
+  const previewRun = buildLaunchPreviewAgentRun({
+    id: args.previewAgentRunId ?? `preview-${nanoid(8)}`,
+    workItem,
+    target,
+    profile: selectedProfile,
+    riskClass,
+    metadata: launchMetadata,
+  });
+  const policy = evaluateRunnerPolicy({
+    agentRun: previewRun,
+    request: {
+      actor: args.request.actor ?? null,
+      rationale: args.request.rationale ?? null,
+      intent: "real_execution",
+      commandOverride: command,
+      workspaceRootOverride: args.request.workspaceRootOverride ?? null,
+    },
+  });
+  const blockReasons = new Set<string>();
+  if (target.status !== "active") blockReasons.add(`target_${target.status}`);
+  if (!target.allowedRunnerProfileIds.includes(selectedProfile.id)) {
+    blockReasons.add("profile_not_allowed_for_target");
+  }
+  if (!riskWithinCeiling(riskClass, target.riskCeiling)) {
+    blockReasons.add("risk_exceeds_target_ceiling");
+  }
+  if (!profileReadiness) {
+    blockReasons.add("profile_not_in_target_readiness");
+  } else if (profileReadiness.status !== "ready") {
+    blockReasons.add("profile_not_ready");
+    for (const reason of profileReadiness.blockReasons) {
+      blockReasons.add(`${selectedProfile.id}:${reason}`);
+    }
+  }
+  if (!policy.realExecutionAllowed) {
+    for (const reason of policy.blockReasons) blockReasons.add(reason);
+  }
+  const canLaunch = blockReasons.size === 0;
+  const expectedWriteBoundaries = {
+    repo: target.repo,
+    workspacePath: policy.workspaceSummary.workspacePath,
+    branchName: policy.workspaceSummary.branchName,
+    command,
+    args: rawArgs,
+    profileCapabilities: selectedProfile.capabilities,
+    envAllowedKeys: policy.subprocessEnv.allowedKeys,
+    envRedactedKeys: policy.subprocessEnv.redactedKeys,
+    allowedFilesystemRoots: [policy.workspaceSummary.workspacePath],
+    externalWritebackAllowed: false as const,
+    blockedExternalActions: [
+      "auto_merge",
+      "auto_deploy",
+      "direct_github_writeback",
+      "customer_repo",
+      "billing",
+      "permissions",
+    ],
+  };
+  const recommendedNextAction = canLaunch
+    ? "Create the approved AgentRun, then execute it through the existing supervised runner controls."
+    : profileReadiness?.recommendedNextAction ??
+      policy.policySummary ??
+      "Resolve launcher and runner policy blockers before creating an AgentRun.";
+  return {
+    generatedAt,
+    workItem,
+    pilotTarget: target,
+    targetReadiness,
+    selectedProfile,
+    profileReadiness,
+    policy,
+    riskClass,
+    command,
+    args: rawArgs,
+    expectedWriteBoundaries,
+    canLaunch,
+    blockReasons: Array.from(blockReasons),
+    recommendedNextAction,
+  };
+}
+
 function autoDispatchEnabled(): boolean {
   return process.env.AIOS_AGENT_AUTODISPATCH_ENABLED === "true";
 }
@@ -16765,6 +17013,107 @@ app.get("/pilot-targets", (c) => {
   return c.json({ data });
 });
 
+app.post("/agent-runs/launcher/preview", async (c) => {
+  try {
+    const body = (await c.req
+      .json<PreviewAgentRunLaunchRequest>()
+      .catch(() => ({}))) as PreviewAgentRunLaunchRequest;
+    const data = buildAgentRunLauncherPreview({ request: body });
+    return c.json({ data });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_launch_preview_failed", message }, 400);
+  }
+});
+
+app.post("/agent-runs/launcher/launch", async (c) => {
+  try {
+    const db = getDb();
+    const body = (await c.req
+      .json<LaunchAgentRunRequest>()
+      .catch(() => ({}))) as LaunchAgentRunRequest;
+    if (!body.actor || !body.actor.trim()) {
+      return c.json({ error: "validation", message: "actor is required" }, 400);
+    }
+    if (!body.rationale || !body.rationale.trim()) {
+      return c.json({ error: "validation", message: "rationale is required" }, 400);
+    }
+    const id = nanoid(12);
+    const preview = buildAgentRunLauncherPreview({
+      request: body,
+      previewAgentRunId: id,
+    });
+    if (!preview.canLaunch) {
+      const response: LaunchAgentRunResponse = {
+        generatedAt: now(),
+        outcome: "blocked",
+        preview,
+        agentRun: null,
+      };
+      return c.json({ data: response }, 400);
+    }
+    const timestamp = now();
+    const auditTrail = appendAgentRunAuditEntry([], {
+      actor: body.actor,
+      event: "agent_run_human_launcher_created",
+      note: body.rationale,
+      metadata: {
+        pilotTargetId: preview.pilotTarget.id,
+        runnerProfileId: preview.selectedProfile.id,
+        command: preview.command,
+        args: preview.args,
+        policyDecision: preview.policy.decision,
+        workItemId: preview.workItem.id,
+      },
+      at: timestamp,
+    });
+    const row = buildLaunchPreviewAgentRun({
+      id,
+      workItem: preview.workItem,
+      target: preview.pilotTarget,
+      profile: preview.selectedProfile,
+      riskClass: preview.riskClass,
+      metadata: {
+        launcher: "human_approved_agent_run",
+        pilotTargetId: preview.pilotTarget.id,
+        runnerProfileId: preview.selectedProfile.id,
+        runnerProfileCategory: preview.selectedProfile.category,
+        command: preview.command,
+        args: preview.args,
+        expectedWriteBoundaries: preview.expectedWriteBoundaries,
+      },
+    });
+    db.insert(cbAgentRuns)
+      .values({
+        ...row,
+        auditTrail,
+        provenance: {
+          ...row.provenance,
+          createdFrom: "company_brain:agent_run_human_launcher",
+          notes: `profile=${preview.selectedProfile.id}; target=${preview.pilotTarget.id}; actor=${body.actor}`,
+        } as Provenance,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      } as never)
+      .run();
+    const inserted = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect;
+    const response: LaunchAgentRunResponse = {
+      generatedAt: now(),
+      outcome: "queued",
+      preview,
+      agentRun: rowToAgentRun(inserted),
+    };
+    return c.json({ data: response }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_launch_failed", message }, 400);
+  }
+});
+
 app.get("/auto-dispatch/policy", (c) => {
   const data = buildAutoDispatchPolicySummary();
   return c.json({ data });
@@ -16963,7 +17312,10 @@ function evaluateRunnerPolicy(args: {
   let branchName = "";
   let workspaceAllowlistMatched = false;
   if (repo) {
-    const workItemKey = args.agentRun.workItemId ?? args.agentRun.id;
+    const workItemKey = resolveAgentRunWorkItemKey({
+      agentRun: args.agentRun,
+      repo,
+    });
     const { location, safetyError } = resolveWorkspaceLocation({
       repo,
       workItemKey,
@@ -17982,10 +18334,7 @@ app.post("/agent-runs/:id/execute", async (c) => {
           .where(eq(cbWorkItems.id, existing.workItemId))
           .get() as typeof cbWorkItems.$inferSelect | undefined)
       : undefined;
-    const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
-    const workItemKey = externalIdMatch
-      ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
-      : workItem?.externalId ?? existing.workItemId ?? existing.id;
+    const workItemKey = resolveAgentRunWorkItemKey({ agentRun: existing, repo });
     const { location } = resolveWorkspaceLocation({ repo, workItemKey, runId: existing.id });
     if (!existsSync(location.workspacePath)) {
       mkdirSync(location.workspacePath, { recursive: true });
@@ -18425,10 +18774,7 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
           .where(eq(cbWorkItems.id, existing.workItemId))
           .get() as typeof cbWorkItems.$inferSelect | undefined)
       : undefined;
-    const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
-    const workItemKey = externalIdMatch
-      ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
-      : workItem?.externalId ?? existing.workItemId ?? existing.id;
+    const workItemKey = resolveAgentRunWorkItemKey({ agentRun: existing, repo });
     const { location } = resolveWorkspaceLocation({ repo, workItemKey, runId: existing.id });
     if (!existsSync(location.workspacePath)) {
       mkdirSync(location.workspacePath, { recursive: true });
@@ -19436,17 +19782,7 @@ app.post("/agent-runs/:id/execute-dry-run", async (c) => {
         workspaceBlockReasons
       );
     } else {
-      const workItem = existing.workItemId
-        ? (db
-            .select()
-            .from(cbWorkItems)
-            .where(eq(cbWorkItems.id, existing.workItemId))
-            .get() as typeof cbWorkItems.$inferSelect | undefined)
-        : undefined;
-      const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
-      const workItemKey = externalIdMatch
-        ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
-        : workItem?.externalId ?? existing.workItemId ?? existing.id;
+      const workItemKey = resolveAgentRunWorkItemKey({ agentRun: existing, repo });
       const { location, safetyError } = resolveWorkspaceLocation({
         repo,
         workItemKey,
