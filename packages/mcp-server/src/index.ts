@@ -2168,6 +2168,51 @@ server.registerTool(
 );
 
 server.registerTool(
+  "prepare_company_brain_agent_workspace",
+  {
+    title: "Prepare Company Brain agent workspace (dry-run by default)",
+    description:
+      "Compute deterministic workspace path, derive branch from base branch, validate Symphony 9.5 safety invariants (path inside workspace root, no traversal), detect existing worktree and dirty state, and optionally create a git worktree when AIOS_AGENT_WORKSPACE_ENABLED=true and the repo is in AIOS_AGENT_WORKSPACE_ALLOWLIST. Default dryRun=true returns a preview with status (ready_to_create / reused / blocked_dirty / blocked_invalid_path / blocked_not_allowlisted / blocked_safety / failed). When writes are allowed and not blocked, creates the worktree and updates the AgentRun with branch, workspaceRef and an audit entry. Does not destroy or clean any existing workspace. Does not launch any agent process.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      repo: z.string().optional(),
+      branchOverride: z.string().optional(),
+      workspaceRootOverride: z.string().optional(),
+      baseBranch: z.string().optional(),
+      dryRun: z.boolean().optional(),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/workspace/prepare`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "get_company_brain_agent_workspace_status",
+  {
+    title: "Get Company Brain agent workspace status",
+    description:
+      "Read-only workspace status for an AgentRun: exists, isDirty (uncommitted changes), branchName, workspacePath, worktreeListed (whether the daemon's git knows the worktree). Useful before reusing or before requesting a clean re-prepare.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+    },
+  },
+  async ({ agentRunId }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/workspace`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "list_company_brain_agent_runs",
   {
     title: "List Company Brain agent runs",
