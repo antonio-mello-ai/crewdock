@@ -2938,12 +2938,25 @@ Dogfood local com DB `/tmp/aios-run34-smoke.sqlite`:
 - executor com proposal bloqueada aprovada internamente retornou HTTP 400
   `preflight_blocked`.
 
-Validacao parcial:
+Validacao:
 
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server`
   passou.
+- `git diff --check` passou.
+- `npx turbo build` passou.
 
-Antes de merge/deploy, rodar:
+Merge/deploy:
 
-- `git diff --check`;
-- `npx turbo build`.
+- PR `#120` mergeado em `main` no commit `3cbf02d`;
+- issue `#115` fechada;
+- CT165 fast-forward ate `3cbf02d`;
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`
+  passou;
+- `aios-daemon` reiniciado e `active`;
+- `GET https://api.felhen.ai/api/health` -> 200;
+- operating snapshot publico com service token -> 200,
+  `overallStatus=healthy`, 5 cards;
+- rota nova validada em loopback CT165:
+  `/api/company-brain/external-action-proposals/not-found/github-pr/preflight`
+  -> 404 esperado (`proposal not-found not found`).

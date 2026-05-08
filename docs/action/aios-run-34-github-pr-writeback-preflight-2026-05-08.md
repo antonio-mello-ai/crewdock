@@ -89,11 +89,25 @@ Blocked config path:
 
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server`
   passed.
+- `git diff --check` passed.
+- `npx turbo build` passed.
 
-Final validation before merge still needs:
+## Merge And Deploy
 
-- `git diff --check`
-- `npx turbo build`
+- PR: `#120` (`https://github.com/antonio-mello-ai/crewdock/pull/120`)
+- Merge commit: `3cbf02d`
+- Issue `#115` closed by the merge.
+- CT165 fast-forwarded to `3cbf02d`.
+- CT165 build passed:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`.
+- `aios-daemon` restarted and returned `active`.
+- Public health: `GET https://api.felhen.ai/api/health` -> HTTP 200.
+- Public operating snapshot with CF Access service token -> HTTP 200,
+  `overallStatus=healthy`, 5 cards.
+- CT165 loopback route smoke for the new preflight endpoint returned expected
+  route-level response:
+  `POST /api/company-brain/external-action-proposals/not-found/github-pr/preflight`
+  -> HTTP 404 with `proposal not-found not found`.
 
 ## Constraints
 
