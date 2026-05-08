@@ -13621,13 +13621,15 @@ app.post("/agent-run-evaluations", async (c) => {
 
     let improvementProposalSuggested = false;
     let improvementProposalRationale: string | null = null;
+    let improvementProposalId: string | null = null;
+    let improvementProposalReused = false;
     if (workItemId && classification.kind.startsWith("failed_")) {
       const repeatedSignals = (
         db
           .select()
           .from(cbSignals)
           .where(eq(cbSignals.workItemId, workItemId))
-          .all() as Array<{ tags: string[] | null; severity: string }>
+          .all() as Array<{ id: string; tags: string[] | null; severity: string }>
       ).filter((row) =>
         Array.isArray(row.tags) &&
         row.tags.includes("agent_run_evaluation") &&
@@ -13635,7 +13637,77 @@ app.post("/agent-run-evaluations", async (c) => {
       );
       if (repeatedSignals.length >= 2) {
         improvementProposalSuggested = true;
-        improvementProposalRationale = `Detected ${repeatedSignals.length} repeated ${classification.kind} signals on this WorkItem; v0 emits a candidate marker for the next ImprovementProposal cut.`;
+        improvementProposalRationale = `Detected ${repeatedSignals.length} repeated ${classification.kind} signals on this WorkItem; emitted ImprovementProposal candidate for review.`;
+        const allProposals = db
+          .select()
+          .from(cbImprovementProposals)
+          .all() as Array<typeof cbImprovementProposals.$inferSelect>;
+        const existingProposal = allProposals.find((proposal) => {
+          const meta = (proposal as { metadata?: Record<string, unknown> | null }).metadata ??
+            null;
+          if (Array.isArray(proposal.workItemIds) && proposal.workItemIds.includes(workItemId)) {
+            const provenance = proposal.provenance as Provenance | null;
+            return provenance?.notes?.includes(`evaluation_kind=${classification.kind}`);
+          }
+          if (meta && (meta as Record<string, unknown>).evaluationKind === classification.kind) {
+            return true;
+          }
+          return false;
+        });
+        if (existingProposal) {
+          improvementProposalId = existingProposal.id;
+          improvementProposalReused = true;
+        } else {
+          const proposalId = nanoid(12);
+          const repeatedSignalIds = repeatedSignals.map((signal) => signal.id);
+          const guidanceIdsForProposal = guidanceCreated.map((item) => item.id);
+          const sourceArtifactIds = [evaluationArtifactId, ...(sessionArtifact?.id ? [sessionArtifact.id] : [])];
+          const proposalRow = {
+            id: proposalId,
+            title: `Recurring ${classification.kind} agent runs on WorkItem ${workItemId}`,
+            hypothesis: `Repeated ${classification.kind} (count=${repeatedSignals.length}) suggests a systemic gap in context, tool, policy, execution or validation. Inspect the agent prompt, workflow and tooling to remove the recurring failure mode.`,
+            area: "development" as CompanyBrainArea,
+            owner: body.reviewer ?? null,
+            ownerType: "human" as const,
+            signalIds: repeatedSignalIds,
+            alignmentFindingIds: [] as string[],
+            guidanceItemIds: guidanceIdsForProposal,
+            agentContextIds: [] as string[],
+            sourceArtifactIds,
+            workItemIds: [workItemId],
+            priorityIds: [] as string[],
+            goalIds: [] as string[],
+            changeClass: ((): string => {
+              if (classification.kind === "failed_context") return "prompt";
+              if (classification.kind === "failed_tool") return "tool";
+              if (classification.kind === "failed_policy") return "policy";
+              if (classification.kind === "failed_execution") return "code";
+              if (classification.kind === "failed_validation") return "validation";
+              return "unknown";
+            })() as never,
+            patchRef: null,
+            validationPlan: `Re-run the agent with the proposed change. Confirm the failure_kind ${classification.kind} drops back to zero on the next attempt before promoting.`,
+            impactReview: null,
+            status: "proposed" as const,
+            promotionStatus: "not_ready" as const,
+            visibility: "internal" as Visibility,
+            provenance: {
+              sourceId: sessionArtifact?.sourceId ?? sourceId,
+              rawRef,
+              artifactId: evaluationArtifactId,
+              createdFrom: "company_brain:agent_run_evaluation:improvement_proposal",
+              confidence: classification.confidence,
+              extractedAt: timestamp,
+              humanReviewStatus: "pending" as const,
+              visibility: "internal" as Visibility,
+              notes: `evaluation_kind=${classification.kind}; repeated_signals=${repeatedSignals.length}; runner=${runnerType ?? "unknown"}`,
+            } as Provenance,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          db.insert(cbImprovementProposals).values(proposalRow as never).run();
+          improvementProposalId = proposalId;
+        }
       }
     }
 
@@ -13652,6 +13724,8 @@ app.post("/agent-run-evaluations", async (c) => {
       guidanceItemsCreated: guidanceCreated,
       improvementProposalSuggested,
       improvementProposalRationale,
+      improvementProposalId,
+      improvementProposalReused,
       reviewedReviewer: body.reviewer ?? null,
       evidenceSummary: {
         runnerType,
