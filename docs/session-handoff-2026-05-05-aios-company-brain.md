@@ -3083,3 +3083,51 @@ Merge/deploy:
   `autoDispatchPolicy.config.enabled=false`;
 - session_result de producao submetido para WorkItem `27jBb179tDhs`:
   artifact `uPjeQTsZj_w0`, `prLinkRecorded=true`, `guidanceItemsCreated=1`.
+
+### AIOS-RUN-37 implementation checkpoint
+
+Issue `#118` foi implementada localmente em
+`aios-run-37-same-pr-iteration`.
+
+Entregue:
+
+- `github_pr_create` proposals agora incluem plano `iteration`:
+  `open_new_pr` ou `update_existing_pr`;
+- gates de iteracao same-PR exigem mesmo repo, mesma base branch, PR aberto e
+  nao-merged, AIOS marker no body e head/base esperados;
+- `AgentRunPatchPacket` agora registra `attempt`, `previousPrUrl` e
+  `validationDelta`;
+- previews de PR explicam se vao abrir PR novo ou atualizar PR existente;
+- executor aprovado atualiza a branch do PR AIOS existente usando
+  `--force-with-lease` preso ao SHA remoto buscado;
+- executor patcha o body do PR existente com novo marker de proposal e marker
+  `aios-iteration`;
+- re-chain e re-execute sao idempotentes.
+
+Dogfood local com DB `/tmp/aios-run37-smoke.sqlite` e token GitHub local
+existente:
+
+- Source: `g__8xi4wJGs7`;
+- WorkItem: `3kZlbq_GoAqN`;
+- Iteracao 1: AgentRun `hKdYpEQI6Y-E`, proposal `AIkkvT0ACws7`,
+  decision `open_new_pr`;
+- Iteracao 2: AgentRun `-JXEVkzaQJLs`, proposal `XKvb2kKKDcCC`,
+  decision `update_existing_pr`;
+- PR: `#123`
+  (`https://github.com/antonio-mello-ai/crewdock/pull/123`);
+- estado final: `proposal_count=2`, `unique_pr_urls=1`, PR `#123` OPEN,
+  2 AIOS markers, marker `aios-iteration` presente;
+- re-chain da iteracao 2 retornou `status=reused`, `alreadyExisted=true`;
+- re-execute da iteracao 2 retornou `alreadyExecuted=true`.
+
+Validacao parcial:
+
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon`;
+- dogfood local de duas iteracoes no PR interno `#123`.
+
+Ainda requerido antes de fechar a issue:
+
+- `git diff --check`;
+- `npx turbo build`;
+- abrir PR para issue `#118`, mergear, deployar CT165 e validar rota em
+  producao.
