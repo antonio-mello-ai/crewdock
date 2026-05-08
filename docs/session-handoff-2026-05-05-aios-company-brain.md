@@ -3141,8 +3141,8 @@ Validacao:
 
 ### AIOS-RUN-38 semantic PR dogfood checkpoint
 
-Issue `#119` esta em execucao no branch
-`aios-run-38-semantic-pr-dogfood`.
+Issue `#119` foi consumida via PR `#126`, mergeada em `main` no commit
+`ca30b8c` e deployada no CT165.
 
 Entregue no branch:
 
@@ -3193,19 +3193,25 @@ Producao segue segura/default-off:
   `autoDispatchPolicy.config.enabled=false`,
   `eligibilityPreview.decision=blocked_default_off`.
 
-Validacao parcial ja feita:
+Validacao e deploy:
 
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon`;
 - dogfood local completo via Operating Cadence + auto-dispatch + governance
   approval + PR writeback;
 - `gh pr view 125` confirmou PR aberto, arquivo semantico, marker history e
   validation evidence;
+- `git diff --check`;
+- `npx turbo build`;
 - daemon local encerrado e porta `43196` sem listener.
-
-Antes de fechar o issue:
-
-- rodar `git diff --check`;
-- rodar `npx turbo build`;
-- abrir PR de implementacao com `Closes #119`;
-- fazer QA, mergear, deployar daemon/MCP no CT165 e registrar session_result de
-  producao.
+- PR `#126` mergeado; issue `#119` CLOSED;
+- CT165 atualizado para `ca30b8c`;
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`;
+- `aios-daemon` ativo;
+- `GET https://api.felhen.ai/api/health` -> 200;
+- runner profile `dogfood-semantic-doc-change` presente em CT165 e bloqueado
+  por `profile_command_not_allowlisted` em producao;
+- session_result de producao artifact `dpqkn62kFi_E` para WorkItem
+  `NYAVBMwfBPWh`, com `prLinkRecorded=true` e `guidanceItemsCreated=2`;
+- WorkItem `NYAVBMwfBPWh` marcado `done` via status artifact
+  `-ocsZGlNGVBm`.

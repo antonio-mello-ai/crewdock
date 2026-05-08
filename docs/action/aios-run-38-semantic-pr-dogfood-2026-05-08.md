@@ -151,12 +151,32 @@ Remote Operating Snapshot with CF service token:
 - same-PR update executor with idempotent re-execute
 - `gh pr view 125` confirmed open PR, one file, one commit, marker history and
   visible validation evidence
-- local daemon stopped; port `43196` had no listener after dogfood
-
-Final validation before merge must still run:
-
 - `git diff --check`
 - `npx turbo build`
+- local daemon stopped; port `43196` had no listener after dogfood
+
+## Merge and Deploy
+
+- Implementation PR: `#126`
+- Merge commit: `ca30b8c`
+- Issue `#119`: closed
+- CT165 fast-forwarded to `ca30b8c`
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`
+- `aios-daemon`: `active`
+- `GET https://api.felhen.ai/api/health` -> 200
+- Runner profile smoke on CT165:
+  `dogfood-semantic-doc-change` is present; production evaluation is
+  unavailable with `profile_command_not_allowlisted`, which matches the
+  default-off/allowlist boundary for production.
+- Remote Operating Snapshot with CF service token:
+  `overallStatus=healthy`, `autoDispatchPolicy.config.enabled=false`,
+  `eligibilityPreview.decision=blocked_default_off`.
+- Production session_result submitted for WorkItem `NYAVBMwfBPWh`:
+  artifact `dpqkn62kFi_E`, `prLinkRecorded=true`,
+  `guidanceItemsCreated=2`.
+- WorkItem `NYAVBMwfBPWh` marked `done` through the audited internal status
+  endpoint; status artifact `-ocsZGlNGVBm`.
 
 ## Boundaries
 
