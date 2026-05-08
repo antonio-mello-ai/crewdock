@@ -81,13 +81,39 @@ remaining listeners.
 
 ## Validation
 
+- `git diff --check` passed.
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
   passed.
+- `npx turbo build` passed.
 
-Full validation before merge should still run:
+## Merge And Deploy
 
-- `git diff --check`;
-- `npx turbo build`.
+- PR: `#132`
+  (`https://github.com/antonio-mello-ai/crewdock/pull/132`);
+- merge commit: `6d722cf`;
+- issue `#127` closed by the PR;
+- CT165 updated to `6d722cf`;
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`;
+- `aios-daemon` restarted and `active`;
+- `GET https://api.felhen.ai/api/health` -> `200`;
+- Cloudflare Pages published:
+  `https://07070779.crewdock.pages.dev`;
+- `GET https://07070779.crewdock.pages.dev/company-brain/agent-runs` -> `200`;
+- `GET https://ai.felhen.ai/company-brain/agent-runs` with CF service token
+  -> `200`;
+- deployed JS chunk contains `Runner profile readiness`;
+- production readiness endpoint with service token returned:
+  - `total=6`;
+  - `blocked=6`;
+  - `ready=0`;
+  - `realAgentReady=0`;
+  - `realAgentBlocked=2`;
+  - real agents blocked by default-off runner/workspace/profile/repo gates and
+    missing production auth envs.
+- production session result artifact: `VEYFP0zNVuri`;
+- production WorkItem `EUpITeaGxoxp` marked `done` via status artifact
+  `DnDfQHWI6ntu`.
 
 ## Constraints
 

@@ -3254,15 +3254,25 @@ Dogfood local:
   `ready=6`, `blocked=0`, `realAgentReady=2`;
 - ambos os daemons encerrados; portas `43197` e `43198` sem listener.
 
-Validacao:
+Validacao e deploy:
 
+- `git diff --check` passou;
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
-  passou.
-
-Ainda pendente neste corte antes de merge:
-
-- `git diff --check`;
-- `npx turbo build`;
-- abrir PR com `Closes #127`;
-- apos merge/deploy, submeter `session_result` para o WorkItem de producao
-  `EUpITeaGxoxp` e marcar como `done`.
+  passou;
+- `npx turbo build` passou;
+- PR `#132` mergeado; issue `#127` CLOSED;
+- CT165 atualizado para `6d722cf`;
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`;
+- `aios-daemon` ativo;
+- `GET https://api.felhen.ai/api/health` -> 200;
+- Cloudflare Pages publicado:
+  `https://07070779.crewdock.pages.dev`;
+- `GET https://07070779.crewdock.pages.dev/company-brain/agent-runs` -> 200;
+- `GET https://ai.felhen.ai/company-brain/agent-runs` com service token -> 200;
+- production readiness endpoint retornou `total=6`, `blocked=6`,
+  `realAgentReady=0`, `realAgentBlocked=2`;
+- session_result de producao artifact `VEYFP0zNVuri` para WorkItem
+  `EUpITeaGxoxp`, com `prLinkRecorded=true` e `guidanceItemsCreated=1`;
+- WorkItem `EUpITeaGxoxp` marcado `done` via status artifact
+  `DnDfQHWI6ntu`.
