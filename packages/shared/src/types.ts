@@ -1104,6 +1104,64 @@ export interface CreateGuidanceItemRequest {
   provenance?: Provenance | null;
 }
 
+export type WorkspacePreparationStatus =
+  | "ready_to_create"
+  | "created"
+  | "reused"
+  | "blocked_dirty"
+  | "blocked_invalid_path"
+  | "blocked_not_allowlisted"
+  | "blocked_safety"
+  | "failed";
+
+export interface WorkspaceLocation {
+  workspaceRoot: string;
+  workspacePath: string;
+  workspaceKey: string;
+  repoSlug: string;
+  branchName: string;
+  baseBranch: string;
+  vcs: "git_worktree" | "git_clone" | "none";
+}
+
+export interface WorkspacePreparationResult {
+  generatedAt: number;
+  agentRunId: string | null;
+  workItemId: string | null;
+  status: WorkspacePreparationStatus;
+  dryRun: boolean;
+  location: WorkspaceLocation;
+  exists: boolean;
+  isDirty: boolean;
+  blockReasons: string[];
+  hookSteps: Array<{ phase: "after_create" | "before_run"; command: string | null; willRun: boolean }>;
+  rationale: string[];
+}
+
+export interface PrepareAgentWorkspaceRequest {
+  agentRunId?: string;
+  workItemId?: string;
+  repo?: string;
+  branchOverride?: string;
+  workspaceRootOverride?: string;
+  baseBranch?: string;
+  dryRun?: boolean;
+  actor?: string | null;
+  rationale?: string | null;
+}
+
+export interface AgentWorkspaceStatusResponse {
+  generatedAt: number;
+  agentRunId: string;
+  workItemId: string | null;
+  exists: boolean;
+  isDirty: boolean;
+  branchName: string | null;
+  workspacePath: string | null;
+  worktreeListed: boolean;
+  rationale: string[];
+}
+
 export type WorkflowTrackerKind = "github" | "linear" | "jira" | "manual";
 
 export interface WorkflowTrackerConfig {

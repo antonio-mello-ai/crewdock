@@ -1,6 +1,8 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
@@ -34,7 +36,12 @@ import type {
   AreaBlueprintRegistry,
   AgentRun,
   AgentRunClaimState,
+  AgentWorkspaceStatusResponse,
+  PrepareAgentWorkspaceRequest,
   PreviewWorkflowLoaderRequest,
+  WorkspaceLocation,
+  WorkspacePreparationResult,
+  WorkspacePreparationStatus,
   WorkflowDefinition,
   WorkflowDefinitionConfig,
   AgentRunEvaluation,
@@ -12252,6 +12259,365 @@ app.post("/agent-runs", async (c) => {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "agent_run_create_failed", message }, 400);
   }
+});
+
+function workspaceAllowlist(): string[] {
+  const raw = process.env.AIOS_AGENT_WORKSPACE_ALLOWLIST ?? "";
+  return raw
+    .split(/[\s,;]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function workspaceWritesEnabled(): boolean {
+  return process.env.AIOS_AGENT_WORKSPACE_ENABLED === "true";
+}
+
+function expandHome(input: string): string {
+  if (input.startsWith("~/")) return resolve(homedir(), input.slice(2));
+  if (input === "~") return homedir();
+  return input;
+}
+
+function sanitizeWorkspaceKey(input: string): string {
+  return input.replace(/[^A-Za-z0-9._-]/g, "_");
+}
+
+function deriveBranchName(workItemKey: string, override?: string | null): string {
+  if (override && override.trim()) return override.trim();
+  return `aios-${sanitizeWorkspaceKey(workItemKey).toLowerCase()}`;
+}
+
+function resolveWorkspaceLocation(args: {
+  repo: string;
+  workItemKey: string;
+  rootOverride?: string;
+  baseBranch?: string;
+  branchOverride?: string;
+  vcs?: WorkspaceLocation["vcs"];
+}): { location: WorkspaceLocation; safetyError: string | null } {
+  const definition = loadWorkflowFromRepoRoot();
+  const root = expandHome(args.rootOverride ?? definition.config.workspace.root);
+  const baseBranch = args.baseBranch ?? definition.config.workspace.baseBranch;
+  const vcs = args.vcs ?? definition.config.workspace.vcs;
+  const repoSlug = sanitizeWorkspaceKey(args.repo);
+  const workspaceKey = sanitizeWorkspaceKey(args.workItemKey);
+  const workspacePath = resolve(root, repoSlug, workspaceKey);
+  const branchName = deriveBranchName(args.workItemKey, args.branchOverride);
+  const rootAbs = resolve(root);
+  const relativePath = relative(rootAbs, workspacePath);
+  if (relativePath.startsWith("..") || relativePath.includes("\0")) {
+    return {
+      location: {
+        workspaceRoot: rootAbs,
+        workspacePath,
+        workspaceKey,
+        repoSlug,
+        branchName,
+        baseBranch,
+        vcs,
+      },
+      safetyError: "computed workspace path escapes workspace root",
+    };
+  }
+  return {
+    location: {
+      workspaceRoot: rootAbs,
+      workspacePath,
+      workspaceKey,
+      repoSlug,
+      branchName,
+      baseBranch,
+      vcs,
+    },
+    safetyError: null,
+  };
+}
+
+function workspaceIsDirty(workspacePath: string): boolean {
+  const result = spawnSync(
+    "git",
+    ["-C", workspacePath, "status", "--porcelain"],
+    { encoding: "utf-8" }
+  );
+  if (result.status !== 0) return false;
+  return Boolean(result.stdout && result.stdout.trim().length > 0);
+}
+
+function workspaceListed(workspacePath: string): boolean {
+  if (!existsSync(workspacePath)) return false;
+  const list = spawnSync("git", ["worktree", "list", "--porcelain"], {
+    cwd: process.cwd(),
+    encoding: "utf-8",
+  });
+  if (list.status !== 0) return false;
+  const stdout = list.stdout ?? "";
+  return stdout.split("\n").some((line) => line.startsWith("worktree ") && line.slice(9).trim() === workspacePath);
+}
+
+function buildWorkspacePreparationResult(args: {
+  agentRunId: string | null;
+  workItemId: string | null;
+  request: PrepareAgentWorkspaceRequest;
+  location: WorkspaceLocation;
+  status: WorkspacePreparationStatus;
+  exists: boolean;
+  isDirty: boolean;
+  blockReasons: string[];
+  rationale: string[];
+  dryRun: boolean;
+}): WorkspacePreparationResult {
+  const definition = loadWorkflowFromRepoRoot();
+  const hookSteps = [
+    {
+      phase: "after_create" as const,
+      command: definition.config.hooks.afterCreate,
+      willRun: !args.dryRun && args.status === "created",
+    },
+    {
+      phase: "before_run" as const,
+      command: definition.config.hooks.beforeRun,
+      willRun:
+        !args.dryRun &&
+        (args.status === "created" || args.status === "reused"),
+    },
+  ];
+  return {
+    generatedAt: now(),
+    agentRunId: args.agentRunId,
+    workItemId: args.workItemId,
+    status: args.status,
+    dryRun: args.dryRun,
+    location: args.location,
+    exists: args.exists,
+    isDirty: args.isDirty,
+    blockReasons: args.blockReasons,
+    hookSteps,
+    rationale: args.rationale,
+  };
+}
+
+app.post("/agent-runs/:id/workspace/prepare", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<PrepareAgentWorkspaceRequest>()
+      .catch(() => ({}))) as PrepareAgentWorkspaceRequest;
+    const dryRun = body.dryRun !== false;
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    const repo = body.repo ?? existing.repo;
+    if (!repo) {
+      return c.json(
+        {
+          error: "validation",
+          message:
+            "agent run has no repo and request did not provide one; cannot derive workspace path",
+        },
+        400
+      );
+    }
+    let workItemKey: string;
+    if (existing.workItemId) {
+      const workItem = db
+        .select()
+        .from(cbWorkItems)
+        .where(eq(cbWorkItems.id, existing.workItemId))
+        .get() as typeof cbWorkItems.$inferSelect | undefined;
+      const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
+      workItemKey = externalIdMatch
+        ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
+        : workItem?.externalId ?? existing.workItemId;
+    } else {
+      workItemKey = existing.id;
+    }
+    const { location, safetyError } = resolveWorkspaceLocation({
+      repo,
+      workItemKey,
+      rootOverride: body.workspaceRootOverride,
+      baseBranch: body.baseBranch,
+      branchOverride: body.branchOverride ?? existing.branch ?? undefined,
+    });
+    const blockReasons: string[] = [];
+    const rationale: string[] = [];
+    if (safetyError) blockReasons.push(safetyError);
+    rationale.push(
+      `Workspace path resolved to ${location.workspacePath} from root ${location.workspaceRoot}.`
+    );
+    rationale.push(`Branch derived as ${location.branchName} from base ${location.baseBranch}.`);
+    const exists = existsSync(location.workspacePath);
+    const isDirty = exists && workspaceIsDirty(location.workspacePath);
+    const allowlist = workspaceAllowlist();
+    if (allowlist.length && !allowlist.includes(repo)) {
+      blockReasons.push(
+        `repo ${repo} is not in AIOS_AGENT_WORKSPACE_ALLOWLIST; v1 only writes when explicitly allowlisted`
+      );
+    }
+    if (!workspaceWritesEnabled()) {
+      rationale.push(
+        "AIOS_AGENT_WORKSPACE_ENABLED is not 'true'; defaulting to dry-run preview without filesystem changes."
+      );
+    }
+    let status: WorkspacePreparationStatus;
+    if (blockReasons.length) {
+      status = blockReasons.some((reason) => reason.includes("escapes workspace root"))
+        ? "blocked_invalid_path"
+        : blockReasons.some((reason) => reason.includes("AIOS_AGENT_WORKSPACE_ALLOWLIST"))
+          ? "blocked_not_allowlisted"
+          : "blocked_safety";
+    } else if (isDirty) {
+      status = "blocked_dirty";
+      blockReasons.push(
+        "existing workspace has uncommitted changes; refuse to clobber without explicit cleanup"
+      );
+    } else if (exists) {
+      status = "reused";
+      rationale.push("Workspace directory already exists and is clean; will be reused.");
+    } else if (dryRun || !workspaceWritesEnabled()) {
+      status = "ready_to_create";
+      rationale.push("Dry-run only; no filesystem changes performed.");
+    } else {
+      try {
+        mkdirSync(location.workspaceRoot, { recursive: true });
+        mkdirSync(resolve(location.workspaceRoot, location.repoSlug), { recursive: true });
+        const args = [
+          "worktree",
+          "add",
+          "-b",
+          location.branchName,
+          location.workspacePath,
+          `origin/${location.baseBranch}`,
+        ];
+        const result = spawnSync("git", args, { encoding: "utf-8" });
+        if (result.status !== 0) {
+          status = "failed";
+          blockReasons.push(
+            `git worktree add failed: ${result.stderr?.trim() || result.stdout?.trim() || "unknown error"}`
+          );
+        } else {
+          status = "created";
+          rationale.push(`git worktree add succeeded; new branch ${location.branchName}.`);
+        }
+      } catch (err) {
+        status = "failed";
+        blockReasons.push(
+          `workspace preparation threw: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+    const refreshedExists = existsSync(location.workspacePath);
+    const refreshedDirty = refreshedExists && workspaceIsDirty(location.workspacePath);
+
+    if (
+      (status === "created" || status === "reused") &&
+      !dryRun &&
+      workspaceWritesEnabled()
+    ) {
+      const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+        actor: body.actor ?? null,
+        event: status === "created" ? "agent_run_workspace_created" : "agent_run_workspace_reused",
+        note: body.rationale ?? null,
+        metadata: {
+          workspacePath: location.workspacePath,
+          branchName: location.branchName,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({
+          workspaceRef: location.workspacePath,
+          branch: location.branchName,
+          repo,
+          auditTrail,
+          updatedAt: now(),
+        } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+    } else if (dryRun || !workspaceWritesEnabled()) {
+      const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+        actor: body.actor ?? null,
+        event: "agent_run_workspace_preview",
+        note: body.rationale ?? null,
+        metadata: {
+          workspacePath: location.workspacePath,
+          branchName: location.branchName,
+          dryRun,
+          writesEnabled: workspaceWritesEnabled(),
+          status,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+    }
+
+    const result = buildWorkspacePreparationResult({
+      agentRunId: id,
+      workItemId: existing.workItemId ?? null,
+      request: body,
+      location,
+      status,
+      exists: refreshedExists,
+      isDirty: refreshedDirty,
+      blockReasons,
+      rationale,
+      dryRun: dryRun || !workspaceWritesEnabled(),
+    });
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "workspace_prepare_failed", message }, 400);
+  }
+});
+
+app.get("/agent-runs/:id/workspace", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const rationale: string[] = [];
+  let exists = false;
+  let isDirty = false;
+  let listed = false;
+  if (run.workspaceRef) {
+    exists = existsSync(run.workspaceRef);
+    if (exists) {
+      isDirty = workspaceIsDirty(run.workspaceRef);
+      listed = workspaceListed(run.workspaceRef);
+      rationale.push(`Workspace exists at ${run.workspaceRef}; dirty=${isDirty}, listed=${listed}.`);
+    } else {
+      rationale.push(
+        `Workspace ref ${run.workspaceRef} not found on disk; daemon may have moved or another host owns the worktree.`
+      );
+    }
+  } else {
+    rationale.push("AgentRun has no workspaceRef yet; call /workspace/prepare to derive one.");
+  }
+  const response: AgentWorkspaceStatusResponse = {
+    generatedAt: now(),
+    agentRunId: id,
+    workItemId: run.workItemId ?? null,
+    exists,
+    isDirty,
+    branchName: run.branch ?? null,
+    workspacePath: run.workspaceRef ?? null,
+    worktreeListed: listed,
+    rationale,
+  };
+  return c.json({ data: response });
 });
 
 app.patch("/agent-runs/:id", async (c) => {
