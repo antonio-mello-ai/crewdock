@@ -80,7 +80,7 @@ Auto-dispatch is **default-off** in production. Opt-in requires the following en
 |---|---|---|---|
 | `AIOS_AGENT_AUTODISPATCH_ENABLED` | boolean string | `true` | Master switch. Unset or anything other than `"true"` keeps auto-dispatch blocked. |
 | `AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST` | CSV of `owner/name` | `antonio-mello-ai/crewdock` | GitHub repo identifiers, **not** filesystem paths. Must include `WORKFLOW.md` `tracker.repo`. |
-| `AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST` | CSV of blueprint ids | `development-blueprint-v0` | Must match `cb_workflow_blueprints.id` exactly. v5 (#95) lets you create blueprints with stable client-supplied ids. |
+| `AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST` | CSV of blueprint ids | `development-blueprint-v0` | Must match `cb_workflow_blueprints.id` exactly. Use `POST /workflow-blueprints` with body `{ "id": "<stable-id>", ... }` to create a blueprint with a stable, allowlist-friendly id (regex `/^[a-z0-9][a-z0-9._-]{1,62}$/`). Omitting `id` falls back to a generated nanoid (legacy behavior). |
 | `AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST` | CSV of `CompanyBrainArea` | `development,platform` | Allowed values: `strategy`, `development`, `operations`, `product`, `marketing`, `sales`, `finance`, `people`, `customer`, `platform`. |
 | `AIOS_AGENT_AUTODISPATCH_REQUIRE_RISK_A` | boolean string | `true` | When `true` (default), only Risk A WorkItems are eligible. Set `false` to allow Risk B with documented rationale. |
 | `AIOS_AGENT_AUTODISPATCH_MAX_CONCURRENCY` | int | `1` | Max active runs at any time across the daemon. Defaults to 1; the loop also enforces single-run-per-tick. |
