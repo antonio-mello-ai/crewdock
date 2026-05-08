@@ -2703,3 +2703,47 @@ SSE/log streaming, workspace per-run, cleanup com `git worktree remove` gated e
 Operating Loop suggester observe-only. Deve parar antes de auto-dispatch amplo,
 novo segredo/permissao, servico pago, writeback externo fora das policies,
 auto-merge/deploy ou cleanup fora do workspace root.
+
+## 2026-05-08 - AIOS Agent Execution v4
+
+Milestone `AIOS Agent Execution v3` foi concluida:
+
+- PRs `#80` a `#83` mergeados;
+- issues `#76` a `#79` fechadas;
+- CT165 daemon `active`;
+- frontend deployado em Cloudflare Pages;
+- `Next Work` em producao voltou a empty state apos fechamento da milestone.
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v4` (GitHub milestone number `7`).
+
+Issues abertas:
+
+- `#84 AIOS-RUN-19: Auto-dispatch governance and eligibility policy v4`;
+- `#85 AIOS-RUN-20: Promote Operating Loop suggestion to queued AgentRun v4`;
+- `#86 AIOS-RUN-21: Operating Loop single-run auto-dispatch v4`;
+- `#87 AIOS-RUN-22: AgentRun reconciliation, stall recovery and tracker refresh v4`;
+- `#88 AIOS-RUN-23: Controlled auto-dispatch dogfood pack v4`.
+
+Direcional da v4: controlled auto-dispatch. O Operating Loop pode, quando
+explicitamente habilitado por env/allowlist/policy, promover uma suggestion
+e iniciar no maximo um AgentRun async por tick. Continua fora de escopo:
+autonomia ampla multi-issue, novos segredos, servicos pagos, writeback fora das
+policies, auto-merge/deploy e cleanup fora do workspace root.
+
+Producao apos sync:
+
+- sync GitHub Issues `state=open` retornou `issuesSeen=5`,
+  `workItemsCreated=5`, `lastIssueNumbers=[88,87,86,85,84]`;
+- `GET /api/company-brain/next-work` recomenda
+  `#84 AIOS-RUN-19: Auto-dispatch governance and eligibility policy v4`
+  com `candidatesConsidered=5`.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#84` primeiro e
+seguir issue-by-issue pela milestone `AIOS Agent Execution v4`. Pode seguir sem
+parar em docs, APIs internas, UI, auto-dispatch policy, suggestion promotion,
+single-run dispatch, reconciliation/stall recovery e dogfood controlado. Deve
+parar antes de broad auto-dispatch, novos segredos/permissoes, servico pago,
+writeback externo fora das policies, auto-merge/deploy ou cleanup fora do
+workspace root.
