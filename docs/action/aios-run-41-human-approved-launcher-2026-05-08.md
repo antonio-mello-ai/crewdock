@@ -97,6 +97,31 @@ remaining listeners.
   passed.
 - `npx turbo build` passed.
 
+## Production Deployment
+
+- PR: `#134`.
+- Merge commit: `2c30742 feat: add human approved agent run launcher`.
+- CT165 daemon/MCP deployed at `2c30742`; `aios-daemon` active.
+- Cloudflare Pages deploy:
+  `https://2832ad3e.crewdock.pages.dev`.
+- Production smoke:
+  - `GET https://api.felhen.ai/api/health` -> `200`;
+  - `POST /api/company-brain/agent-runs/launcher/preview` for WorkItem
+    `v5QSUqfLBFp_`, profile `claude-code-real`, risk `B` returned
+    `canLaunch=false`, policy `blocked_workspace`;
+  - `POST /api/company-brain/agent-runs/launcher/launch` with the same payload
+    returned HTTP `400`, outcome `blocked`, `agentRun=null`;
+  - canonical UI `https://ai.felhen.ai/company-brain/agent-runs` -> `200`;
+  - deployed preview `https://2832ad3e.crewdock.pages.dev/company-brain/agent-runs`
+    -> `200`.
+- Production Company Brain reconciliation:
+  - session result artifact `akKlhzF2L0k5`;
+  - WorkItem `v5QSUqfLBFp_` marked `done`;
+  - internal status artifact `esh50QzgqWje`;
+  - GitHub Issues sync `state=open` returned `issuesSeen=2`;
+  - Next Work now recommends `#130 AIOS-RUN-42` with WorkItem
+    `Qmr3m7dFDNss`.
+
 ## Constraints
 
 - No customer repo added.

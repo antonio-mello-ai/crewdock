@@ -3373,15 +3373,28 @@ Dogfood local:
   `allowed_real_execution`, AgentRun `TB4bszD1e6qX` criado em `queued`, sem
   subprocess execution.
 
-Validacao parcial:
+Validacao:
 
 - `git diff --check` passou;
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
   passou.
 - `npx turbo build` passou.
 
-Ainda pendente neste corte:
+Fechamento:
 
-- abrir PR com `Closes #129`;
-- merge/deploy;
-- session_result para WorkItem `v5QSUqfLBFp_` e status `done`.
+- PR `#134` mergeado em `main` no commit `2c30742`;
+- CT165 daemon/MCP deployado em `2c30742`, `aios-daemon` ativo;
+- Cloudflare Pages deployado em `https://2832ad3e.crewdock.pages.dev`;
+- `GET https://api.felhen.ai/api/health` -> `200`;
+- production launcher preview para WorkItem `v5QSUqfLBFp_`, profile
+  `claude-code-real`, risk `B`: `canLaunch=false`, policy
+  `blocked_workspace`;
+- production launcher launch com o mesmo payload retornou HTTP `400`, outcome
+  `blocked`, `agentRun=null`;
+- UI canonica `https://ai.felhen.ai/company-brain/agent-runs` -> `200`;
+- session_result de producao artifact `akKlhzF2L0k5`;
+- WorkItem `v5QSUqfLBFp_` marcado `done` via status artifact
+  `esh50QzgqWje`;
+- sync GitHub Issues `state=open` retornou `issuesSeen=2`;
+- `Next Work` agora recomenda `#130 AIOS-RUN-42` com WorkItem
+  `Qmr3m7dFDNss`.
