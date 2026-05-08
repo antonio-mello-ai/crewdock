@@ -1579,6 +1579,10 @@ export interface AgentRun {
   riskClass: RiskClass;
   actionPolicy: ActionPolicy;
   visibility: Visibility;
+  pid: number | null;
+  executionRef: string | null;
+  lastLogAt: number | null;
+  lastLogLineCount: number | null;
   metadata: Record<string, unknown> | null;
   auditTrail: Array<{
     at: number;

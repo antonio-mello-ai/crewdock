@@ -1006,6 +1006,23 @@ export function getDb() {
       );
     }
 
+    const agentRunCols = sqlite.prepare("PRAGMA table_info(cb_agent_runs)").all() as Array<{
+      name: string;
+    }>;
+    const agentRunColNames = new Set(agentRunCols.map((c) => c.name));
+    if (!agentRunColNames.has("pid")) {
+      sqlite.exec("ALTER TABLE cb_agent_runs ADD COLUMN pid INTEGER");
+    }
+    if (!agentRunColNames.has("execution_ref")) {
+      sqlite.exec("ALTER TABLE cb_agent_runs ADD COLUMN execution_ref TEXT");
+    }
+    if (!agentRunColNames.has("last_log_at")) {
+      sqlite.exec("ALTER TABLE cb_agent_runs ADD COLUMN last_log_at INTEGER");
+    }
+    if (!agentRunColNames.has("last_log_line_count")) {
+      sqlite.exec("ALTER TABLE cb_agent_runs ADD COLUMN last_log_line_count INTEGER");
+    }
+
     const guidanceCols = sqlite.prepare("PRAGMA table_info(cb_guidance_items)").all() as Array<{
       name: string;
     }>;

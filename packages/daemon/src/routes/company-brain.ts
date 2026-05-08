@@ -1,10 +1,15 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
 import {
+  appendFileSync,
+  closeSync,
+  createWriteStream,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
@@ -13,6 +18,7 @@ import {
 import { homedir } from "node:os";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
@@ -12031,6 +12037,10 @@ function rowToAgentRun(row: typeof cbAgentRuns.$inferSelect): AgentRun {
     riskClass: row.riskClass,
     actionPolicy: row.actionPolicy,
     visibility: row.visibility,
+    pid: row.pid ?? null,
+    executionRef: row.executionRef ?? null,
+    lastLogAt: row.lastLogAt ?? null,
+    lastLogLineCount: row.lastLogLineCount ?? null,
     metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     auditTrail: row.auditTrail ?? [],
     provenance: (row.provenance as Provenance | null) ?? null,
@@ -13158,6 +13168,457 @@ function trimForPreview(input: string, maxBytes = 1024): string {
   return `${buf.subarray(0, maxBytes).toString("utf8")}\n[... truncated, total ${buf.byteLength} bytes ...]`;
 }
 
+interface AgentRunProcessEntry {
+  child: ChildProcess;
+  startedAt: number;
+  logPath: string;
+  workspacePath: string;
+  branchName: string;
+  command: string;
+  args: string[];
+  promptRendered: string;
+  envAllowedKeys: string[];
+  envRedactedKeys: string[];
+  policyDecision: RunnerPolicyDecision;
+  body: ExecuteAgentRunRequest;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  agentRunId: string;
+}
+
+const agentRunProcesses = new Map<string, AgentRunProcessEntry>();
+
+function recordAgentRunHeartbeat(id: string, lineDelta: number) {
+  const db = getDb();
+  const existing = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!existing) return;
+  const newCount = (existing.lastLogLineCount ?? 0) + lineDelta;
+  db.update(cbAgentRuns)
+    .set({
+      lastLogAt: now(),
+      lastLogLineCount: newCount,
+      updatedAt: now(),
+    } as never)
+    .where(eq(cbAgentRuns.id, id))
+    .run();
+}
+
+async function performAgentRunSessionResultIntake(args: {
+  agentRunId: string;
+  workItemId: string | null;
+  workflowRunId: string | null;
+  workspacePath: string;
+  branchName: string;
+  startedAt: number;
+  finishedAt: number;
+  outcome: RunnerExecutionOutcome;
+  exitCode: number | null;
+  errorSummary: string | null;
+  stdoutText: string;
+  stderrText: string;
+  durationMs: number;
+  actor: string;
+}): Promise<{
+  sessionResultArtifactId: string | null;
+  sessionResultSource: "structured_file" | "fallback_stdout" | "skipped" | null;
+}> {
+  const db = getDb();
+  const aiosRunDir = resolve(args.workspacePath, ".aios-run");
+  let intakeBody: SubmitSessionResultRequest | null = null;
+  let source: "structured_file" | "fallback_stdout" | "skipped" | null = null;
+  const structuredPath = resolve(aiosRunDir, "session-result.json");
+  if (existsSync(structuredPath)) {
+    try {
+      const parsed = JSON.parse(
+        readFileSync(structuredPath, "utf-8")
+      ) as Partial<SubmitSessionResultRequest>;
+      intakeBody = {
+        workItemId: parsed.workItemId ?? args.workItemId ?? undefined,
+        externalIssueRef: parsed.externalIssueRef,
+        workflowRunId: parsed.workflowRunId ?? args.workflowRunId ?? undefined,
+        runnerType: parsed.runnerType ?? "claude_code",
+        outcome:
+          parsed.outcome ??
+          (args.outcome === "completed"
+            ? "completed"
+            : args.outcome === "timed_out"
+              ? "blocked"
+              : "failed"),
+        summary:
+          parsed.summary ??
+          `Agent run ${args.agentRunId} ended with outcome=${args.outcome} (exit=${args.exitCode ?? "null"})`,
+        detail: parsed.detail,
+        branch: parsed.branch ?? args.branchName,
+        prUrl: parsed.prUrl,
+        workspaceRef: parsed.workspaceRef ?? args.workspacePath,
+        commits: parsed.commits,
+        changedFiles: parsed.changedFiles,
+        validations: parsed.validations,
+        blockers: parsed.blockers,
+        nextSteps: parsed.nextSteps,
+        startedAt: parsed.startedAt ?? args.startedAt,
+        finishedAt: parsed.finishedAt ?? args.finishedAt,
+        tokensInput: parsed.tokensInput,
+        tokensOutput: parsed.tokensOutput,
+        tokensTotal: parsed.tokensTotal,
+        costUsd: parsed.costUsd,
+        agentSessionId: parsed.agentSessionId,
+        agentThreadId: parsed.agentThreadId,
+        area: parsed.area ?? "development",
+        visibility: parsed.visibility ?? "internal",
+        actor: parsed.actor ?? args.actor,
+      };
+      source = "structured_file";
+    } catch {
+      intakeBody = null;
+    }
+  }
+  if (!intakeBody) {
+    const fallbackOutcome: SessionResultOutcome =
+      args.outcome === "completed"
+        ? "completed"
+        : args.outcome === "timed_out"
+          ? "blocked"
+          : "failed";
+    const stdoutSnippet = args.stdoutText.trim().split(/\r?\n/).slice(-3).join(" | ");
+    const stderrSnippet = args.stderrText.trim().split(/\r?\n/).slice(-3).join(" | ");
+    const fallbackBlockers =
+      fallbackOutcome === "failed" || fallbackOutcome === "blocked"
+        ? [
+            {
+              kind: args.outcome,
+              description:
+                args.errorSummary ??
+                stderrSnippet ??
+                `Agent run ended with outcome=${args.outcome}`,
+              severity:
+                args.outcome === "timed_out"
+                  ? ("warn" as const)
+                  : ("critical" as const),
+            },
+          ]
+        : undefined;
+    intakeBody = {
+      workItemId: args.workItemId ?? undefined,
+      workflowRunId: args.workflowRunId ?? undefined,
+      runnerType: "claude_code",
+      outcome: fallbackOutcome,
+      summary:
+        fallbackOutcome === "completed"
+          ? `Agent run ${args.agentRunId} completed (exit=${args.exitCode ?? "null"}, ${args.durationMs}ms). ${stdoutSnippet || "(no stdout)"}`.slice(0, 480)
+          : `Agent run ${args.agentRunId} ended outcome=${args.outcome} (exit=${args.exitCode ?? "null"}). ${args.errorSummary ?? stderrSnippet ?? "(no error summary)"}`.slice(0, 480),
+      detail:
+        args.stdoutText || args.stderrText
+          ? `# stdout\n${trimForPreview(args.stdoutText, 2048)}\n\n# stderr\n${trimForPreview(args.stderrText, 2048)}`
+          : undefined,
+      branch: args.branchName,
+      workspaceRef: args.workspacePath,
+      blockers: fallbackBlockers,
+      startedAt: args.startedAt,
+      finishedAt: args.finishedAt,
+      area: "development",
+      actor: args.actor,
+    };
+    source = "fallback_stdout";
+  }
+  try {
+    const intakeResponse = await app.request("/session-results", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(intakeBody),
+    });
+    if (intakeResponse.ok) {
+      const intakeJson = (await intakeResponse.json()) as {
+        data?: SubmitSessionResultResponse;
+      };
+      if (intakeJson.data?.artifact?.id) {
+        const existing = db
+          .select()
+          .from(cbAgentRuns)
+          .where(eq(cbAgentRuns.id, args.agentRunId))
+          .get() as typeof cbAgentRuns.$inferSelect | undefined;
+        if (existing) {
+          const trail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+            actor: args.actor,
+            event: "agent_run_session_result_intake",
+            note: `source=${source}`,
+            metadata: {
+              artifactId: intakeJson.data.artifact.id,
+              source,
+              signalsCreated: intakeJson.data.signalsCreated?.length ?? 0,
+              guidanceItemsCreated: intakeJson.data.guidanceItemsCreated?.length ?? 0,
+            },
+          });
+          db.update(cbAgentRuns)
+            .set({ auditTrail: trail, updatedAt: now() } as never)
+            .where(eq(cbAgentRuns.id, args.agentRunId))
+            .run();
+        }
+        return {
+          sessionResultArtifactId: intakeJson.data.artifact.id,
+          sessionResultSource: source,
+        };
+      }
+    } else {
+      source = "skipped";
+    }
+  } catch {
+    source = "skipped";
+  }
+  return { sessionResultArtifactId: null, sessionResultSource: source ?? "skipped" };
+}
+
+function startAgentRunSubprocess(entry: Omit<AgentRunProcessEntry, "child" | "startedAt"> & {
+  cwd: string;
+  envMap: NodeJS.ProcessEnv;
+  timeoutMs: number;
+}): { child: ChildProcess; startedAt: number; pid: number | null } {
+  const startedAt = now();
+  const child = spawn(entry.command, entry.args, {
+    cwd: entry.cwd,
+    env: entry.envMap,
+    stdio: ["pipe", "pipe", "pipe"],
+    detached: false,
+  });
+  agentRunProcesses.set(entry.agentRunId, {
+    child,
+    startedAt,
+    logPath: entry.logPath,
+    workspacePath: entry.workspacePath,
+    branchName: entry.branchName,
+    command: entry.command,
+    args: entry.args,
+    promptRendered: entry.promptRendered,
+    envAllowedKeys: entry.envAllowedKeys,
+    envRedactedKeys: entry.envRedactedKeys,
+    policyDecision: entry.policyDecision,
+    body: entry.body,
+    workItemId: entry.workItemId,
+    workflowRunId: entry.workflowRunId,
+    agentRunId: entry.agentRunId,
+  });
+
+  const headerLines = [
+    `# AIOS AgentRun ${entry.agentRunId} log`,
+    `# command: ${entry.command} ${entry.args.join(" ")}`,
+    `# startedAt: ${new Date(startedAt).toISOString()}`,
+    `# pid: ${child.pid ?? "(none)"}`,
+    `# async_spawn: true`,
+    "",
+    "## stream",
+    "",
+  ];
+  try {
+    appendFileSync(entry.logPath, headerLines.join("\n"));
+  } catch {
+    // best-effort
+  }
+
+  const logStream = createWriteStream(entry.logPath, { flags: "a" });
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  child.stdout?.on("data", (chunk: Buffer) => {
+    stdoutBytes += chunk.length;
+    logStream.write(chunk);
+    const lines = chunk.toString("utf-8").split(/\r?\n/).filter((l) => l.length > 0).length;
+    recordAgentRunHeartbeat(entry.agentRunId, lines);
+  });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    stderrBytes += chunk.length;
+    logStream.write(`STDERR: `);
+    logStream.write(chunk);
+    const lines = chunk.toString("utf-8").split(/\r?\n/).filter((l) => l.length > 0).length;
+    recordAgentRunHeartbeat(entry.agentRunId, lines);
+  });
+  child.stdout?.on("end", () => {
+    logStream.write("\n");
+  });
+
+  if (entry.promptRendered) {
+    try {
+      child.stdin?.write(entry.promptRendered);
+      child.stdin?.end();
+    } catch {
+      // some commands close stdin early
+    }
+  }
+
+  const timeoutHandle = entry.timeoutMs > 0
+    ? setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGTERM");
+          setTimeout(() => {
+            if (!child.killed) child.kill("SIGKILL");
+          }, 5000).unref();
+        }
+      }, entry.timeoutMs).unref()
+    : null;
+
+  child.on("exit", async (exitCode, signal) => {
+    if (timeoutHandle) clearTimeout(timeoutHandle as unknown as NodeJS.Timeout);
+    const finishedAt = now();
+    const durationMs = finishedAt - startedAt;
+    let outcome: RunnerExecutionOutcome = "completed";
+    let errorSummary: string | null = null;
+    let finalStatus: AgentRunStatus = "completed";
+    if (signal === "SIGTERM" || signal === "SIGKILL") {
+      const cancelled = signal === "SIGTERM" || signal === "SIGKILL";
+      // signal can be from cancel or timeout
+      // we'll let cancel handler decide; here we just mark accordingly
+      outcome = "timed_out";
+      errorSummary = `subprocess terminated by signal ${signal}`;
+      finalStatus = cancelled ? "failed" : "failed";
+      // If cancel handler already set status=cancelled, do not override
+      const current = getDb()
+        .select()
+        .from(cbAgentRuns)
+        .where(eq(cbAgentRuns.id, entry.agentRunId))
+        .get() as typeof cbAgentRuns.$inferSelect | undefined;
+      if (current?.status === "cancelled") {
+        finalStatus = "cancelled";
+        outcome = "failed";
+      }
+    } else if (exitCode === 0) {
+      outcome = "completed";
+      finalStatus = "completed";
+    } else {
+      outcome = "failed";
+      errorSummary = `non-zero exit code ${exitCode}`;
+      finalStatus = "failed";
+    }
+
+    const stdoutBytesFinal = stdoutBytes;
+    const stderrBytesFinal = stderrBytes;
+    const finalLogPath = entry.logPath;
+
+    const footerLines = [
+      "",
+      `## exit`,
+      `# exitCode: ${exitCode}`,
+      `# signal: ${signal ?? "(none)"}`,
+      `# finishedAt: ${new Date(finishedAt).toISOString()}`,
+      `# durationMs: ${durationMs}`,
+      `# stdoutBytes: ${stdoutBytesFinal}`,
+      `# stderrBytes: ${stderrBytesFinal}`,
+      `# outcome: ${outcome}`,
+      "",
+    ];
+    logStream.write(footerLines.join("\n"));
+    logStream.end();
+
+    const db = getDb();
+    const before = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, entry.agentRunId))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (before && before.status !== "cancelled") {
+      const trail = appendAgentRunAuditEntry(before.auditTrail ?? [], {
+        actor: entry.body.actor,
+        event:
+          outcome === "completed"
+            ? "agent_run_real_execution_completed"
+            : outcome === "timed_out"
+              ? "agent_run_real_execution_timed_out"
+              : "agent_run_real_execution_failed",
+        note: errorSummary,
+        metadata: {
+          exitCode,
+          signal,
+          durationMs,
+          stdoutBytes: stdoutBytesFinal,
+          stderrBytes: stderrBytesFinal,
+          logPath: finalLogPath,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({
+          status: finalStatus,
+          claimState: "released",
+          finishedAt,
+          errorSummary,
+          auditTrail: trail,
+          updatedAt: finishedAt,
+        } as never)
+        .where(eq(cbAgentRuns.id, entry.agentRunId))
+        .run();
+    }
+    agentRunProcesses.delete(entry.agentRunId);
+
+    // Read final stdout/stderr from log for intake
+    let stdoutText = "";
+    let stderrText = "";
+    try {
+      const content = readFileSync(finalLogPath, "utf-8");
+      stdoutText = content; // simplified: use full content for intake summary
+      stderrText = "";
+    } catch {
+      // ignore
+    }
+
+    try {
+      await performAgentRunSessionResultIntake({
+        agentRunId: entry.agentRunId,
+        workItemId: entry.workItemId,
+        workflowRunId: entry.workflowRunId,
+        workspacePath: entry.workspacePath,
+        branchName: entry.branchName,
+        startedAt,
+        finishedAt,
+        outcome,
+        exitCode,
+        errorSummary,
+        stdoutText,
+        stderrText,
+        durationMs,
+        actor: entry.body.actor,
+      });
+    } catch {
+      // intake failure logged inside helper
+    }
+  });
+
+  child.on("error", (err) => {
+    const finishedAt = now();
+    const trail = appendAgentRunAuditEntry([], {
+      actor: entry.body.actor,
+      event: "agent_run_real_execution_spawn_error",
+      note: err.message,
+    });
+    const db = getDb();
+    const before = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, entry.agentRunId))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (before) {
+      const merged = appendAgentRunAuditEntry(before.auditTrail ?? trail, {
+        actor: entry.body.actor,
+        event: "agent_run_real_execution_spawn_error",
+        note: err.message,
+      });
+      db.update(cbAgentRuns)
+        .set({
+          status: "failed",
+          claimState: "released",
+          finishedAt,
+          errorSummary: `spawn error: ${err.message}`,
+          auditTrail: merged,
+          updatedAt: finishedAt,
+        } as never)
+        .where(eq(cbAgentRuns.id, entry.agentRunId))
+        .run();
+    }
+    agentRunProcesses.delete(entry.agentRunId);
+  });
+
+  return { child, startedAt, pid: child.pid ?? null };
+}
+
 app.post("/agent-runs/:id/execute", async (c) => {
   try {
     const db = getDb();
@@ -13591,6 +14052,314 @@ app.post("/agent-runs/:id/execute", async (c) => {
   }
 });
 
+app.post("/agent-runs/:id/execute-async", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteAgentRunRequest>()
+      .catch(() => ({}))) as ExecuteAgentRunRequest;
+    if (!body.actor || !body.actor.trim()) {
+      return c.json({ error: "validation", message: "actor is required" }, 400);
+    }
+    if (!body.rationale || !body.rationale.trim()) {
+      return c.json({ error: "validation", message: "rationale is required" }, 400);
+    }
+    if (agentRunProcesses.has(id)) {
+      return c.json(
+        {
+          error: "validation",
+          message: `agent run ${id} already has a running async subprocess`,
+        },
+        409
+      );
+    }
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+
+    const policy = evaluateRunnerPolicy({
+      agentRun: existing,
+      request: {
+        actor: body.actor,
+        rationale: body.rationale,
+        intent: "real_execution",
+        commandOverride: body.commandOverride,
+      },
+    });
+    if (!policy.realExecutionAllowed) {
+      const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+        actor: body.actor,
+        event: "agent_run_real_execution_blocked",
+        note: body.rationale,
+        metadata: {
+          decision: policy.decision,
+          blockReasons: policy.blockReasons,
+          async: true,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+      const blockedResponse: ExecuteAgentRunResponse = {
+        generatedAt: now(),
+        agentRunId: id,
+        outcome: "blocked_by_policy",
+        status: existing.status,
+        exitCode: null,
+        signal: null,
+        durationMs: 0,
+        command: policy.workflowSummary.command,
+        args: policy.workflowSummary.args,
+        workspacePath: policy.workspaceSummary.workspacePath || null,
+        branchName: policy.workspaceSummary.branchName || null,
+        promptRendered: "",
+        envAllowedKeys: policy.subprocessEnv.allowedKeys,
+        envRedactedKeys: policy.subprocessEnv.redactedKeys,
+        logSummary: {
+          logPath: null,
+          stdoutPreview: "",
+          stderrPreview: "",
+          byteCountStdout: 0,
+          byteCountStderr: 0,
+        },
+        policyDecision: policy.decision,
+        blockReasons: policy.blockReasons,
+        errorSummary: `policy decision=${policy.decision}; reasons=${policy.blockReasons.join(", ")}`,
+        realExecutionPerformed: false,
+        sessionResultArtifactId: null,
+        sessionResultSource: "skipped",
+      };
+      return c.json({ data: blockedResponse }, 400);
+    }
+
+    const workflow = loadWorkflowFromRepoRoot();
+    const repo = existing.repo ?? workflow.config.tracker.repo!;
+    const workItem = existing.workItemId
+      ? (db
+          .select()
+          .from(cbWorkItems)
+          .where(eq(cbWorkItems.id, existing.workItemId))
+          .get() as typeof cbWorkItems.$inferSelect | undefined)
+      : undefined;
+    const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
+    const workItemKey = externalIdMatch
+      ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
+      : workItem?.externalId ?? existing.workItemId ?? existing.id;
+    const { location } = resolveWorkspaceLocation({ repo, workItemKey });
+    if (!existsSync(location.workspacePath)) {
+      mkdirSync(location.workspacePath, { recursive: true });
+    }
+    const aiosRunDir = resolve(location.workspacePath, ".aios-run");
+    if (!existsSync(aiosRunDir)) {
+      mkdirSync(aiosRunDir, { recursive: true });
+    }
+    const logPath = resolve(aiosRunDir, `${id}.log`);
+
+    const promptRendered = renderPromptTemplate(
+      body.promptOverride ?? workflow.promptTemplate,
+      {
+        workItem: workItem ?? null,
+        agentRun: existing,
+        branchName: location.branchName,
+      }
+    );
+
+    const command = body.commandOverride ?? workflow.config.agent.command;
+    const argsRaw = body.argsOverride ?? workflow.config.agent.args;
+    const args = argsRaw.map((arg) => arg.replace(/\$\{prompt\}/g, promptRendered));
+    const subprocessEnv = buildSubprocessEnv(policy.subprocessEnv);
+    subprocessEnv.AIOS_BRANCH_NAME = location.branchName;
+    subprocessEnv.AIOS_WORKSPACE_PATH = location.workspacePath;
+    subprocessEnv.AIOS_WORK_ITEM_ID = existing.workItemId ?? "";
+    subprocessEnv.AIOS_REPO = repo;
+
+    const timeoutMs =
+      body.timeoutMsOverride && body.timeoutMsOverride > 0
+        ? body.timeoutMsOverride
+        : workflow.config.codex.turnTimeoutMs;
+
+    let auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+      actor: body.actor,
+      event: "agent_run_real_execution_async_started",
+      note: body.rationale,
+      metadata: {
+        command,
+        args,
+        workspacePath: location.workspacePath,
+        envAllowedKeys: policy.subprocessEnv.allowedKeys,
+      },
+    });
+    const startedAt = now();
+    db.update(cbAgentRuns)
+      .set({
+        status: "running",
+        claimState: "running",
+        startedAt,
+        attempt: (existing.attempt ?? 0) + 1,
+        repo,
+        branch: location.branchName,
+        workspaceRef: location.workspacePath,
+        auditTrail,
+        updatedAt: startedAt,
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+
+    const { child, pid } = startAgentRunSubprocess({
+      cwd: location.workspacePath,
+      envMap: subprocessEnv,
+      timeoutMs,
+      logPath,
+      workspacePath: location.workspacePath,
+      branchName: location.branchName,
+      command,
+      args,
+      promptRendered,
+      envAllowedKeys: policy.subprocessEnv.allowedKeys,
+      envRedactedKeys: policy.subprocessEnv.redactedKeys,
+      policyDecision: policy.decision,
+      body,
+      workItemId: existing.workItemId ?? null,
+      workflowRunId: existing.workflowRunId ?? null,
+      agentRunId: id,
+    });
+    void child;
+
+    const executionRef = `pid:${pid ?? "(unknown)"}@${new Date(startedAt).toISOString()}`;
+    auditTrail = appendAgentRunAuditEntry(auditTrail, {
+      actor: body.actor,
+      event: "agent_run_async_pid_recorded",
+      note: null,
+      metadata: { pid, executionRef },
+    });
+    db.update(cbAgentRuns)
+      .set({
+        pid: pid ?? null,
+        executionRef,
+        lastLogAt: startedAt,
+        lastLogLineCount: 0,
+        auditTrail,
+        updatedAt: now(),
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+
+    const response: ExecuteAgentRunResponse = {
+      generatedAt: now(),
+      agentRunId: id,
+      outcome: "completed", // optimistic placeholder; client should poll status
+      status: "running",
+      exitCode: null,
+      signal: null,
+      durationMs: 0,
+      command,
+      args,
+      workspacePath: location.workspacePath,
+      branchName: location.branchName,
+      promptRendered,
+      envAllowedKeys: policy.subprocessEnv.allowedKeys,
+      envRedactedKeys: policy.subprocessEnv.redactedKeys,
+      logSummary: {
+        logPath,
+        stdoutPreview: "",
+        stderrPreview: "",
+        byteCountStdout: 0,
+        byteCountStderr: 0,
+      },
+      policyDecision: policy.decision,
+      blockReasons: [],
+      errorSummary: null,
+      realExecutionPerformed: true,
+      sessionResultArtifactId: null,
+      sessionResultSource: null,
+    };
+    const asyncResponse = {
+      ...response,
+      async: true,
+      pid,
+      executionRef,
+    };
+    return c.json({ data: asyncResponse });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_async_execution_failed", message }, 400);
+  }
+});
+
+app.get("/agent-runs/:id/logs/stream", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const logPath = run.workspaceRef
+    ? resolve(run.workspaceRef, ".aios-run", `${id}.log`)
+    : null;
+  return streamSSE(c, async (stream) => {
+    let lastSize = 0;
+    let ticks = 0;
+    const maxTicks = 1200; // ~10 minutes at 500ms per tick
+    while (ticks < maxTicks) {
+      ticks += 1;
+      const current = db
+        .select()
+        .from(cbAgentRuns)
+        .where(eq(cbAgentRuns.id, id))
+        .get() as typeof cbAgentRuns.$inferSelect | undefined;
+      const isTerminal =
+        !!current && AGENT_RUN_TERMINAL_STATUSES.includes(current.status);
+      if (logPath && existsSync(logPath)) {
+        const stat = statSync(logPath);
+        if (stat.size > lastSize) {
+          const fd = openSync(logPath, "r");
+          try {
+            const len = stat.size - lastSize;
+            const buf = Buffer.alloc(len);
+            readSync(fd, buf, 0, len, lastSize);
+            await stream.writeSSE({
+              event: "chunk",
+              data: buf.toString("utf-8"),
+            });
+            lastSize = stat.size;
+          } finally {
+            closeSync(fd);
+          }
+        }
+      }
+      if (isTerminal) {
+        await stream.writeSSE({
+          event: "done",
+          data: JSON.stringify({
+            status: current?.status,
+            exitCode: current?.errorSummary
+              ? null
+              : 0,
+            errorSummary: current?.errorSummary ?? null,
+          }),
+        });
+        return;
+      }
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    await stream.writeSSE({
+      event: "timeout",
+      data: "stream timed out after 10 minutes",
+    });
+  });
+});
+
 const AGENT_RUN_HEARTBEAT_STALE_MS = 5 * 60 * 1000;
 const AGENT_RUN_TIMEOUT_DEFAULT_MS = 60 * 60 * 1000;
 
@@ -13688,11 +14457,35 @@ app.post("/agent-runs/:id/cancel", async (c) => {
       return c.json({ data: noopResponse });
     }
     const timestamp = now();
+    const procEntry = agentRunProcesses.get(id);
+    let signalSent: NodeJS.Signals | null = null;
+    if (procEntry && !procEntry.child.killed && procEntry.child.pid) {
+      try {
+        procEntry.child.kill("SIGTERM");
+        signalSent = "SIGTERM";
+        // Schedule SIGKILL fallback if still alive after 5s
+        setTimeout(() => {
+          if (!procEntry.child.killed) {
+            try {
+              procEntry.child.kill("SIGKILL");
+            } catch {
+              // best-effort
+            }
+          }
+        }, 5000).unref();
+      } catch {
+        signalSent = null;
+      }
+    }
     const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
       actor: body.actor,
       event: "agent_run_cancelled",
       note: body.rationale,
-      metadata: { previousStatus },
+      metadata: {
+        previousStatus,
+        signalSent,
+        pid: procEntry?.child.pid ?? existing.pid ?? null,
+      },
       at: timestamp,
     });
     db.update(cbAgentRuns)
@@ -13714,7 +14507,9 @@ app.post("/agent-runs/:id/cancel", async (c) => {
       claimState: "released",
       cancelled: true,
       noop: false,
-      reason: `cancelled by ${body.actor}`,
+      reason: signalSent
+        ? `cancelled by ${body.actor}; ${signalSent} sent to pid ${procEntry?.child.pid}`
+        : `cancelled by ${body.actor}`,
     };
     return c.json({ data: response });
   } catch (err) {

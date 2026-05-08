@@ -736,6 +736,10 @@ export const cbAgentRuns = sqliteTable("cb_agent_runs", {
     .notNull()
     .default("observe_only"),
   visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  pid: integer("pid", { mode: "number" }),
+  executionRef: text("execution_ref"),
+  lastLogAt: integer("last_log_at", { mode: "number" }),
+  lastLogLineCount: integer("last_log_line_count", { mode: "number" }),
   metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown> | null>(),
   auditTrail: text("audit_trail", { mode: "json" })
     .$type<
