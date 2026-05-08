@@ -2168,6 +2168,31 @@ server.registerTool(
 );
 
 server.registerTool(
+  "evaluate_company_brain_agent_run_runner_policy",
+  {
+    title: "Evaluate Company Brain agent runner policy",
+    description:
+      "Read-only policy evaluator that returns whether real supervised execution is allowed for an AgentRun. Walks 10 gates: workflow_valid, repo_present, risk_class (Risk C blocked, unknown blocks real execution), workspace_safe, workspace_allowlist (real execution requires AIOS_AGENT_WORKSPACE_ALLOWLIST), runner_enabled (AIOS_AGENT_RUNNER_ENABLED), repo_allowlist (AIOS_AGENT_RUNNER_REPO_ALLOWLIST), command_allowlist (AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST), actor_present + rationale_present, concurrency_cap (against agent.max_concurrent_agents), lifecycle_state (terminal blocked). Returns the canonical decision (blocked_by_default / blocked_risk / blocked_workflow / blocked_workspace / blocked_actor / blocked_command / blocked_writeback / allowed_dry_run_only / allowed_real_execution), satisfied/failed gates and the subprocess env plan (which writeback secrets stay redacted). Appends an agent_run_policy_evaluated audit entry. Dry-run by default; real execution requires intent=real_execution and the gates to pass.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+      intent: z.enum(["dry_run", "real_execution"]).optional(),
+      workspaceRootOverride: z.string().optional(),
+      allowGithubTokenOverride: z.boolean().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/policy/evaluate`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_agent_run_dry_run",
   {
     title: "Execute a Company Brain agent run in dry-run mode",

@@ -41,8 +41,13 @@ import type {
   AgentRunDryRunRetryPlan,
   AgentWorkspaceStatusResponse,
   DryRunExecuteAgentRunRequest,
+  EvaluateRunnerPolicyRequest,
   PrepareAgentWorkspaceRequest,
   PreviewWorkflowLoaderRequest,
+  RunnerExecutionPolicy,
+  RunnerPolicyDecision,
+  RunnerPolicyGate,
+  RunnerSubprocessEnvPlan,
   WorkspaceLocation,
   WorkspacePreparationResult,
   WorkspacePreparationStatus,
@@ -12515,6 +12520,579 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "workspace_prepare_failed", message }, 400);
+  }
+});
+
+function runnerEnabled(): boolean {
+  return process.env.AIOS_AGENT_RUNNER_ENABLED === "true";
+}
+
+function runnerRepoAllowlist(): string[] {
+  return (process.env.AIOS_AGENT_RUNNER_REPO_ALLOWLIST ?? "")
+    .split(/[\s,;]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function runnerCommandAllowlist(): string[] {
+  const raw = process.env.AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST;
+  if (raw === undefined || raw === null) {
+    return ["claude", "codex", "echo", "true"];
+  }
+  return raw
+    .split(/[\s,;]+/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function runnerAllowGithubToken(): boolean {
+  return process.env.AIOS_AGENT_RUNNER_ALLOW_GITHUB_TOKEN === "true";
+}
+
+function runnerAllowSlackToken(): boolean {
+  return process.env.AIOS_AGENT_RUNNER_ALLOW_SLACK_TOKEN === "true";
+}
+
+const RUNNER_DEFAULT_REDACTED_KEYS = [
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "SLACK_BOT_TOKEN",
+  "SLACK_WEBHOOK_URL",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "CF_ACCESS_CLIENT_SECRET",
+  "CF_ACCESS_CLIENT_ID",
+  "CLOUDFLARE_API_TOKEN",
+  "ASAAS_API_KEY",
+  "STRIPE_SECRET_KEY",
+];
+
+function buildRunnerSubprocessEnvPlan(args: {
+  allowGithubToken: boolean;
+  allowSlackToken: boolean;
+}): RunnerSubprocessEnvPlan {
+  const redacted: string[] = [];
+  for (const key of RUNNER_DEFAULT_REDACTED_KEYS) {
+    if (key === "GITHUB_TOKEN" || key === "GH_TOKEN") {
+      if (args.allowGithubToken) continue;
+      redacted.push(key);
+      continue;
+    }
+    if (key === "SLACK_BOT_TOKEN" || key === "SLACK_WEBHOOK_URL") {
+      if (args.allowSlackToken) continue;
+      redacted.push(key);
+      continue;
+    }
+    redacted.push(key);
+  }
+  const allowed: string[] = ["PATH", "HOME", "LANG", "TERM", "AIOS_BRANCH_NAME", "AIOS_WORKSPACE_PATH", "AIOS_WORK_ITEM_ID", "AIOS_REPO"];
+  if (args.allowGithubToken) {
+    allowed.push("GITHUB_TOKEN");
+    allowed.push("GH_TOKEN");
+  }
+  if (args.allowSlackToken) {
+    allowed.push("SLACK_BOT_TOKEN");
+  }
+  const rationale =
+    args.allowGithubToken || args.allowSlackToken
+      ? "Subprocess env carries the explicitly approved writeback tokens. Risk B/C writeback still gated by the existing proposal flow."
+      : "Subprocess env excludes all writeback secrets by default; agent must request a governed proposal for any external mutation.";
+  return { allowedKeys: allowed, redactedKeys: redacted, rationale };
+}
+
+function evaluateRunnerPolicy(args: {
+  agentRun: typeof cbAgentRuns.$inferSelect;
+  request: EvaluateRunnerPolicyRequest;
+}): RunnerExecutionPolicy {
+  const generatedAt = now();
+  const intent = args.request.intent ?? "real_execution";
+  const actor = args.request.actor?.trim() || null;
+  const rationale = args.request.rationale?.trim() || null;
+  const workflow = loadWorkflowFromRepoRoot();
+  const repo = args.agentRun.repo ?? workflow.config.tracker.repo ?? null;
+  const enabled = runnerEnabled();
+  const repoAllowlist = runnerRepoAllowlist();
+  const commandAllowlist = runnerCommandAllowlist();
+  const allowGithubToken =
+    args.request.allowGithubTokenOverride === true || runnerAllowGithubToken();
+  const allowSlackToken = runnerAllowSlackToken();
+
+  const gates: RunnerPolicyGate[] = [];
+  const blockReasons: string[] = [];
+  const satisfied: string[] = [];
+
+  // 1. workflow validity
+  if (workflow.isValid) {
+    gates.push({
+      key: "workflow_valid",
+      title: "WORKFLOW.md validates",
+      status: "passed",
+      detail: `WORKFLOW.md loaded from ${workflow.source} (errors=0, warnings=${workflow.warnings.length})`,
+    });
+    satisfied.push("workflow_valid");
+  } else {
+    gates.push({
+      key: "workflow_valid",
+      title: "WORKFLOW.md validates",
+      status: "failed",
+      detail: workflow.errors.join("; ") || "workflow invalid",
+      remediation: "Fix WORKFLOW.md front matter; re-run preview before policy evaluation.",
+    });
+    blockReasons.push("workflow_invalid");
+  }
+
+  // 2. repo present
+  if (repo) {
+    gates.push({
+      key: "repo_present",
+      title: "Agent run has a repo",
+      status: "passed",
+      detail: `repo=${repo}`,
+    });
+    satisfied.push("repo_present");
+  } else {
+    gates.push({
+      key: "repo_present",
+      title: "Agent run has a repo",
+      status: "failed",
+      detail: "agent run has no repo and workflow has no tracker.repo",
+      remediation: "Set AgentRun.repo or fix WORKFLOW.md tracker.repo before evaluating policy.",
+    });
+    blockReasons.push("repo_missing");
+  }
+
+  // 3. risk class
+  if (args.agentRun.riskClass === "C") {
+    gates.push({
+      key: "risk_class",
+      title: "Risk class allowed",
+      status: "failed",
+      detail: "Risk C actions are blocked by Writeback Policy Matrix v0",
+      remediation: "Refactor the action to a Risk B path with HITL approval and audit.",
+    });
+    blockReasons.push("risk_c");
+  } else if (args.agentRun.riskClass === "unknown") {
+    gates.push({
+      key: "risk_class",
+      title: "Risk class allowed",
+      status: "warn",
+      detail: "riskClass=unknown; classify before any real execution",
+      remediation: "Update AgentRun.riskClass to A or B with documented rationale.",
+    });
+    if (intent === "real_execution") blockReasons.push("risk_unknown");
+  } else {
+    gates.push({
+      key: "risk_class",
+      title: "Risk class allowed",
+      status: "passed",
+      detail: `riskClass=${args.agentRun.riskClass}`,
+    });
+    satisfied.push("risk_class");
+  }
+
+  // 4. workspace
+  let workspacePath = "";
+  let branchName = "";
+  let workspaceAllowlistMatched = false;
+  if (repo) {
+    const workItemKey = args.agentRun.workItemId ?? args.agentRun.id;
+    const { location, safetyError } = resolveWorkspaceLocation({
+      repo,
+      workItemKey,
+      rootOverride: args.request.workspaceRootOverride ?? undefined,
+    });
+    workspacePath = location.workspacePath;
+    branchName = location.branchName;
+    if (safetyError) {
+      gates.push({
+        key: "workspace_safe",
+        title: "Workspace path passes safety invariants",
+        status: "failed",
+        detail: safetyError,
+        remediation: "Use a sanitized work item key or a workspace root with safe permissions.",
+      });
+      blockReasons.push("workspace_invalid_path");
+    } else {
+      gates.push({
+        key: "workspace_safe",
+        title: "Workspace path passes safety invariants",
+        status: "passed",
+        detail: `path=${location.workspacePath}; branch=${location.branchName}`,
+      });
+      satisfied.push("workspace_safe");
+    }
+    const wsAllowlist = workspaceAllowlist();
+    workspaceAllowlistMatched = wsAllowlist.length === 0 || wsAllowlist.includes(repo);
+    if (intent === "real_execution") {
+      if (wsAllowlist.length === 0) {
+        gates.push({
+          key: "workspace_allowlist",
+          title: "Workspace allowlist permits this repo",
+          status: "failed",
+          detail: "AIOS_AGENT_WORKSPACE_ALLOWLIST is empty; real execution requires explicit repo opt-in",
+          remediation: "Set AIOS_AGENT_WORKSPACE_ALLOWLIST to include the repo.",
+          envRefs: ["AIOS_AGENT_WORKSPACE_ALLOWLIST"],
+        });
+        blockReasons.push("workspace_not_allowlisted");
+      } else if (!wsAllowlist.includes(repo)) {
+        gates.push({
+          key: "workspace_allowlist",
+          title: "Workspace allowlist permits this repo",
+          status: "failed",
+          detail: `repo ${repo} not in AIOS_AGENT_WORKSPACE_ALLOWLIST`,
+          remediation: `Add ${repo} to AIOS_AGENT_WORKSPACE_ALLOWLIST or change the repo.`,
+          envRefs: ["AIOS_AGENT_WORKSPACE_ALLOWLIST"],
+        });
+        blockReasons.push("workspace_not_allowlisted");
+      } else {
+        gates.push({
+          key: "workspace_allowlist",
+          title: "Workspace allowlist permits this repo",
+          status: "passed",
+          detail: `repo ${repo} present in allowlist`,
+        });
+        satisfied.push("workspace_allowlist");
+      }
+    } else {
+      gates.push({
+        key: "workspace_allowlist",
+        title: "Workspace allowlist permits this repo",
+        status: "info",
+        detail: "dry_run intent; allowlist not enforced for preview",
+      });
+    }
+  }
+
+  // 5. runner enabled
+  if (intent === "real_execution") {
+    if (enabled) {
+      gates.push({
+        key: "runner_enabled",
+        title: "Runner enabled by env",
+        status: "passed",
+        detail: "AIOS_AGENT_RUNNER_ENABLED=true",
+        envRefs: ["AIOS_AGENT_RUNNER_ENABLED"],
+      });
+      satisfied.push("runner_enabled");
+    } else {
+      gates.push({
+        key: "runner_enabled",
+        title: "Runner enabled by env",
+        status: "failed",
+        detail: "AIOS_AGENT_RUNNER_ENABLED is not 'true'",
+        remediation: "Export AIOS_AGENT_RUNNER_ENABLED=true on the daemon to enable supervised real execution.",
+        envRefs: ["AIOS_AGENT_RUNNER_ENABLED"],
+      });
+      blockReasons.push("runner_disabled");
+    }
+  } else {
+    gates.push({
+      key: "runner_enabled",
+      title: "Runner enabled by env",
+      status: "info",
+      detail: "dry_run intent; runner enable flag not required",
+      envRefs: ["AIOS_AGENT_RUNNER_ENABLED"],
+    });
+  }
+
+  // 6. repo allowlist (separate from workspace)
+  if (intent === "real_execution") {
+    if (!repo) {
+      // already covered above
+    } else if (repoAllowlist.length === 0) {
+      gates.push({
+        key: "repo_allowlist",
+        title: "Repo allowlist permits real execution",
+        status: "failed",
+        detail: "AIOS_AGENT_RUNNER_REPO_ALLOWLIST is empty",
+        remediation: "Set AIOS_AGENT_RUNNER_REPO_ALLOWLIST to the controlled repo before enabling real execution.",
+        envRefs: ["AIOS_AGENT_RUNNER_REPO_ALLOWLIST"],
+      });
+      blockReasons.push("runner_repo_not_allowlisted");
+    } else if (!repoAllowlist.includes(repo)) {
+      gates.push({
+        key: "repo_allowlist",
+        title: "Repo allowlist permits real execution",
+        status: "failed",
+        detail: `repo ${repo} not in AIOS_AGENT_RUNNER_REPO_ALLOWLIST`,
+        remediation: `Add ${repo} to AIOS_AGENT_RUNNER_REPO_ALLOWLIST.`,
+        envRefs: ["AIOS_AGENT_RUNNER_REPO_ALLOWLIST"],
+      });
+      blockReasons.push("runner_repo_not_allowlisted");
+    } else {
+      gates.push({
+        key: "repo_allowlist",
+        title: "Repo allowlist permits real execution",
+        status: "passed",
+        detail: `repo ${repo} present in runner repo allowlist`,
+      });
+      satisfied.push("repo_allowlist");
+    }
+  } else {
+    gates.push({
+      key: "repo_allowlist",
+      title: "Repo allowlist permits real execution",
+      status: "info",
+      detail: "dry_run intent; repo allowlist not enforced",
+      envRefs: ["AIOS_AGENT_RUNNER_REPO_ALLOWLIST"],
+    });
+  }
+
+  // 7. command allowlist
+  const command = workflow.config.agent.command;
+  if (intent === "real_execution") {
+    if (commandAllowlist.length === 0) {
+      gates.push({
+        key: "command_allowlist",
+        title: "Command allowlist permits the configured agent",
+        status: "failed",
+        detail: "AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST is empty",
+        remediation: "Set AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST (default claude,codex,echo,true).",
+        envRefs: ["AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST"],
+      });
+      blockReasons.push("command_not_allowlisted");
+    } else if (!commandAllowlist.includes(command)) {
+      gates.push({
+        key: "command_allowlist",
+        title: "Command allowlist permits the configured agent",
+        status: "failed",
+        detail: `command ${command} not in AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST (${commandAllowlist.join(", ")})`,
+        remediation: `Add ${command} to AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST or change WORKFLOW.md agent.command.`,
+        envRefs: ["AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST"],
+      });
+      blockReasons.push("command_not_allowlisted");
+    } else {
+      gates.push({
+        key: "command_allowlist",
+        title: "Command allowlist permits the configured agent",
+        status: "passed",
+        detail: `command ${command} present in allowlist`,
+      });
+      satisfied.push("command_allowlist");
+    }
+  } else {
+    gates.push({
+      key: "command_allowlist",
+      title: "Command allowlist permits the configured agent",
+      status: "info",
+      detail: `dry_run intent; command=${command}`,
+      envRefs: ["AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST"],
+    });
+  }
+
+  // 8. actor + rationale
+  if (intent === "real_execution") {
+    if (!actor) {
+      gates.push({
+        key: "actor_present",
+        title: "HITL actor present",
+        status: "failed",
+        detail: "actor required for manual real execution",
+        remediation: "Provide actor (human reviewer or agent identity).",
+      });
+      blockReasons.push("actor_missing");
+    } else {
+      gates.push({
+        key: "actor_present",
+        title: "HITL actor present",
+        status: "passed",
+        detail: `actor=${actor}`,
+      });
+      satisfied.push("actor_present");
+    }
+    if (!rationale) {
+      gates.push({
+        key: "rationale_present",
+        title: "Rationale provided",
+        status: "failed",
+        detail: "rationale required for manual real execution",
+        remediation: "Document why this run should escalate from dry-run to real execution.",
+      });
+      blockReasons.push("rationale_missing");
+    } else {
+      gates.push({
+        key: "rationale_present",
+        title: "Rationale provided",
+        status: "passed",
+        detail: `rationale length=${rationale.length}`,
+      });
+      satisfied.push("rationale_present");
+    }
+  } else {
+    gates.push({
+      key: "actor_present",
+      title: "HITL actor present",
+      status: "info",
+      detail: "dry_run intent; actor optional",
+    });
+    gates.push({
+      key: "rationale_present",
+      title: "Rationale provided",
+      status: "info",
+      detail: "dry_run intent; rationale optional",
+    });
+  }
+
+  // 9. concurrency cap (warn-only when running count >= max)
+  const runningCount = (
+    getDb()
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.status, "running"))
+      .all() as Array<typeof cbAgentRuns.$inferSelect>
+  ).length;
+  if (runningCount >= workflow.config.agent.maxConcurrentAgents) {
+    gates.push({
+      key: "concurrency_cap",
+      title: "Within agent.max_concurrent_agents",
+      status: "warn",
+      detail: `${runningCount} agent runs already in status=running; max_concurrent_agents=${workflow.config.agent.maxConcurrentAgents}`,
+      remediation: "Wait for an in-flight run to finish or raise the WORKFLOW.md ceiling deliberately.",
+    });
+  } else {
+    gates.push({
+      key: "concurrency_cap",
+      title: "Within agent.max_concurrent_agents",
+      status: "passed",
+      detail: `${runningCount}/${workflow.config.agent.maxConcurrentAgents} agent runs in flight`,
+    });
+    satisfied.push("concurrency_cap");
+  }
+
+  // 10. terminal status guard
+  if (AGENT_RUN_TERMINAL_STATUSES.includes(args.agentRun.status)) {
+    gates.push({
+      key: "lifecycle_state",
+      title: "Agent run is not terminal",
+      status: "failed",
+      detail: `current status=${args.agentRun.status}; terminal runs cannot re-execute`,
+      remediation: "Create a new AgentRun for another attempt.",
+    });
+    blockReasons.push("lifecycle_terminal");
+  } else {
+    gates.push({
+      key: "lifecycle_state",
+      title: "Agent run is not terminal",
+      status: "passed",
+      detail: `current status=${args.agentRun.status}`,
+    });
+    satisfied.push("lifecycle_state");
+  }
+
+  // Decision derivation
+  let decision: RunnerPolicyDecision;
+  if (blockReasons.includes("risk_c") || blockReasons.includes("risk_unknown")) {
+    decision = "blocked_risk";
+  } else if (blockReasons.includes("workflow_invalid") || blockReasons.includes("repo_missing")) {
+    decision = "blocked_workflow";
+  } else if (
+    blockReasons.includes("workspace_invalid_path") ||
+    blockReasons.includes("workspace_not_allowlisted")
+  ) {
+    decision = "blocked_workspace";
+  } else if (
+    blockReasons.includes("actor_missing") ||
+    blockReasons.includes("rationale_missing")
+  ) {
+    decision = "blocked_actor";
+  } else if (
+    blockReasons.includes("command_not_allowlisted") ||
+    blockReasons.includes("runner_repo_not_allowlisted")
+  ) {
+    decision = "blocked_command";
+  } else if (blockReasons.includes("runner_disabled")) {
+    decision = "blocked_by_default";
+  } else if (blockReasons.includes("lifecycle_terminal")) {
+    decision = "blocked_actor";
+  } else if (intent === "real_execution") {
+    decision = "allowed_real_execution";
+  } else {
+    decision = "allowed_dry_run_only";
+  }
+
+  const realExecutionAllowed = decision === "allowed_real_execution";
+  const subprocessEnv = buildRunnerSubprocessEnvPlan({ allowGithubToken, allowSlackToken });
+
+  let policySummary: string;
+  if (realExecutionAllowed) {
+    policySummary = `Real execution allowed: all ${satisfied.length} gates satisfied. The next step is to start the manual supervised runner cut (#63+).`;
+  } else if (decision === "allowed_dry_run_only") {
+    policySummary = "Dry-run allowed; real execution intentionally not requested.";
+  } else {
+    policySummary = `Real execution blocked: ${blockReasons.join(", ")}. Address each gate; dry-run remains available.`;
+  }
+
+  return {
+    generatedAt,
+    agentRunId: args.agentRun.id,
+    decision,
+    realExecutionAllowed,
+    dryRunAllowed: !blockReasons.includes("lifecycle_terminal"),
+    riskClass: args.agentRun.riskClass,
+    actor,
+    rationale,
+    blockReasons,
+    satisfiedGates: satisfied,
+    gates,
+    workflowSummary: {
+      repo: workflow.config.tracker.repo ?? null,
+      isValid: workflow.isValid,
+      command: workflow.config.agent.command,
+      args: workflow.config.agent.args,
+      maxConcurrentAgents: workflow.config.agent.maxConcurrentAgents,
+    },
+    workspaceSummary: {
+      workspacePath,
+      branchName,
+      allowlistMatched: workspaceAllowlistMatched,
+    },
+    subprocessEnv,
+    envFlags: {
+      runnerEnabled: enabled,
+      repoAllowlist,
+      commandAllowlist,
+      allowGithubToken,
+      allowSlackToken,
+    },
+    policySummary,
+  };
+}
+
+app.post("/agent-runs/:id/policy/evaluate", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<EvaluateRunnerPolicyRequest>()
+      .catch(() => ({}))) as EvaluateRunnerPolicyRequest;
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    const policy = evaluateRunnerPolicy({ agentRun: existing, request: body });
+    const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+      actor: body.actor ?? null,
+      event: "agent_run_policy_evaluated",
+      note: body.rationale ?? null,
+      metadata: {
+        decision: policy.decision,
+        realExecutionAllowed: policy.realExecutionAllowed,
+        blockReasons: policy.blockReasons,
+        intent: body.intent ?? "real_execution",
+      },
+    });
+    db.update(cbAgentRuns)
+      .set({ auditTrail, updatedAt: now() } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+    return c.json({ data: policy });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "policy_evaluation_failed", message }, 400);
   }
 });
 
