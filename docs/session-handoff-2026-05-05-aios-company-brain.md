@@ -3138,3 +3138,74 @@ Validacao:
 - session_result de producao submetido para WorkItem `kGQMOtwSiViJ`:
   artifact `gyjEFhkwdCVP`, `workItemUpdated=true`,
   `prLinkRecorded=true`, `guidanceItemsCreated=1`.
+
+### AIOS-RUN-38 semantic PR dogfood checkpoint
+
+Issue `#119` esta em execucao no branch
+`aios-run-38-semantic-pr-dogfood`.
+
+Entregue no branch:
+
+- novo runner profile `dogfood-semantic-doc-change`, Risk A, limitado a
+  `antonio-mello-ai/crewdock`, que cria e commita um arquivo real em
+  `docs/action/aios-semantic-dogfood-<workItem>.md`;
+- `WORKFLOW.md` documenta o profile no runner registry;
+- patch packet collector:
+  - ignora `.aios-run/*`;
+  - inclui arquivos commitados via `git diff --name-status main..HEAD`;
+  - de-duplica changed files;
+  - deriva validacoes `runner_exit_zero`, `patch_content`, `git_commit`;
+  - inclui validacoes e `signatureVersion=3` na assinatura;
+- same-PR update reescreve o body do PR com o payload/evidencia mais recente e
+  preserva historico unico de markers AIOS.
+
+Dogfood local final:
+
+- DB: `/tmp/aios-run38-smoke.sqlite`;
+- Source: `Hjek-bOBsAAV`;
+- WorkItem Risk A: `bqA5AghugOJn`;
+- Suggestion: `-fbg_WF0-Axi`;
+- AgentRun: `fJAlfYi8SmPi`;
+- semantic commit: `143229d9f6347afb53b2401689163100dc525c54`;
+- semantic file:
+  `docs/action/aios-semantic-dogfood-bqA5AghugOJn.md`;
+- PR: `#125`
+  (`https://github.com/antonio-mello-ai/crewdock/pull/125`);
+- final proposal: `1VrS7duqMhpF`;
+- final patch packet Artifact: `kn6hZSKvfl0C`;
+- validations:
+  `runner_exit_zero=passed; patch_content=passed; git_commit=passed`;
+- final reexecute: `alreadyExecuted=true`;
+- PR `#125` permanece OPEN, com um arquivo, um commit, markers AIOS,
+  `aios-iteration` e validacao visivel no body.
+
+Friccoes capturadas:
+
+- profile shell quoting inicial gerou `non-zero exit code 2`;
+- label `no-auto-merge` bloqueou auto-dispatch por conter token `merge`;
+- primeiro patch packet semantico veio sem validacoes, motivando a derivacao
+  de validation evidence no collector.
+
+Producao segue segura/default-off:
+
+- Operating Snapshot remoto com service token:
+  `overallStatus=healthy`,
+  `autoDispatchPolicy.config.enabled=false`,
+  `eligibilityPreview.decision=blocked_default_off`.
+
+Validacao parcial ja feita:
+
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon`;
+- dogfood local completo via Operating Cadence + auto-dispatch + governance
+  approval + PR writeback;
+- `gh pr view 125` confirmou PR aberto, arquivo semantico, marker history e
+  validation evidence;
+- daemon local encerrado e porta `43196` sem listener.
+
+Antes de fechar o issue:
+
+- rodar `git diff --check`;
+- rodar `npx turbo build`;
+- abrir PR de implementacao com `Closes #119`;
+- fazer QA, mergear, deployar daemon/MCP no CT165 e registrar session_result de
+  producao.
