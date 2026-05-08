@@ -103,6 +103,28 @@ AgentRun audit events:
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server`
 - `npx turbo build`
 
+## Merge and Deploy
+
+- PR: `#122`
+- Merge commit: `bed7848`
+- Issue `#117`: closed
+- CT165 fast-forwarded to `bed7848`
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`
+- `aios-daemon`: `active`
+- `GET https://api.felhen.ai/api/health` -> 200
+- Loopback route smoke on CT165:
+  `POST /api/company-brain/agent-runs/not-found/github-pr-proposal/chain`
+  -> 404 expected (`agent run not found`)
+- Remote runner profile smoke with CF service token confirmed
+  `dogfood-empty-commit` is present; production evaluation is blocked by
+  `profile_command_not_allowlisted`, as expected while production remains
+  default-off.
+- Remote Operating Snapshot:
+  `overallStatus=healthy`, `autoDispatchPolicy.config.enabled=false`.
+- Production session_result submitted for WorkItem `27jBb179tDhs`:
+  artifact `uPjeQTsZj_w0`, `prLinkRecorded=true`, `guidanceItemsCreated=1`.
+
 ## Boundaries
 
 - No auto-merge.

@@ -3063,9 +3063,23 @@ Validacao parcial:
   passou;
 - `npx turbo build` passou.
 
-Pendente antes de merge/deploy:
+Merge/deploy:
 
-- abrir PR com `Closes #117`;
-- mergear/deployar daemon e MCP no CT165;
-- validar rota nova em producao/loopback;
-- submeter/registrar session_result apos merge.
+- PR `#122` mergeado em `main` no commit `bed7848`;
+- issue `#117` fechada;
+- CT165 fast-forward ate `bed7848`;
+- CT165 build:
+  `npx turbo build --filter=@aios/daemon --filter=@aios/mcp-server --force`
+  passou;
+- `aios-daemon` reiniciado e `active`;
+- `GET https://api.felhen.ai/api/health` -> 200;
+- rota nova validada em loopback CT165:
+  `/api/company-brain/agent-runs/not-found/github-pr-proposal/chain`
+  -> 404 esperado (`agent run not found`);
+- runner profile remoto com CF service token confirmou
+  `dogfood-empty-commit` presente e bloqueado por
+  `profile_command_not_allowlisted` em producao;
+- Operating Snapshot remoto: `overallStatus=healthy`,
+  `autoDispatchPolicy.config.enabled=false`;
+- session_result de producao submetido para WorkItem `27jBb179tDhs`:
+  artifact `uPjeQTsZj_w0`, `prLinkRecorded=true`, `guidanceItemsCreated=1`.
