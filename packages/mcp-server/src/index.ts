@@ -1871,6 +1871,45 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_first_project_readiness",
+  {
+    title: "Get Company Brain first-project readiness",
+    description:
+      "Read the compact first-project operating checklist for the internal AIOS pilot. Links runner readiness, pilot targets, AIOS-authored PR review intake, operating snapshot, production default-off evidence and runbook/kill-switch status. Read-only.",
+    inputSchema: {
+      repo: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+    },
+  },
+  async ({ repo, area, riskClass }) => {
+    const params = new URLSearchParams();
+    if (repo) params.set("repo", repo);
+    if (area) params.set("area", area);
+    if (riskClass) params.set("riskClass", riskClass);
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/first-project-readiness${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_auto_dispatch_policy",
   {
     title: "Get Company Brain Auto-Dispatch policy",

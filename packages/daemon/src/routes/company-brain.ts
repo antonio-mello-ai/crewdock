@@ -218,6 +218,9 @@ import type {
   SlackThreadReplyWritebackTarget,
   ExtractArtifactInsightsRequest,
   ExtractSignalGuidanceRequest,
+  FirstProjectReadinessChecklist,
+  FirstProjectReadinessChecklistItem,
+  FirstProjectReadinessStatus,
   GuidanceAudience,
   GenerateAgentContextRequest,
   GenerateDailyAgentHandoffRequest,
@@ -14617,6 +14620,215 @@ function listPilotTargets(args: {
   };
 }
 
+function firstProjectOverallStatus(
+  items: FirstProjectReadinessChecklistItem[]
+): FirstProjectReadinessStatus {
+  if (items.some((item) => item.status === "blocked")) return "blocked";
+  if (items.some((item) => item.status === "warn")) return "warn";
+  return "ready";
+}
+
+function operatingSnapshotReadinessStatus(
+  status: CompanyBrainOperatingSnapshot["overallStatus"]
+): FirstProjectReadinessStatus {
+  if (status === "healthy") return "ready";
+  if (status === "attention") return "warn";
+  return "blocked";
+}
+
+function buildFirstProjectReadinessChecklist(args: {
+  repo?: string | null;
+  area?: CompanyBrainArea | null;
+  riskClass?: RiskClass | null;
+}): FirstProjectReadinessChecklist {
+  const repo = args.repo?.trim() || OPERATING_CADENCE_DEFAULT_REPO;
+  const area = args.area ?? "development";
+  const riskClass = args.riskClass ?? "B";
+  const generatedAt = now();
+  const runbookPath = "docs/aios-first-project-operating-runbook.md";
+  const runbookExists = existsSync(resolve(runbookPath));
+  const operatingSnapshot = buildOperatingSnapshot(listAll());
+  const runnerReadiness = buildRunnerProfileReadinessMatrix({ repo, area, riskClass });
+  const pilotTargets = listPilotTargets({ repo, status: "all" });
+  const prReviewIntake = buildAiosPrReviewIntake();
+  const autoConfig = autoDispatchConfig();
+  const productionDefaultOffEvidence = {
+    runnerEnabled: runnerEnabled(),
+    workspaceWritesEnabled: workspaceWritesEnabled(),
+    autoDispatchEnabled: autoConfig.enabled,
+    prWritebackEnabled: githubPrWritebackEnabled(),
+    runnerRepoAllowlist: runnerRepoAllowlist(),
+    workspaceAllowlist: workspaceAllowlist(),
+    commandAllowlist: runnerCommandAllowlist(),
+    autoDispatchRepoAllowlist: autoConfig.repoAllowlist,
+  };
+  const allMutatingAgentGatesOff =
+    !productionDefaultOffEvidence.runnerEnabled &&
+    !productionDefaultOffEvidence.workspaceWritesEnabled &&
+    !productionDefaultOffEvidence.autoDispatchEnabled &&
+    !productionDefaultOffEvidence.prWritebackEnabled;
+  const activeTargetCount = pilotTargets.totals.active;
+  const readyTargetCount = pilotTargets.totals.readyForManualLaunch;
+  const pendingReviews = prReviewIntake.totals.awaitingHumanReview;
+
+  const items: FirstProjectReadinessChecklistItem[] = [
+    {
+      key: "runbook_present",
+      title: "First-project runbook",
+      status: runbookExists ? "ready" : "blocked",
+      detail: runbookExists
+        ? "Canonical first-project operating runbook is present in repo docs."
+        : "Canonical first-project operating runbook is missing.",
+      docPath: runbookPath,
+      nextAction: runbookExists
+        ? "Use this runbook as the durable operator contract before enabling a project."
+        : "Create docs/aios-first-project-operating-runbook.md before launching a real project run.",
+      blockReasons: runbookExists ? [] : ["missing_runbook"],
+    },
+    {
+      key: "operating_snapshot_ready",
+      title: "Operating snapshot",
+      status: operatingSnapshotReadinessStatus(operatingSnapshot.overallStatus),
+      detail: `${operatingSnapshot.overallStatus}: ${operatingSnapshot.summary}`,
+      route: "/company-brain/operating",
+      apiPath: "/api/company-brain/operating-snapshot",
+      nextAction:
+        operatingSnapshot.overallStatus === "healthy"
+          ? "Keep cadence fresh before starting the pilot."
+          : "Run Operating Cadence or review the attention/error card before starting the pilot.",
+      blockReasons:
+        operatingSnapshot.overallStatus === "error" ||
+        operatingSnapshot.overallStatus === "critical"
+          ? [`operating_snapshot_${operatingSnapshot.overallStatus}`]
+          : [],
+    },
+    {
+      key: "pilot_target_registered",
+      title: "Pilot target registry",
+      status: activeTargetCount > 0 ? "ready" : "blocked",
+      detail: `${pilotTargets.totals.total} target(s), ${activeTargetCount} active, ${readyTargetCount} manual-launch ready for ${repo}.`,
+      route: "/company-brain/agent-runs",
+      apiPath: `/api/company-brain/pilot-targets?repo=${encodeURIComponent(repo)}&status=all`,
+      nextAction:
+        activeTargetCount > 0
+          ? "Keep this registry as the first-pilot allowlist; do not infer eligibility from chat history."
+          : `Register ${repo} as an active pilot target before any AgentRun launch.`,
+      blockReasons: activeTargetCount > 0 ? [] : ["missing_active_pilot_target"],
+    },
+    {
+      key: "runner_readiness_visible",
+      title: "Runner readiness",
+      status: runnerReadiness.totals.realAgentReady > 0 ? "ready" : "warn",
+      detail: `${runnerReadiness.totals.realAgentReady} real profile(s) ready, ${runnerReadiness.totals.realAgentBlocked} blocked; production default-off can intentionally keep this at warn.`,
+      route: "/company-brain/agent-runs",
+      apiPath: `/api/company-brain/runner-profile-readiness?repo=${encodeURIComponent(repo)}&area=${encodeURIComponent(area)}&riskClass=${encodeURIComponent(riskClass)}`,
+      nextAction:
+        runnerReadiness.totals.realAgentReady > 0
+          ? "Manual launch may be previewed with a human actor/rationale."
+          : "Enable runner/workspace/profile env gates only in a controlled session and keep the runbook kill switches open.",
+    },
+    {
+      key: "production_default_off_visible",
+      title: "Production default-off evidence",
+      status: allMutatingAgentGatesOff ? "ready" : "warn",
+      detail: `runner=${String(productionDefaultOffEvidence.runnerEnabled)}, workspace=${String(productionDefaultOffEvidence.workspaceWritesEnabled)}, autoDispatch=${String(productionDefaultOffEvidence.autoDispatchEnabled)}, prWriteback=${String(productionDefaultOffEvidence.prWritebackEnabled)}.`,
+      route: "/company-brain/agent-runs",
+      nextAction: allMutatingAgentGatesOff
+        ? "Production is safe-by-default; use explicit opt-in only for a supervised pilot window."
+        : "Confirm the enabled gates are intentional and documented before starting or continuing the pilot.",
+    },
+    {
+      key: "pending_aios_pr_reviews_visible",
+      title: "AIOS-authored PR review intake",
+      status: pendingReviews > 0 ? "warn" : "ready",
+      detail: `${prReviewIntake.totals.total} AIOS-authored PR(s) indexed; ${pendingReviews} awaiting human review; ${prReviewIntake.totals.changesRequested} changes requested.`,
+      route: "/company-brain/operating",
+      apiPath: "/api/company-brain/aios-pr-review-intake",
+      nextAction:
+        pendingReviews > 0
+          ? "Review pending AIOS-authored PRs before widening the pilot."
+          : "Keep syncing PR review intake before and after each AgentRun.",
+    },
+    {
+      key: "manual_launch_governed",
+      title: "Manual launch governance",
+      status: readyTargetCount > 0 ? "ready" : "warn",
+      detail: readyTargetCount > 0
+        ? "At least one active target has a ready real-agent profile."
+        : "Manual launch remains governed and blocked by readiness gates until env opt-in is explicit.",
+      route: "/company-brain/agent-runs",
+      apiPath: "/api/company-brain/agent-runs/launcher/preview",
+      nextAction:
+        "Use launcher preview first; launch requires actor, rationale and passing policy gates.",
+    },
+    {
+      key: "allowed_actions_bounded",
+      title: "Allowed actions are bounded",
+      status: "ready",
+      detail:
+        "First pilot allows internal repo work, workspace preparation, supervised AgentRun, patch packet, PR proposal and review intake. Merge/deploy/customer repo actions stay out of scope.",
+      docPath: runbookPath,
+      nextAction: "Do not add a new executor or external mutation as part of this runbook issue.",
+    },
+    {
+      key: "stop_conditions_defined",
+      title: "Kill switches and stop conditions",
+      status: runbookExists ? "ready" : "blocked",
+      detail:
+        "Runbook defines env kill switches, AgentRun cancel, workspace quarantine, PR writeback shutdown and stop conditions.",
+      docPath: runbookPath,
+      nextAction:
+        "Keep kill-switch commands visible before enabling any real runner profile.",
+      blockReasons: runbookExists ? [] : ["missing_stop_conditions_doc"],
+    },
+  ];
+  const overallStatus = firstProjectOverallStatus(items);
+  const totals = {
+    itemCount: items.length,
+    ready: items.filter((item) => item.status === "ready").length,
+    warn: items.filter((item) => item.status === "warn").length,
+    blocked: items.filter((item) => item.status === "blocked").length,
+    pendingAiosPrReviews: pendingReviews,
+    pilotTargets: pilotTargets.totals.total,
+    launchReadyPilotTargets: readyTargetCount,
+    realAgentReadyProfiles: runnerReadiness.totals.realAgentReady,
+  };
+  const nextActions = uniqueStrings(
+    items
+      .filter((item) => item.status !== "ready" && item.nextAction)
+      .map((item) => item.nextAction as string)
+      .concat(
+        overallStatus === "ready"
+          ? [
+              "Use the runbook to run one supervised first-project cycle, then submit session_result and reconcile Next Work.",
+            ]
+          : []
+      )
+  ).slice(0, 5);
+
+  return {
+    generatedAt,
+    repo,
+    area,
+    riskClass,
+    overallStatus,
+    summary: `First-project readiness is ${overallStatus}: ${totals.ready}/${totals.itemCount} ready, ${totals.warn} warn, ${totals.blocked} blocked. Production default-off ${allMutatingAgentGatesOff ? "preserved" : "requires review"}.`,
+    runbookPath,
+    productionDefaultOffEvidence,
+    linkedSurfaces: {
+      operatingSurface: "/company-brain/operating",
+      agentRuns: "/company-brain/agent-runs",
+      runnerReadinessApi: `/api/company-brain/runner-profile-readiness?repo=${encodeURIComponent(repo)}&area=${encodeURIComponent(area)}&riskClass=${encodeURIComponent(riskClass)}`,
+      pilotTargetsApi: `/api/company-brain/pilot-targets?repo=${encodeURIComponent(repo)}&status=all`,
+      aiosPrReviewIntakeApi: "/api/company-brain/aios-pr-review-intake",
+      operatingSnapshotApi: "/api/company-brain/operating-snapshot",
+    },
+    totals,
+    items,
+    nextActions,
+  };
+}
+
 const RISK_CLASS_RANK: Record<RiskClass, number> = {
   A: 1,
   B: 2,
@@ -17691,6 +17903,14 @@ app.get("/pilot-targets", (c) => {
     ? (statusQuery as PilotTargetStatus | "all")
     : "all";
   const data = listPilotTargets({ repo, status });
+  return c.json({ data });
+});
+
+app.get("/first-project-readiness", (c) => {
+  const repo = c.req.query("repo")?.trim() || null;
+  const area = (c.req.query("area")?.trim() as CompanyBrainArea | undefined) || null;
+  const riskClass = (c.req.query("riskClass")?.trim() as RiskClass | undefined) || null;
+  const data = buildFirstProjectReadinessChecklist({ repo, area, riskClass });
   return c.json({ data });
 });
 
