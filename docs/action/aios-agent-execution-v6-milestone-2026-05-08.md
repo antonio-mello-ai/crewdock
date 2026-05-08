@@ -58,8 +58,16 @@ Stop before:
 
 Before opening v6, production `next-work` was empty after v5 closure.
 
-After opening v6 and syncing GitHub Issues, production should recommend
-`#104 AIOS-RUN-29: Agent runner profile registry v6`.
+After opening v6, updating CT165 to `e470a22` and syncing GitHub Issues:
+
+- sync `state=open` returned `issuesSeen=5`;
+- `workItemsCreated=5`;
+- `lastIssueNumbers=[108,107,106,105,104]`;
+- `GET /api/company-brain/workflow-loader` returned
+  `activeMilestone=AIOS Agent Execution v6`, `isValid=true`;
+- `GET /api/company-brain/next-work` recommends
+  `#104 AIOS-RUN-29: Agent runner profile registry v6`
+  with `candidatesConsidered=5`.
 
 ## Next Handoff Prompt
 
@@ -71,7 +79,7 @@ Estado:
 - Nova milestone tem issues #104 a #108.
 - WORKFLOW.md aponta para AIOS Agent Execution v6.
 - Company Brain já foi sincronizado em produção.
-- Next Work deve recomendar #104 AIOS-RUN-29: Agent runner profile registry v6.
+- Next Work recomenda #104 AIOS-RUN-29: Agent runner profile registry v6.
 - Comece de origin/main atualizado.
 
 Siga em modo contínuo issue-by-issue:

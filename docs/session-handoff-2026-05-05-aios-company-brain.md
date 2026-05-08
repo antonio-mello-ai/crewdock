@@ -2829,6 +2829,16 @@ Issues abertas:
 - `#107 AIOS-RUN-32: Approved GitHub PR writeback executor v6`;
 - `#108 AIOS-RUN-33: First AIOS-authored PR dogfood pack v6`.
 
+Producao apos sync:
+
+- sync GitHub Issues `state=open` retornou `issuesSeen=5`,
+  `workItemsCreated=5`, `lastIssueNumbers=[108,107,106,105,104]`;
+- `GET /api/company-brain/workflow-loader` mostra
+  `activeMilestone=AIOS Agent Execution v6` e `isValid=true`;
+- `GET /api/company-brain/next-work` recomenda
+  `#104 AIOS-RUN-29: Agent runner profile registry v6`
+  com `candidatesConsidered=5`.
+
 Direcional da v6: primeiro loop PR-shaped real do AIOS. A v6 deve sair do
 auto-dispatch benigno/no-op e produzir um PR revisavel em repo interno:
 WorkItem -> AgentRun -> workspace patch/validation packet -> PR proposal
