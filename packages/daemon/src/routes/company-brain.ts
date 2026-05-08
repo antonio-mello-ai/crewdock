@@ -105,6 +105,8 @@ import type {
   AgentRunReconciliationFinding,
   CollectAgentRunPatchPacketResponse,
   EvaluateAutoDispatchEligibilityRequest,
+  ExecuteGitHubPrProposalRequest,
+  ExecuteGitHubPrProposalResponse,
   GitHubPrProposalPayload,
   PreviewGitHubPrProposalResponse,
   ListAgentRunSuggestionsResponse,
@@ -13985,6 +13987,359 @@ app.get("/agent-runs/:id/patch-packet", (c) => {
     packet,
   };
   return c.json({ data: response });
+});
+
+function githubPrWritebackEnabled(): boolean {
+  return process.env.AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED === "true";
+}
+
+function githubPrWritebackRepoAllowlist(): string[] {
+  return csvEnv(process.env.AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST);
+}
+
+const AIOS_PR_MARKER_PREFIX = "<!-- aios:proposalId=";
+
+function buildAiosPrMarker(args: {
+  proposalId: string;
+  agentRunId: string;
+  patchPacketSignature: string;
+}): string {
+  return `${AIOS_PR_MARKER_PREFIX}${args.proposalId}:agentRunId=${args.agentRunId}:sig=${args.patchPacketSignature.slice(0, 12)} -->`;
+}
+
+app.post("/external-action-proposals/:id/execute-pr", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as ExecuteGitHubPrProposalRequest;
+  const actor = body.actor?.trim();
+  const rationale = body.rationale?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  if (!rationale) {
+    return c.json(
+      { error: "validation", message: "rationale is required" },
+      400
+    );
+  }
+
+  const db = getDb();
+  const proposal = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, id))
+    .get() as ExternalActionProposal | undefined;
+  if (!proposal) {
+    return c.json(
+      { error: "not_found", message: `proposal ${id} not found` },
+      404
+    );
+  }
+  if (proposal.actionType !== "github_pr_create") {
+    return c.json(
+      {
+        error: "validation",
+        message: `proposal.actionType=${proposal.actionType}; expected github_pr_create`,
+      },
+      400
+    );
+  }
+  if (proposal.approvalStatus !== "approved") {
+    return c.json(
+      {
+        error: "blocked",
+        message: `proposal.approvalStatus=${proposal.approvalStatus}; approve via the writeback governance flow before executing`,
+      },
+      400
+    );
+  }
+
+  // Idempotency: already executed.
+  if (
+    proposal.executionStatus === "executed" &&
+    proposal.externalUrl &&
+    proposal.externalId
+  ) {
+    const response: ExecuteGitHubPrProposalResponse = {
+      generatedAt: now(),
+      proposalId: proposal.id,
+      alreadyExecuted: true,
+      prNumber: Number(proposal.externalId) || null,
+      prUrl: proposal.externalUrl,
+      pushedBranch: (
+        proposal.payload as unknown as GitHubPrProposalPayload
+      ).sourceBranch,
+      errorSummary: null,
+      proposal,
+    };
+    return c.json({ data: response });
+  }
+
+  const payload = proposal.payload as unknown as GitHubPrProposalPayload;
+  const repo = payload.repo;
+
+  if (!githubPrWritebackEnabled()) {
+    return c.json(
+      {
+        error: "blocked_default_off",
+        message:
+          "AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED is not true; PR writeback default-off.",
+      },
+      400
+    );
+  }
+  const repoAllowlist = githubPrWritebackRepoAllowlist();
+  if (!repoAllowlist.includes(repo)) {
+    return c.json(
+      {
+        error: "blocked_repo",
+        message: `repo=${repo} not in AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST=[${repoAllowlist.join(",")}]`,
+      },
+      400
+    );
+  }
+
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  if (!token) {
+    return c.json(
+      {
+        error: "blocked",
+        message: "GITHUB_TOKEN/GH_TOKEN not configured for daemon; cannot push or open PR",
+      },
+      400
+    );
+  }
+
+  // Reload AgentRun to verify workspace still exists.
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, payload.agentRunId))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json(
+      {
+        error: "validation",
+        message: `AgentRun ${payload.agentRunId} not found; cannot execute`,
+      },
+      400
+    );
+  }
+  const workspacePath = run.workspaceRef ?? null;
+  if (!workspacePath || !existsSync(workspacePath)) {
+    return c.json(
+      {
+        error: "validation",
+        message: `AgentRun workspace missing at ${workspacePath ?? "(null)"}; cannot push`,
+      },
+      400
+    );
+  }
+
+  // Idempotency check: PR with marker already exists?
+  const marker = buildAiosPrMarker({
+    proposalId: proposal.id,
+    agentRunId: payload.agentRunId,
+    patchPacketSignature: payload.patchPacketSignature,
+  });
+  const [owner, name] = repo.split("/");
+  let existingPr: { number: number; html_url: string; body: string | null } | null =
+    null;
+  try {
+    const list = await githubApiRequest<
+      Array<{ number: number; html_url: string; body: string | null }>
+    >(`/repos/${owner}/${name}/pulls`, {
+      params: { head: `${owner}:${payload.sourceBranch}`, state: "all" },
+      requireToken: true,
+    });
+    existingPr =
+      list.find((pr) => (pr.body ?? "").includes(marker)) ??
+      list.find((pr) => (pr.body ?? "").includes(`aios:proposalId=${proposal.id}`)) ??
+      null;
+  } catch (err) {
+    console.error("[company-brain] github pr list failed", err);
+  }
+
+  if (existingPr) {
+    const timestamp = now();
+    const audit = (proposal.auditTrail ?? []).concat([
+      {
+        at: timestamp,
+        actor,
+        event: "external_action_proposal_executed_idempotent" as const,
+        note: rationale,
+        metadata: {
+          prNumber: existingPr.number,
+          prUrl: existingPr.html_url,
+          marker,
+        },
+      },
+    ]);
+    db.update(cbExternalActionProposals)
+      .set({
+        executionStatus: "executed",
+        externalId: String(existingPr.number),
+        externalUrl: existingPr.html_url,
+        auditTrail: audit,
+        updatedAt: timestamp,
+      } as never)
+      .where(eq(cbExternalActionProposals.id, proposal.id))
+      .run();
+    const refreshed = db
+      .select()
+      .from(cbExternalActionProposals)
+      .where(eq(cbExternalActionProposals.id, proposal.id))
+      .get() as ExternalActionProposal;
+    const response: ExecuteGitHubPrProposalResponse = {
+      generatedAt: timestamp,
+      proposalId: proposal.id,
+      alreadyExecuted: true,
+      prNumber: existingPr.number,
+      prUrl: existingPr.html_url,
+      pushedBranch: payload.sourceBranch,
+      errorSummary: null,
+      proposal: refreshed,
+    };
+    return c.json({ data: response });
+  }
+
+  // Push branch via git -c extraheader.
+  const pushResult = spawnSync(
+    "git",
+    [
+      "-c",
+      `http.https://github.com/.extraheader=Authorization: Bearer ${token}`,
+      "-C",
+      workspacePath,
+      "push",
+      "origin",
+      `${payload.sourceBranch}:${payload.sourceBranch}`,
+    ],
+    { encoding: "utf-8" }
+  );
+  if (pushResult.status !== 0) {
+    const errSummary = (pushResult.stderr ?? "").trim().slice(0, 400);
+    const audit = (proposal.auditTrail ?? []).concat([
+      {
+        at: now(),
+        actor,
+        event: "external_action_proposal_execute_failed" as const,
+        note: rationale,
+        metadata: { phase: "git_push", errorSummary: errSummary },
+      },
+    ]);
+    db.update(cbExternalActionProposals)
+      .set({
+        executionStatus: "failed",
+        errorSummary: `git push failed: ${errSummary}`,
+        auditTrail: audit,
+        updatedAt: now(),
+      } as never)
+      .where(eq(cbExternalActionProposals.id, proposal.id))
+      .run();
+    return c.json(
+      {
+        error: "git_push_failed",
+        message: `git push origin ${payload.sourceBranch} failed`,
+        data: { errorSummary: errSummary },
+      },
+      500
+    );
+  }
+
+  // Create PR via GitHub API.
+  const bodyWithMarker = `${marker}\n\n${payload.body}`;
+  let prCreated: { number: number; html_url: string } | null = null;
+  let prError: string | null = null;
+  try {
+    const created = await githubApiRequest<{ number: number; html_url: string }>(
+      `/repos/${owner}/${name}/pulls`,
+      {
+        method: "POST",
+        requireToken: true,
+        body: {
+          title: payload.title,
+          body: bodyWithMarker,
+          head: payload.sourceBranch,
+          base: payload.baseBranch,
+          maintainer_can_modify: true,
+          draft: false,
+        },
+      }
+    );
+    prCreated = created;
+  } catch (err) {
+    prError = err instanceof Error ? err.message : "unknown";
+  }
+
+  const timestamp = now();
+  if (!prCreated) {
+    const audit = (proposal.auditTrail ?? []).concat([
+      {
+        at: timestamp,
+        actor,
+        event: "external_action_proposal_execute_failed" as const,
+        note: rationale,
+        metadata: { phase: "pr_create", errorSummary: prError },
+      },
+    ]);
+    db.update(cbExternalActionProposals)
+      .set({
+        executionStatus: "failed",
+        errorSummary: `gh pr create failed: ${prError ?? "unknown"}`,
+        auditTrail: audit,
+        updatedAt: timestamp,
+      } as never)
+      .where(eq(cbExternalActionProposals.id, proposal.id))
+      .run();
+    return c.json(
+      {
+        error: "pr_create_failed",
+        message: `GitHub PR creation failed`,
+        data: { errorSummary: prError },
+      },
+      500
+    );
+  }
+
+  const audit = (proposal.auditTrail ?? []).concat([
+    {
+      at: timestamp,
+      actor,
+      event: "external_action_proposal_executed" as const,
+      note: rationale,
+      metadata: {
+        prNumber: prCreated.number,
+        prUrl: prCreated.html_url,
+        marker,
+      },
+    },
+  ]);
+  db.update(cbExternalActionProposals)
+    .set({
+      executionStatus: "executed",
+      externalId: String(prCreated.number),
+      externalUrl: prCreated.html_url,
+      auditTrail: audit,
+      updatedAt: timestamp,
+    } as never)
+    .where(eq(cbExternalActionProposals.id, proposal.id))
+    .run();
+  const refreshed = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, proposal.id))
+    .get() as ExternalActionProposal;
+  const response: ExecuteGitHubPrProposalResponse = {
+    generatedAt: timestamp,
+    proposalId: proposal.id,
+    alreadyExecuted: false,
+    prNumber: prCreated.number,
+    prUrl: prCreated.html_url,
+    pushedBranch: payload.sourceBranch,
+    errorSummary: null,
+    proposal: refreshed,
+  };
+  return c.json({ data: response }, 201);
 });
 
 app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {

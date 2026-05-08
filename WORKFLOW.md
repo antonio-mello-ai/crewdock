@@ -107,6 +107,18 @@ Built-in profiles queryable via `GET /runner-profiles?repo=...&area=...&riskClas
 
 Real-agent profiles are explicitly OFF by default. Each carries an `enabledEnvVar` the operator must set to `true` before the profile becomes selectable. The eligibility evaluator chains the runner profile gate after all other auto-dispatch gates so policy hints stay specific.
 
+## GitHub PR writeback env vars (AIOS-RUN-32)
+
+The approved-PR executor (`POST /external-action-proposals/:id/execute-pr`) is **default-off** and requires:
+
+| Env var | Format | Notes |
+|---|---|---|
+| `AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED` | boolean string | Master switch. Unset or anything other than `"true"` blocks all PR writeback. |
+| `AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST` | CSV of `owner/name` | Repos allowed to receive AIOS-authored PRs. Example: `antonio-mello-ai/crewdock`. |
+| `GITHUB_TOKEN` or `GH_TOKEN` | string | Existing daemon token. **No new secret introduced** — must be the same token already in use for GitHub Issues sync. |
+
+The PR body always carries an invisible `<!-- aios:proposalId=...:agentRunId=...:sig=... -->` marker so re-executing the same proposal is idempotent (the executor lists open/closed PRs filtered by `head=<owner>:<branch>` and reuses the existing one when the marker matches).
+
 ## Manual runner env vars
 
 Auto-dispatch chains `evaluateRunnerPolicy(intent=real_execution)`, so the manual runner env vars must also be set:
