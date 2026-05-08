@@ -2168,6 +2168,68 @@ server.registerTool(
 );
 
 server.registerTool(
+  "preview_company_brain_agent_workspace_cleanup",
+  {
+    title: "Preview Company Brain agent workspace cleanup",
+    description:
+      "Read-only cleanup preview for an AgentRun workspace. Returns workspacePath, exists, isDirty, branchName, worktreeListed and the list of risks (path_outside_root / workspace_dirty / branch_unmerged / agent_run_active / missing_worktree). Reports cleanupAllowed (clean + non-active), quarantineAllowed (just non-active and inside root), and the expectedConfirmationToken (the workspace path itself). Does not modify the filesystem.",
+    inputSchema: { agentRunId: z.string().min(1) },
+  },
+  async ({ agentRunId }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/workspace/cleanup-preview`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "quarantine_company_brain_agent_workspace",
+  {
+    title: "Quarantine a Company Brain agent workspace",
+    description:
+      "Move (rename) the AgentRun workspace from <workspace.root>/<repo>/<key> to <workspace.root>/_quarantine/<id>-<timestamp>. Non-destructive: nothing is deleted; the directory survives for forensic review. Requires actor and rationale. Refuses when the run is still active or the path escapes the workspace root. Updates the AgentRun's workspaceRef to the new path and appends an agent_run_workspace_quarantined audit entry.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/workspace/quarantine`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "remove_company_brain_agent_workspace",
+  {
+    title: "Remove a Company Brain agent workspace",
+    description:
+      "Destructive remove of the AgentRun workspace. Requires actor, rationale and a confirmationToken that must equal the current workspacePath. Refuses if the workspace is dirty unless allowDirty=true. Refuses if the path escapes the workspace root or the AgentRun is still active. Calls `git worktree remove --force` first when the worktree is registered, then `rmSync(recursive)` on the directory. Updates the AgentRun to clear workspaceRef and appends an agent_run_workspace_removed audit entry. The cleanup is scoped to a single AgentRun workspace; broad workspace cleanup is intentionally not supported.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      confirmationToken: z.string().min(1),
+      allowDirty: z.boolean().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/workspace/remove`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "tail_company_brain_agent_run_logs",
   {
     title: "Tail Company Brain agent run logs",
