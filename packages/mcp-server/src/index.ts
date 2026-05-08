@@ -1583,6 +1583,28 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_agent_run_patch_packet",
+  {
+    title: "Get Company Brain AgentRun patch/validation packet",
+    description:
+      "Collect git workspace state (branch, baseRef, changed files, diff stat, commits) for an AgentRun and optionally persist as an Artifact. Read-only over the workspace; does not push, open PRs, or mutate any external service.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      persist: z.boolean().optional(),
+    },
+  },
+  async ({ agentRunId, persist }) => {
+    const params = new URLSearchParams();
+    if (persist) params.set("persist", "true");
+    const suffix = params.toString() ? `?${params.toString()}` : "";
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/patch-packet${suffix}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "list_company_brain_runner_profiles",
   {
     title: "List Company Brain runner profiles",

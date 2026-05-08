@@ -1793,6 +1793,63 @@ export interface AgentRunSuggestion {
   updatedAt: number;
 }
 
+export type AgentRunPatchPacketStatus =
+  | "clean"
+  | "dirty"
+  | "no_workspace"
+  | "no_git"
+  | "error";
+
+export interface AgentRunPatchPacketChangedFile {
+  path: string;
+  status: string; // git porcelain status code (M, A, D, ??, etc.)
+}
+
+export interface AgentRunPatchPacketCommit {
+  sha: string;
+  authorName: string;
+  authorEmail: string;
+  subject: string;
+  bodySnippet: string | null;
+  committedAt: number | null;
+}
+
+export interface AgentRunPatchPacketValidation {
+  kind: string;
+  status: "passed" | "failed" | "skipped";
+  notes: string | null;
+}
+
+export interface AgentRunPatchPacket {
+  agentRunId: string;
+  workItemId: string | null;
+  artifactId: string | null;
+  generatedAt: number;
+  status: AgentRunPatchPacketStatus;
+  workspacePath: string | null;
+  branch: string | null;
+  baseRef: string | null;
+  changedFiles: AgentRunPatchPacketChangedFile[];
+  diffStat: {
+    filesChanged: number;
+    insertions: number;
+    deletions: number;
+  };
+  commits: AgentRunPatchPacketCommit[];
+  validations: AgentRunPatchPacketValidation[];
+  logRefs: {
+    logFilePath: string | null;
+    lastLogAt: number | null;
+    lastLogLineCount: number | null;
+  };
+  errorSummary: string | null;
+}
+
+export interface CollectAgentRunPatchPacketResponse {
+  generatedAt: number;
+  packet: AgentRunPatchPacket;
+}
+
 export type AgentRunReconciliationKind =
   | "stale_no_process"
   | "stale_heartbeat"
