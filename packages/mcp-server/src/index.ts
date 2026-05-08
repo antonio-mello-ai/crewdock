@@ -2297,6 +2297,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "execute_company_brain_agent_run_async",
+  {
+    title: "Execute a Company Brain agent run async (supervised, returns immediately)",
+    description:
+      "Async variant of the supervised executor. Spawns the agent subprocess in the background, persists pid and executionRef on the AgentRun, captures stdout/stderr to .aios-run/<id>.log via streaming pipe, updates lastLogAt heartbeat as bytes arrive, and returns immediately with status=running and async=true. The terminal status (completed/failed/timed_out) is written by the on-exit handler later, which also runs the session_result auto-intake from AIOS-RUN-11. Real subprocess gating is identical to /execute (policy + actor + rationale + allowlists). Refuses with 409 if the AgentRun already has a running async subprocess. Long-running commands no longer block the request handler. Cancel via cancel_company_brain_agent_run sends SIGTERM via the in-memory process registry.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      commandOverride: z.string().optional(),
+      argsOverride: z.array(z.string()).optional(),
+      timeoutMsOverride: z.number().int().positive().optional(),
+      promptOverride: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/execute-async`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_agent_run_supervised",
   {
     title: "Execute a Company Brain agent run (supervised real subprocess)",
