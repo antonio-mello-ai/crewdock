@@ -544,6 +544,14 @@ export function useCompanyBrainOperatingMap() {
   });
 }
 
+export function useCompanyBrainAutoDispatchPolicy() {
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "auto-dispatch", "policy"],
+    queryFn: () => api("/api/company-brain/auto-dispatch/policy"),
+    refetchInterval: 10_000,
+  });
+}
+
 export function useCompanyBrainAgentRunSuggestions(status: string = "active") {
   return useQuery<ApiResponse<unknown>>({
     queryKey: ["company-brain", "agent-run-suggestions", status],

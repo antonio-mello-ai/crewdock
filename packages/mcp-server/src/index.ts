@@ -1583,6 +1583,47 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_auto_dispatch_policy",
+  {
+    title: "Get Company Brain Auto-Dispatch policy",
+    description:
+      "Read the current auto-dispatch governance policy: env config, runtime state (active runs, cooldown, token budget) and an eligibility preview against the top active suggestion when present.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/auto-dispatch/policy"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "evaluate_company_brain_auto_dispatch_eligibility",
+  {
+    title: "Evaluate Company Brain Auto-Dispatch eligibility",
+    description:
+      "Evaluate auto-dispatch eligibility for a WorkItem or AgentRun suggestion. Returns satisfied gates, block reasons and decision. Does not launch any subprocess.",
+    inputSchema: {
+      workItemId: z.string().optional(),
+      agentRunSuggestionId: z.string().optional(),
+      actorOverride: z.string().optional(),
+      rationaleOverride: z.string().optional(),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/auto-dispatch/eligibility",
+      {
+        method: "POST",
+        body: JSON.stringify(input ?? {}),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "list_company_brain_agent_run_suggestions",
   {
     title: "List Company Brain AgentRun suggestions",
