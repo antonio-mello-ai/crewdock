@@ -101,10 +101,13 @@ import type {
   AgentRunReconciliationFinding,
   EvaluateAutoDispatchEligibilityRequest,
   ListAgentRunSuggestionsResponse,
+  ListRunnerProfilesResponse,
   OperatingLoopAutoDispatchOutcome,
   OperatingLoopReconciliationOutcome,
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
+  RunnerProfile,
+  RunnerProfileEvaluation,
   UpdateWorkItemStatusRequest,
   UpdateWorkItemStatusResponse,
   CreateAgentRunRequest,
@@ -12666,6 +12669,202 @@ function csvEnv(value: string | undefined): string[] {
     .filter((v) => v.length > 0);
 }
 
+const RUNNER_PROFILE_REGISTRY: RunnerProfile[] = [
+  {
+    id: "noop-echo",
+    title: "Noop echo",
+    description:
+      "Pure shell echo profile for dogfood smoke tests. Always allowed when AIOS_AGENT_RUNNER_ENABLED=true and `echo` is in COMMAND_ALLOWLIST. Produces no real output beyond a heartbeat line and exits 0.",
+    command: "echo",
+    args: ["aios-noop-runner-heartbeat"],
+    capabilities: ["no_op"],
+    authMode: "none",
+    allowedRepos: "*",
+    allowedAreas: "*",
+    maxConcurrency: 1,
+    riskCeiling: "A",
+    outputContract: {
+      format: "noop",
+      expectedExitCodes: [0],
+      description: "Single stdout line; no session_result schema enforced.",
+    },
+    defaultEnabled: true,
+    category: "noop",
+  },
+  {
+    id: "dogfood-true",
+    title: "Dogfood true",
+    description:
+      "Single-call `true` for the most minimal subprocess test. Useful when smoke needs to validate the dispatch chain without producing any output.",
+    command: "true",
+    args: [],
+    capabilities: ["no_op"],
+    authMode: "none",
+    allowedRepos: "*",
+    allowedAreas: "*",
+    maxConcurrency: 1,
+    riskCeiling: "A",
+    outputContract: {
+      format: "noop",
+      expectedExitCodes: [0],
+      description: "Empty stdout, exit 0.",
+    },
+    defaultEnabled: true,
+    category: "dogfood",
+  },
+  {
+    id: "claude-code-real",
+    title: "Claude Code (real agent)",
+    description:
+      "Production Claude Code CLI. Edits files, opens PRs, runs tests. Requires Anthropic API key. Default-OFF; enable explicitly via AIOS_AGENT_RUNNER_PROFILE_CLAUDE_CODE_ENABLED.",
+    command: "claude",
+    args: ["-p"],
+    capabilities: [
+      "shell_command",
+      "code_edit",
+      "git_commit",
+      "github_pr_open",
+      "test_runner",
+    ],
+    authMode: "anthropic_api_key",
+    allowedRepos: ["antonio-mello-ai/crewdock"],
+    allowedAreas: ["development", "platform"],
+    maxConcurrency: 1,
+    riskCeiling: "B",
+    outputContract: {
+      format: "fallback",
+      expectedExitCodes: [0, 1],
+      description:
+        "Last lines of stdout parsed as session_result fallback when structured JSON is absent.",
+    },
+    defaultEnabled: false,
+    enabledEnvVar: "AIOS_AGENT_RUNNER_PROFILE_CLAUDE_CODE_ENABLED",
+    category: "real_agent",
+  },
+  {
+    id: "codex-cli-real",
+    title: "Codex CLI (real agent)",
+    description:
+      "OpenAI Codex CLI. Same capability surface as Claude Code. Default-OFF; enable explicitly via AIOS_AGENT_RUNNER_PROFILE_CODEX_CLI_ENABLED.",
+    command: "codex",
+    args: [],
+    capabilities: [
+      "shell_command",
+      "code_edit",
+      "git_commit",
+      "github_pr_open",
+      "test_runner",
+    ],
+    authMode: "openai_api_key",
+    allowedRepos: ["antonio-mello-ai/crewdock"],
+    allowedAreas: ["development", "platform"],
+    maxConcurrency: 1,
+    riskCeiling: "B",
+    outputContract: {
+      format: "fallback",
+      expectedExitCodes: [0, 1],
+      description:
+        "Codex stdout parsed via fallback session_result extraction.",
+    },
+    defaultEnabled: false,
+    enabledEnvVar: "AIOS_AGENT_RUNNER_PROFILE_CODEX_CLI_ENABLED",
+    category: "real_agent",
+  },
+];
+
+function getRunnerProfile(id: string): RunnerProfile | null {
+  return RUNNER_PROFILE_REGISTRY.find((p) => p.id === id) ?? null;
+}
+
+function isRunnerProfileEnabled(profile: RunnerProfile): boolean {
+  if (profile.defaultEnabled) return true;
+  if (profile.enabledEnvVar) {
+    return process.env[profile.enabledEnvVar] === "true";
+  }
+  return false;
+}
+
+function evaluateRunnerProfile(args: {
+  profileId: string;
+  repo?: string | null;
+  area?: CompanyBrainArea | null;
+  riskClass?: RiskClass | null;
+}): RunnerProfileEvaluation {
+  const profile = getRunnerProfile(args.profileId);
+  if (!profile) {
+    return {
+      profileId: args.profileId,
+      available: false,
+      reason: "profile_not_found",
+      detail: `Runner profile "${args.profileId}" is not registered. Known: ${RUNNER_PROFILE_REGISTRY.map((p) => p.id).join(", ")}.`,
+    };
+  }
+  if (!isRunnerProfileEnabled(profile)) {
+    return {
+      profileId: profile.id,
+      available: false,
+      reason: "profile_not_enabled",
+      detail: `Profile "${profile.id}" is default-OFF; opt-in required.`,
+      enabledEnvVar: profile.enabledEnvVar,
+    };
+  }
+  const cmdAllowlist = runnerCommandAllowlist();
+  if (!cmdAllowlist.includes(profile.command)) {
+    return {
+      profileId: profile.id,
+      available: false,
+      reason: "profile_command_not_allowlisted",
+      detail: `Profile command ${profile.command} is not in AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST=[${cmdAllowlist.join(",")}].`,
+      enabledEnvVar: profile.enabledEnvVar,
+    };
+  }
+  if (
+    args.repo &&
+    profile.allowedRepos !== "*" &&
+    !profile.allowedRepos.includes(args.repo)
+  ) {
+    return {
+      profileId: profile.id,
+      available: false,
+      reason: "profile_repo_not_allowed",
+      detail: `Profile "${profile.id}" does not allow repo=${args.repo}; allowed=[${profile.allowedRepos.join(",")}].`,
+    };
+  }
+  if (
+    args.area &&
+    profile.allowedAreas !== "*" &&
+    !(profile.allowedAreas as string[]).includes(args.area)
+  ) {
+    return {
+      profileId: profile.id,
+      available: false,
+      reason: "profile_area_not_allowed",
+      detail: `Profile "${profile.id}" does not allow area=${args.area}; allowed=[${(profile.allowedAreas as string[]).join(",")}].`,
+    };
+  }
+  // riskCeiling: A is most restrictive (only A allowed), B allows A or B,
+  // C allows everything (we never use C here).
+  if (args.riskClass) {
+    const riskOrder: Record<string, number> = { A: 1, B: 2, C: 3, unknown: 99 };
+    const requested = riskOrder[args.riskClass] ?? 99;
+    const ceiling = riskOrder[profile.riskCeiling] ?? 0;
+    if (requested > ceiling) {
+      return {
+        profileId: profile.id,
+        available: false,
+        reason: "profile_risk_ceiling_exceeded",
+        detail: `Profile "${profile.id}" risk ceiling=${profile.riskCeiling}; requested=${args.riskClass}.`,
+      };
+    }
+  }
+  return {
+    profileId: profile.id,
+    available: true,
+    reason: null,
+    detail: `Profile "${profile.id}" available (command=${profile.command}, capabilities=[${profile.capabilities.join(",")}]).`,
+  };
+}
+
 function autoDispatchEnabled(): boolean {
   return process.env.AIOS_AGENT_AUTODISPATCH_ENABLED === "true";
 }
@@ -12712,6 +12911,8 @@ function autoDispatchConfig(): AutoDispatchPolicyConfig {
       "Auto-dispatched by Operating Loop after eligibility evaluation",
     commandOverride:
       process.env.AIOS_AGENT_AUTODISPATCH_COMMAND_OVERRIDE?.trim() || null,
+    profileId:
+      process.env.AIOS_AGENT_AUTODISPATCH_PROFILE_ID?.trim() || null,
   };
 }
 
@@ -13156,6 +13357,16 @@ function evaluateAutoDispatchEligibility(args: {
       createdAt: now(),
       updatedAt: now(),
     } as unknown as typeof cbAgentRuns.$inferSelect;
+    // Resolve effective command for the chained manual policy. Profile
+    // selection takes precedence over commandOverride.
+    let effectiveCommandOverride: string | undefined =
+      config.commandOverride ?? undefined;
+    if (config.profileId) {
+      const profile = getRunnerProfile(config.profileId);
+      if (profile) {
+        effectiveCommandOverride = profile.command;
+      }
+    }
     try {
       const policy = evaluateRunnerPolicy({
         agentRun: syntheticRun,
@@ -13163,7 +13374,7 @@ function evaluateAutoDispatchEligibility(args: {
           intent: "real_execution",
           actor: args.actorOverride ?? config.defaultActor,
           rationale: args.rationaleOverride ?? config.defaultRationale,
-          commandOverride: config.commandOverride ?? undefined,
+          commandOverride: effectiveCommandOverride,
         },
       });
       manualRunnerPolicyDecision = policy.decision;
@@ -13335,6 +13546,58 @@ function evaluateAutoDispatchEligibility(args: {
     satisfiedGates.push("actor_rationale_present");
   }
 
+  // 12. Runner profile (optional — only enforced when profileId is set).
+  if (config.profileId) {
+    const profileEval = evaluateRunnerProfile({
+      profileId: config.profileId,
+      repo,
+      area: args.workItem?.area ?? null,
+      riskClass: args.workItem?.riskClass ?? null,
+    });
+    if (!profileEval.available) {
+      gates.push({
+        key: "runner_profile_available",
+        title: "Runner profile available",
+        status: "failed",
+        detail: profileEval.detail,
+        remediation: profileEval.enabledEnvVar
+          ? `Set ${profileEval.enabledEnvVar}=true to enable this profile, or pick a different AIOS_AGENT_AUTODISPATCH_PROFILE_ID.`
+          : "Pick a registered, enabled profile via AIOS_AGENT_AUTODISPATCH_PROFILE_ID.",
+        envRefs: profileEval.enabledEnvVar
+          ? [
+              "AIOS_AGENT_AUTODISPATCH_PROFILE_ID",
+              profileEval.enabledEnvVar,
+            ]
+          : ["AIOS_AGENT_AUTODISPATCH_PROFILE_ID"],
+        expectedFormat: "Registered runner profile id (see GET /runner-profiles)",
+        exampleValue: "noop-echo",
+        docsLink: "WORKFLOW.md#runner-profile-registry",
+      });
+      blockReasons.push(`autodispatch_profile_${profileEval.reason ?? "unavailable"}`);
+      setBlock("blocked_runner_policy");
+    } else {
+      gates.push({
+        key: "runner_profile_available",
+        title: "Runner profile available",
+        status: "passed",
+        detail: profileEval.detail,
+      });
+      satisfiedGates.push("runner_profile_available");
+    }
+  } else {
+    gates.push({
+      key: "runner_profile_available",
+      title: "Runner profile available",
+      status: "warn",
+      detail:
+        "No AIOS_AGENT_AUTODISPATCH_PROFILE_ID set; falling back to commandOverride or WORKFLOW.md agent.command. Set a profile id for typed runner selection.",
+      envRefs: ["AIOS_AGENT_AUTODISPATCH_PROFILE_ID"],
+      expectedFormat: "Registered runner profile id (see GET /runner-profiles)",
+      exampleValue: "noop-echo",
+      docsLink: "WORKFLOW.md#runner-profile-registry",
+    });
+  }
+
   const decision: AutoDispatchDecision = firstBlockDecision ?? "eligible";
   const eligible = decision === "eligible" && !blockReasons.length;
 
@@ -13393,6 +13656,26 @@ function buildAutoDispatchPolicySummary(): AutoDispatchPolicySummary {
     eligibilityPreview,
   };
 }
+
+app.get("/runner-profiles", (c) => {
+  const repo = c.req.query("repo")?.trim() || null;
+  const area = (c.req.query("area")?.trim() as CompanyBrainArea | undefined) || null;
+  const riskClass = (c.req.query("riskClass")?.trim() as RiskClass | undefined) || null;
+  const profiles = RUNNER_PROFILE_REGISTRY.map((profile) => ({
+    profile,
+    evaluation: evaluateRunnerProfile({
+      profileId: profile.id,
+      repo,
+      area,
+      riskClass,
+    }),
+  }));
+  const response: ListRunnerProfilesResponse = {
+    generatedAt: now(),
+    profiles,
+  };
+  return c.json({ data: response });
+});
 
 app.get("/auto-dispatch/policy", (c) => {
   const data = buildAutoDispatchPolicySummary();
@@ -18326,15 +18609,19 @@ async function runOperatingLoopAutoDispatchTick(args: {
     };
   }
 
-  // Trigger async execution. When the auto-dispatch config carries a
-  // commandOverride (e.g., dogfood smoke with `echo`), pass it through to
-  // execute-async so the operator can validate the dispatch chain
-  // without invoking the real agent binary.
+  // Trigger async execution. Profile selection takes precedence over
+  // commandOverride; both produce execute-async commandOverride/argsOverride.
   const execBody: Record<string, unknown> = {
     actor: autoActor,
     rationale: autoRationale,
   };
-  if (eligibility.config.commandOverride) {
+  if (eligibility.config.profileId) {
+    const profile = getRunnerProfile(eligibility.config.profileId);
+    if (profile) {
+      execBody.commandOverride = profile.command;
+      execBody.argsOverride = profile.args;
+    }
+  } else if (eligibility.config.commandOverride) {
     execBody.commandOverride = eligibility.config.commandOverride;
   }
   try {
