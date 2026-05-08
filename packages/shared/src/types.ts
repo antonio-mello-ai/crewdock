@@ -1664,6 +1664,36 @@ export interface AgentRunSuggestion {
   updatedAt: number;
 }
 
+export type AgentRunReconciliationKind =
+  | "stale_no_process"
+  | "stale_heartbeat"
+  | "timed_out"
+  | "completed_via_session_result"
+  | "needs_review_via_session_result"
+  | "suggestion_superseded_done_work_item"
+  | "suggestion_superseded_blocked_work_item";
+
+export interface AgentRunReconciliationFinding {
+  kind: AgentRunReconciliationKind;
+  agentRunId: string | null;
+  suggestionId: string | null;
+  workItemId: string | null;
+  rationale: string;
+  newStatus: AgentRunStatus | null;
+  appliedAt: number;
+  evidence: Record<string, unknown>;
+}
+
+export interface OperatingLoopReconciliationOutcome {
+  generatedAt: number;
+  scheduleId: string | null;
+  scheduledAt: number | null;
+  scannedRunCount: number;
+  scannedSuggestionCount: number;
+  findings: AgentRunReconciliationFinding[];
+  errorSummary: string | null;
+}
+
 export type OperatingLoopAutoDispatchStatus =
   | "skipped_disabled"
   | "skipped_no_suggestion"
@@ -2767,6 +2797,9 @@ export interface CompanyBrainOperatingLoopState {
   autoDispatchTickCount: number;
   autoDispatchSuccessCount: number;
   autoDispatchBlockedCount: number;
+  lastReconciliationOutcome: OperatingLoopReconciliationOutcome | null;
+  reconciliationTickCount: number;
+  reconciliationFindingsCount: number;
 }
 
 export interface CompanyBrainOperatingCadence {
