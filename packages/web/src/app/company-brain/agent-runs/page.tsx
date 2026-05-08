@@ -516,6 +516,11 @@ interface AutoDispatchGate {
   title: string;
   status: "passed" | "failed" | "warn";
   detail: string;
+  remediation?: string;
+  envRefs?: string[];
+  expectedFormat?: string;
+  exampleValue?: string;
+  docsLink?: string;
 }
 
 interface AutoDispatchPolicySummaryRow {
@@ -687,7 +692,7 @@ export default function CompanyBrainAgentRunsPage() {
                     <span className="text-[11px] text-muted-foreground">global preview (no WorkItem)</span>
                   )}
                 </div>
-                <ul className="mt-2 grid gap-1 text-[11px] sm:grid-cols-2">
+                <ul className="mt-2 grid gap-2 text-[11px] sm:grid-cols-2">
                   {autoDispatch.eligibilityPreview.gates.map((gate) => (
                     <li key={gate.key} className="flex items-start gap-2">
                       <span
@@ -701,9 +706,35 @@ export default function CompanyBrainAgentRunsPage() {
                       >
                         {gate.status === "passed" ? "✓" : gate.status === "warn" ? "⚠" : "✗"}
                       </span>
-                      <span>
-                        <span className="font-medium">{gate.title}</span>: {gate.detail}
-                      </span>
+                      <div className="flex-1">
+                        <p>
+                          <span className="font-medium">{gate.title}</span>: {gate.detail}
+                        </p>
+                        {gate.status === "failed" && gate.envRefs && gate.envRefs.length > 0 ? (
+                          <p className="mt-1 text-muted-foreground">
+                            <span className="font-medium">Env:</span>{" "}
+                            <code className="text-[10px]">{gate.envRefs.join(", ")}</code>
+                            {gate.expectedFormat ? (
+                              <>
+                                {" — "}
+                                {gate.expectedFormat}
+                              </>
+                            ) : null}
+                          </p>
+                        ) : null}
+                        {gate.status === "failed" && gate.exampleValue ? (
+                          <p className="mt-1 text-muted-foreground">
+                            <span className="font-medium">Example:</span>{" "}
+                            <code className="text-[10px]">{gate.exampleValue}</code>
+                          </p>
+                        ) : null}
+                        {gate.status === "failed" && gate.docsLink ? (
+                          <p className="mt-1 text-muted-foreground">
+                            <span className="font-medium">Docs:</span>{" "}
+                            <code className="text-[10px]">{gate.docsLink}</code>
+                          </p>
+                        ) : null}
+                      </div>
                     </li>
                   ))}
                 </ul>

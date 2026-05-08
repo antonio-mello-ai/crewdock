@@ -71,3 +71,53 @@ You are the AIOS Execution Loop agent for issue {{ issue.identifier }}: {{ issue
 - Open PR with `Closes {{ issue.external_id }}`.
 - Update `docs/backlog.md` with a status line for the cut.
 - Submit a session_result via `mcp__aios__submit_company_brain_session_result` referencing the WorkItem and the PR.
+
+## Auto-dispatch env vars
+
+Auto-dispatch is **default-off** in production. Opt-in requires the following env vars (all checked via `evaluateAutoDispatchEligibility`). Each gate response now carries `envRefs`, `expectedFormat`, `exampleValue` and `docsLink` to make config errors fixable without reading source.
+
+| Env var | Format | Example | Notes |
+|---|---|---|---|
+| `AIOS_AGENT_AUTODISPATCH_ENABLED` | boolean string | `true` | Master switch. Unset or anything other than `"true"` keeps auto-dispatch blocked. |
+| `AIOS_AGENT_AUTODISPATCH_REPO_ALLOWLIST` | CSV of `owner/name` | `antonio-mello-ai/crewdock` | GitHub repo identifiers, **not** filesystem paths. Must include `WORKFLOW.md` `tracker.repo`. |
+| `AIOS_AGENT_AUTODISPATCH_WORKFLOW_ALLOWLIST` | CSV of blueprint ids | `development-blueprint-v0` | Must match `cb_workflow_blueprints.id` exactly. v5 (#95) lets you create blueprints with stable client-supplied ids. |
+| `AIOS_AGENT_AUTODISPATCH_AREA_ALLOWLIST` | CSV of `CompanyBrainArea` | `development,platform` | Allowed values: `strategy`, `development`, `operations`, `product`, `marketing`, `sales`, `finance`, `people`, `customer`, `platform`. |
+| `AIOS_AGENT_AUTODISPATCH_REQUIRE_RISK_A` | boolean string | `true` | When `true` (default), only Risk A WorkItems are eligible. Set `false` to allow Risk B with documented rationale. |
+| `AIOS_AGENT_AUTODISPATCH_MAX_CONCURRENCY` | int | `1` | Max active runs at any time across the daemon. Defaults to 1; the loop also enforces single-run-per-tick. |
+| `AIOS_AGENT_AUTODISPATCH_TOKEN_BUDGET` | int | `100000` | Tokens spent in the cooldown window. Auto-dispatch refuses when window budget is exhausted. |
+| `AIOS_AGENT_AUTODISPATCH_COOLDOWN_MS` | int (ms) | `900000` | Minimum gap between auto-dispatches; also defines the budget window. |
+| `AIOS_AGENT_AUTODISPATCH_MAX_RUNTIME_MS` | int (ms) | `600000` | Per-run timeout. Reconciler marks runs `failed` when exceeded. |
+| `AIOS_AGENT_AUTODISPATCH_DEFAULT_ACTOR` | string | `operating-loop:auto-dispatch` | Audit actor for promote + execute-async calls. |
+| `AIOS_AGENT_AUTODISPATCH_DEFAULT_RATIONALE` | string | `Auto-dispatched by Operating Loop after eligibility evaluation` | Default rationale recorded on AgentRun. |
+
+## Manual runner env vars
+
+Auto-dispatch chains `evaluateRunnerPolicy(intent=real_execution)`, so the manual runner env vars must also be set:
+
+| Env var | Format | Example | Notes |
+|---|---|---|---|
+| `AIOS_AGENT_RUNNER_ENABLED` | boolean string | `true` | Master switch for any real subprocess (manual or auto). |
+| `AIOS_AGENT_RUNNER_REPO_ALLOWLIST` | CSV of `owner/name` | `antonio-mello-ai/crewdock` | Mirrors auto-dispatch repo allowlist. |
+| `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST` | CSV of binaries | `claude,echo,true` | Must include `WORKFLOW.md` `agent.command` (e.g., `claude`). Defaults to `claude,codex,echo,true`. |
+| `AIOS_AGENT_WORKSPACE_ENABLED` | boolean string | `true` | Enables workspace prepare/cleanup endpoints. |
+| `AIOS_AGENT_WORKSPACE_ALLOWLIST` | **CSV of `owner/name`** | `antonio-mello-ai/crewdock` | **Repo identifiers, NOT filesystem paths.** The workspace path itself is derived from `WORKFLOW.md` `workspace.root` (default `~/.aios/agent-workspaces`); this allowlist controls which repos can use that root. |
+
+The workspace path is computed as `${workspace.root}/${owner_repo}/${workItemKey}-${runId.slice(0,8)}`. The cleanup gate (#78) refuses to remove anything outside `workspace.root`.
+
+## Failed gate response shape
+
+```ts
+interface AutoDispatchGate {
+  key: string;
+  title: string;
+  status: "passed" | "failed" | "warn";
+  detail: string;
+  remediation?: string;
+  envRefs?: string[];        // env vars that need to be fixed
+  expectedFormat?: string;   // human-readable contract
+  exampleValue?: string;     // ready-to-paste value
+  docsLink?: string;         // pointer to deeper docs
+}
+```
+
+The console renders `envRefs` and `exampleValue` inline so an operator can fix config without re-reading source.
