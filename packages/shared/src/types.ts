@@ -1104,6 +1104,65 @@ export interface CreateGuidanceItemRequest {
   provenance?: Provenance | null;
 }
 
+export type AgentRunDryRunPhaseStatus = "passed" | "failed" | "skipped";
+
+export interface AgentRunDryRunPhase {
+  name: string;
+  status: AgentRunDryRunPhaseStatus;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+  detail: string;
+  blockReasons?: string[];
+}
+
+export interface AgentRunDryRunRetryPlan {
+  attempt: number;
+  delayMs: number;
+  scheduledAt: number;
+  rationale: string;
+}
+
+export interface AgentRunDryRunExecutionResult {
+  generatedAt: number;
+  agentRunId: string;
+  startedFromStatus: AgentRunStatus;
+  finalStatus: AgentRunStatus;
+  finalClaimState: AgentRunClaimState;
+  attempt: number;
+  totalDurationMs: number;
+  phases: AgentRunDryRunPhase[];
+  workflow: {
+    isValid: boolean;
+    errorCount: number;
+    warningCount: number;
+    repo: string | null;
+  };
+  workspace: {
+    status: WorkspacePreparationStatus;
+    workspacePath: string;
+    branchName: string;
+    blockReasons: string[];
+  };
+  policy: {
+    riskClass: RiskClass;
+    actionPolicy: ActionPolicy;
+    realExecutionAllowed: boolean;
+    blockReasons: string[];
+  };
+  retryPlan: AgentRunDryRunRetryPlan | null;
+  rationale: string[];
+  realExecutionPerformed: false;
+}
+
+export interface DryRunExecuteAgentRunRequest {
+  forceFailure?: boolean;
+  forceBlocker?: string;
+  treatWorkspaceBlockAsFailure?: boolean;
+  actor?: string | null;
+  rationale?: string | null;
+}
+
 export type WorkspacePreparationStatus =
   | "ready_to_create"
   | "created"

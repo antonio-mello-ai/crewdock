@@ -2168,6 +2168,31 @@ server.registerTool(
 );
 
 server.registerTool(
+  "execute_company_brain_agent_run_dry_run",
+  {
+    title: "Execute a Company Brain agent run in dry-run mode",
+    description:
+      "Walk an AgentRun through queued -> claimed -> running -> completed/failed/blocked using only validation and simulation, never launching a real coding agent. Validates WORKFLOW.md, derives the workspace path with safety invariants, checks the policy gate (Risk A/B/C and dryRun-only execution) and computes a retry plan using Symphony 8.4 backoff (clean continuation 1000ms; failure min(10000 * 2^(attempt-1), max_retry_backoff_ms)). Each phase is recorded in the audit trail. Optional flags forceFailure and forceBlocker drive the failure paths for testing; treatWorkspaceBlockAsFailure escalates a workspace block into a failure transition.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      forceFailure: z.boolean().optional(),
+      forceBlocker: z.string().optional(),
+      treatWorkspaceBlockAsFailure: z.boolean().optional(),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/execute-dry-run`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "prepare_company_brain_agent_workspace",
   {
     title: "Prepare Company Brain agent workspace (dry-run by default)",
