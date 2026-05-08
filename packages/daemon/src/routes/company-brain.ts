@@ -108,6 +108,10 @@ import type {
   ExecuteGitHubPrProposalRequest,
   ExecuteGitHubPrProposalResponse,
   GitHubPrProposalPayload,
+  GitHubPrWritebackPreflightGate,
+  GitHubPrWritebackPreflightRequest,
+  GitHubPrWritebackPreflightResponse,
+  GitHubPrWritebackPushProbe,
   PreviewGitHubPrProposalResponse,
   ListAgentRunSuggestionsResponse,
   ListRunnerProfilesResponse,
@@ -14007,6 +14011,491 @@ function buildAiosPrMarker(args: {
   return `${AIOS_PR_MARKER_PREFIX}${args.proposalId}:agentRunId=${args.agentRunId}:sig=${args.patchPacketSignature.slice(0, 12)} -->`;
 }
 
+function githubPrWritebackTokenInfo(): {
+  token: string | null;
+  source: "GITHUB_TOKEN" | "GH_TOKEN" | null;
+} {
+  const githubToken = getSecretEnv("GITHUB_TOKEN");
+  if (githubToken) return { token: githubToken, source: "GITHUB_TOKEN" };
+  const ghToken = getSecretEnv("GH_TOKEN");
+  if (ghToken) return { token: ghToken, source: "GH_TOKEN" };
+  return { token: null, source: null };
+}
+
+function redactSnippet(value: string | null | undefined, secret?: string | null): string | null {
+  if (!value) return null;
+  const withoutSecret = secret ? value.split(secret).join("[REDACTED]") : value;
+  return withoutSecret.trim().slice(0, 500) || null;
+}
+
+function preflightGate(args: {
+  key: string;
+  title: string;
+  status: GitHubPrWritebackPreflightGate["status"];
+  detail: string;
+  remediation?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): GitHubPrWritebackPreflightGate {
+  return {
+    key: args.key,
+    title: args.title,
+    status: args.status,
+    detail: args.detail,
+    remediation: args.remediation ?? null,
+    metadata: args.metadata ?? null,
+  };
+}
+
+function persistGitHubPrWritebackPreflightArtifact(args: {
+  proposal: ExternalActionProposal;
+  preflight: Omit<GitHubPrWritebackPreflightResponse, "proposal" | "artifactId">;
+}): string {
+  const db = getDb();
+  const timestamp = args.preflight.generatedAt;
+  const visibility = args.proposal.visibility;
+  const sourceId = ensureSessionResultsSource("development", visibility, timestamp);
+  const artifactId = nanoid(12);
+  const rawRef = `aios://github-pr-writeback-preflight/${args.proposal.id}/${timestamp}`;
+  const summary = [
+    `status=${args.preflight.status}`,
+    `repo=${args.preflight.repo ?? "-"}`,
+    `sourceBranch=${args.preflight.sourceBranch ?? "-"}`,
+    `baseBranch=${args.preflight.baseBranch ?? "-"}`,
+    `tokenSource=${args.preflight.tokenSource ?? "-"}`,
+    `pushProbe=${args.preflight.pushProbe.status}`,
+  ].join(" | ");
+  const artifact: Artifact = {
+    id: artifactId,
+    sourceId,
+    artifactType: "session_result",
+    area: "development",
+    title: `GitHub PR writeback preflight: ${args.proposal.id}`.slice(0, 240),
+    summary,
+    contentRef: null,
+    rawRef,
+    author: "company-brain:github-pr-writeback-preflight",
+    occurredAt: timestamp,
+    ingestedAt: timestamp,
+    hash: createHash("sha256")
+      .update(JSON.stringify(args.preflight))
+      .digest("hex"),
+    visibility,
+    provenance: {
+      sourceId,
+      rawRef,
+      artifactId,
+      createdFrom: "company_brain:github_pr_writeback_preflight",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "pending",
+      visibility,
+      notes: `proposal=${args.proposal.id}; status=${args.preflight.status}; pushProbe=${args.preflight.pushProbe.status}`,
+    },
+    humanReviewStatus: "pending",
+    confidence: 1,
+    metadata: {
+      kind: "github_pr_writeback_preflight",
+      proposalId: args.proposal.id,
+      preflight: args.preflight,
+    },
+  };
+  db.insert(cbArtifacts).values(artifact as never).run();
+  return artifactId;
+}
+
+async function buildGitHubPrWritebackPreflight(args: {
+  proposal: ExternalActionProposal;
+  actor: string;
+  rationale: string;
+  pushProbe: boolean;
+  persistArtifact: boolean;
+}): Promise<GitHubPrWritebackPreflightResponse> {
+  const db = getDb();
+  const generatedAt = now();
+  const proposal = args.proposal;
+  const payload = proposal.payload as unknown as Partial<GitHubPrProposalPayload>;
+  const repo = typeof payload.repo === "string" ? payload.repo : null;
+  const sourceBranch =
+    typeof payload.sourceBranch === "string" ? payload.sourceBranch : null;
+  const baseBranch =
+    typeof payload.baseBranch === "string" ? payload.baseBranch : null;
+  const agentRunId =
+    typeof payload.agentRunId === "string" ? payload.agentRunId : null;
+  const repoAllowlist = githubPrWritebackRepoAllowlist();
+  const tokenInfo = githubPrWritebackTokenInfo();
+  const gates: GitHubPrWritebackPreflightGate[] = [];
+
+  gates.push(
+    preflightGate({
+      key: "action_type",
+      title: "Proposal action type",
+      status: proposal.actionType === "github_pr_create" ? "passed" : "failed",
+      detail: `proposal.actionType=${proposal.actionType}`,
+      remediation: "Use a github_pr_create ExternalActionProposal.",
+    })
+  );
+
+  const payloadOk = Boolean(repo && sourceBranch && baseBranch && agentRunId);
+  gates.push(
+    preflightGate({
+      key: "payload_shape",
+      title: "PR payload shape",
+      status: payloadOk ? "passed" : "failed",
+      detail: payloadOk
+        ? `repo=${repo}; source=${sourceBranch}; base=${baseBranch}; agentRun=${agentRunId}`
+        : "payload must include repo, sourceBranch, baseBranch and agentRunId",
+      remediation: "Regenerate the github_pr_create proposal from an AgentRun patch packet.",
+    })
+  );
+
+  gates.push(
+    preflightGate({
+      key: "writeback_enabled",
+      title: "GitHub PR writeback master switch",
+      status: githubPrWritebackEnabled() ? "passed" : "failed",
+      detail: `AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED=${process.env.AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED ?? "(unset)"}`,
+      remediation: "Set AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED=true for a controlled run.",
+      metadata: {
+        envRef: "AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED",
+        expectedFormat: "boolean string",
+        exampleValue: "true",
+      },
+    })
+  );
+
+  gates.push(
+    preflightGate({
+      key: "repo_allowlist",
+      title: "Repository allowlist",
+      status: repo && repoAllowlist.includes(repo) ? "passed" : "failed",
+      detail: `repo=${repo ?? "(missing)"}; allowlist=[${repoAllowlist.join(",")}]`,
+      remediation:
+        "Set AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST to the internal owner/name repo.",
+      metadata: {
+        envRef: "AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST",
+        expectedFormat: "CSV of owner/name repositories",
+        exampleValue: "antonio-mello-ai/crewdock",
+      },
+    })
+  );
+
+  gates.push(
+    preflightGate({
+      key: "token_present",
+      title: "GitHub token",
+      status: tokenInfo.token ? "passed" : "failed",
+      detail: tokenInfo.source
+        ? `using ${tokenInfo.source}; token value redacted`
+        : "GITHUB_TOKEN/GH_TOKEN is not configured",
+      remediation:
+        "Configure the existing daemon GitHub token as GITHUB_TOKEN or GH_TOKEN.",
+      metadata: {
+        tokenSource: tokenInfo.source,
+        tokenPresent: Boolean(tokenInfo.token),
+      },
+    })
+  );
+
+  gates.push(
+    preflightGate({
+      key: "auth_scheme",
+      title: "Git push auth scheme",
+      status: "passed",
+      detail:
+        "GitHub API calls use Bearer, but git push uses https://x-access-token:<token>@github.com/owner/repo.git.",
+      remediation: null,
+      metadata: {
+        api: "bearer",
+        gitPush: "x-access-token-url",
+      },
+    })
+  );
+
+  let owner: string | null = null;
+  let name: string | null = null;
+  let baseBranchVisible: boolean | null = null;
+  if (repo) {
+    try {
+      const parsed = parseGitHubRepo(repo);
+      owner = parsed.owner;
+      name = parsed.name;
+    } catch (err) {
+      gates.push(
+        preflightGate({
+          key: "repo_parse",
+          title: "Repository parse",
+          status: "failed",
+          detail: err instanceof Error ? err.message : "repo parse failed",
+          remediation: "Use owner/name format.",
+        })
+      );
+    }
+  }
+
+  if (owner && name && baseBranch && tokenInfo.token) {
+    try {
+      await githubApiRequest<{ name: string }>(
+        `/repos/${owner}/${name}/branches/${encodeURIComponent(baseBranch)}`,
+        { requireToken: true }
+      );
+      baseBranchVisible = true;
+      gates.push(
+        preflightGate({
+          key: "base_branch_visible",
+          title: "Base branch visibility",
+          status: "passed",
+          detail: `baseBranch=${baseBranch} is visible via GitHub API`,
+        })
+      );
+    } catch (err) {
+      baseBranchVisible = false;
+      gates.push(
+        preflightGate({
+          key: "base_branch_visible",
+          title: "Base branch visibility",
+          status: "failed",
+          detail: err instanceof Error ? err.message : "base branch lookup failed",
+          remediation: "Check token repo access and baseBranch.",
+        })
+      );
+    }
+  } else {
+    gates.push(
+      preflightGate({
+        key: "base_branch_visible",
+        title: "Base branch visibility",
+        status: "warn",
+        detail: "Skipped until repo, baseBranch and token are available.",
+      })
+    );
+  }
+
+  let workspacePath: string | null = null;
+  if (agentRunId) {
+    const run = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, agentRunId))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    workspacePath = run?.workspaceRef ?? null;
+  }
+  const workspaceReady = Boolean(workspacePath && existsSync(workspacePath));
+  gates.push(
+    preflightGate({
+      key: "workspace_ready",
+      title: "AgentRun workspace",
+      status: workspaceReady ? "passed" : "failed",
+      detail: workspaceReady
+        ? `workspaceRef exists at ${workspacePath}`
+        : agentRunId
+          ? "AgentRun workspaceRef is missing or does not exist on this host"
+          : "payload.agentRunId is missing",
+      remediation:
+        "Prepare or restore the AgentRun workspace before PR writeback.",
+      metadata: {
+        agentRunId,
+        workspacePath,
+      },
+    })
+  );
+  const safePushProbePossible = Boolean(
+    owner &&
+      name &&
+      sourceBranch &&
+      tokenInfo.token &&
+      repo &&
+      repoAllowlist.includes(repo) &&
+      githubPrWritebackEnabled() &&
+      workspaceReady
+  );
+
+  const pushProbe: GitHubPrWritebackPushProbe = {
+    requested: args.pushProbe,
+    attempted: false,
+    status: args.pushProbe ? "skipped" : "not_requested",
+    ref: null,
+    commandSummary: null,
+    stdoutSnippet: null,
+    stderrSnippet: null,
+    errorSummary: args.pushProbe
+      ? "pushProbe requested but required gates were not all ready"
+      : null,
+  };
+
+  if (args.pushProbe && safePushProbePossible && owner && name && tokenInfo.token && workspacePath) {
+    const ref = `refs/heads/aios-preflight/${proposal.id}-${generatedAt}`;
+    const pushUrl = `https://x-access-token:${tokenInfo.token}@github.com/${owner}/${name}.git`;
+    const result = spawnSync(
+      "git",
+      ["-C", workspacePath, "push", "--dry-run", pushUrl, `HEAD:${ref}`],
+      { encoding: "utf-8" }
+    );
+    pushProbe.requested = true;
+    pushProbe.attempted = true;
+    pushProbe.ref = ref;
+    pushProbe.commandSummary = `git push --dry-run https://x-access-token:[REDACTED]@github.com/${owner}/${name}.git HEAD:${ref}`;
+    pushProbe.stdoutSnippet = redactSnippet(result.stdout, tokenInfo.token);
+    pushProbe.stderrSnippet = redactSnippet(result.stderr, tokenInfo.token);
+    pushProbe.status = result.status === 0 ? "passed" : "failed";
+    pushProbe.errorSummary =
+      result.status === 0
+        ? null
+        : (pushProbe.stderrSnippet ?? pushProbe.stdoutSnippet ?? "git push --dry-run failed");
+  }
+
+  gates.push(
+    preflightGate({
+      key: "push_probe",
+      title: "Safe push probe",
+      status:
+        pushProbe.status === "passed" || pushProbe.status === "not_requested"
+          ? "passed"
+          : pushProbe.status === "skipped"
+            ? "warn"
+            : "failed",
+      detail:
+        pushProbe.status === "not_requested"
+          ? "Not requested. Set pushProbe=true to run git push --dry-run against a temporary aios-preflight ref."
+          : pushProbe.status === "skipped"
+            ? pushProbe.errorSummary ?? "Skipped"
+            : pushProbe.status === "passed"
+              ? `Dry-run push accepted for ${pushProbe.ref}`
+              : pushProbe.errorSummary ?? "Dry-run push failed",
+      remediation:
+        pushProbe.status === "failed"
+          ? "Check token push permissions, repo allowlist and workspace branch."
+          : null,
+      metadata: {
+        safePushProbePossible,
+        ref: pushProbe.ref,
+      },
+    })
+  );
+
+  const failedGates = gates.filter((gate) => gate.status === "failed");
+  const ready = failedGates.length === 0;
+  const preflightWithoutArtifact: Omit<
+    GitHubPrWritebackPreflightResponse,
+    "proposal" | "artifactId"
+  > = {
+    generatedAt,
+    proposalId: proposal.id,
+    status: ready ? "ready" : "blocked",
+    ready,
+    repo,
+    sourceBranch,
+    baseBranch,
+    workspacePath,
+    workspaceReady,
+    tokenSource: tokenInfo.source,
+    tokenPresent: Boolean(tokenInfo.token),
+    authScheme: {
+      api: "bearer",
+      gitPush: "x-access-token-url",
+    },
+    remoteUrlPattern: owner && name
+      ? `https://x-access-token:[REDACTED]@github.com/${owner}/${name}.git`
+      : repo
+        ? "https://x-access-token:[REDACTED]@github.com/<owner>/<repo>.git"
+        : null,
+    repoAllowlist,
+    baseBranchVisible,
+    safePushProbePossible,
+    pushProbe,
+    dryRunLimitations: [
+      "git push --dry-run validates auth/ref negotiation but does not create a branch.",
+      "preflight does not open, merge or deploy a pull request.",
+      "a ready preflight can still fail later if the workspace changes before execution.",
+    ],
+    gates,
+  };
+
+  const artifactId = args.persistArtifact
+    ? persistGitHubPrWritebackPreflightArtifact({
+        proposal,
+        preflight: preflightWithoutArtifact,
+      })
+    : null;
+
+  const audit = (proposal.auditTrail ?? []).concat([
+    {
+      at: generatedAt,
+      actor: args.actor,
+      event: "github_pr_writeback_preflight_checked",
+      note: args.rationale,
+      metadata: {
+        status: preflightWithoutArtifact.status,
+        ready,
+        repo,
+        sourceBranch,
+        baseBranch,
+        tokenSource: tokenInfo.source,
+        pushProbe,
+        failedGateKeys: failedGates.map((gate) => gate.key),
+        artifactId,
+      },
+    },
+  ]);
+  db.update(cbExternalActionProposals)
+    .set({
+      auditTrail: audit,
+      errorSummary: ready ? null : `preflight blocked: ${failedGates.map((g) => g.key).join(",")}`,
+      updatedAt: generatedAt,
+    } as never)
+    .where(eq(cbExternalActionProposals.id, proposal.id))
+    .run();
+  const refreshed = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, proposal.id))
+    .get() as ExternalActionProposal;
+
+  return {
+    ...preflightWithoutArtifact,
+    artifactId,
+    proposal: refreshed,
+  };
+}
+
+app.post("/external-action-proposals/:id/github-pr/preflight", async (c) => {
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as GitHubPrWritebackPreflightRequest;
+  const actor = body.actor?.trim();
+  const rationale = body.rationale?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  if (!rationale) {
+    return c.json({ error: "validation", message: "rationale is required" }, 400);
+  }
+  const db = getDb();
+  let proposal = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.id, id))
+    .get() as ExternalActionProposal | undefined;
+  if (!proposal) {
+    return c.json({ error: "not_found", message: `proposal ${id} not found` }, 404);
+  }
+  if (proposal.actionType !== "github_pr_create") {
+    return c.json(
+      {
+        error: "validation",
+        message: `proposal.actionType=${proposal.actionType}; expected github_pr_create`,
+      },
+      400
+    );
+  }
+  const response = await buildGitHubPrWritebackPreflight({
+    proposal,
+    actor,
+    rationale,
+    pushProbe: Boolean(body.pushProbe),
+    persistArtifact: body.persistArtifact !== false,
+  });
+  return c.json({ data: response }, response.ready ? 200 : 400);
+});
+
 app.post("/external-action-proposals/:id/execute-pr", async (c) => {
   const id = c.req.param("id");
   const body = (await c.req.json().catch(() => ({}))) as ExecuteGitHubPrProposalRequest;
@@ -14023,7 +14512,7 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
   }
 
   const db = getDb();
-  const proposal = db
+  let proposal = db
     .select()
     .from(cbExternalActionProposals)
     .where(eq(cbExternalActionProposals.id, id))
@@ -14077,28 +14566,26 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
   const payload = proposal.payload as unknown as GitHubPrProposalPayload;
   const repo = payload.repo;
 
-  if (!githubPrWritebackEnabled()) {
+  const preflight = await buildGitHubPrWritebackPreflight({
+    proposal,
+    actor,
+    rationale: `execute preflight: ${rationale}`,
+    pushProbe: false,
+    persistArtifact: true,
+  });
+  if (!preflight.ready) {
     return c.json(
       {
-        error: "blocked_default_off",
-        message:
-          "AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED is not true; PR writeback default-off.",
+        error: "preflight_blocked",
+        message: "GitHub PR writeback preflight is not ready; refusing execute",
+        data: preflight,
       },
       400
     );
   }
-  const repoAllowlist = githubPrWritebackRepoAllowlist();
-  if (!repoAllowlist.includes(repo)) {
-    return c.json(
-      {
-        error: "blocked_repo",
-        message: `repo=${repo} not in AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST=[${repoAllowlist.join(",")}]`,
-      },
-      400
-    );
-  }
+  proposal = preflight.proposal;
 
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+  const token = githubPrWritebackTokenInfo().token;
   if (!token) {
     return c.json(
       {

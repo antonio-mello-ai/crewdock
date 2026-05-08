@@ -1829,6 +1829,64 @@ export interface ExecuteGitHubPrProposalRequest {
   rationale: string;
 }
 
+export interface GitHubPrWritebackPreflightRequest {
+  actor: string;
+  rationale: string;
+  /** Runs `git push --dry-run` to a temporary aios-preflight ref when possible. */
+  pushProbe?: boolean;
+  /** Persist the preflight as an internal Artifact for audit/evidence. */
+  persistArtifact?: boolean;
+}
+
+export type GitHubPrWritebackPreflightGateStatus = "passed" | "failed" | "warn";
+
+export interface GitHubPrWritebackPreflightGate {
+  key: string;
+  title: string;
+  status: GitHubPrWritebackPreflightGateStatus;
+  detail: string;
+  remediation?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface GitHubPrWritebackPushProbe {
+  requested: boolean;
+  attempted: boolean;
+  status: "not_requested" | "skipped" | "passed" | "failed";
+  ref: string | null;
+  commandSummary: string | null;
+  stdoutSnippet: string | null;
+  stderrSnippet: string | null;
+  errorSummary: string | null;
+}
+
+export interface GitHubPrWritebackPreflightResponse {
+  generatedAt: number;
+  proposalId: string;
+  status: "ready" | "blocked";
+  ready: boolean;
+  repo: string | null;
+  sourceBranch: string | null;
+  baseBranch: string | null;
+  workspacePath: string | null;
+  workspaceReady: boolean;
+  tokenSource: "GITHUB_TOKEN" | "GH_TOKEN" | null;
+  tokenPresent: boolean;
+  authScheme: {
+    api: "bearer";
+    gitPush: "x-access-token-url";
+  };
+  remoteUrlPattern: string | null;
+  repoAllowlist: string[];
+  baseBranchVisible: boolean | null;
+  safePushProbePossible: boolean;
+  pushProbe: GitHubPrWritebackPushProbe;
+  dryRunLimitations: string[];
+  gates: GitHubPrWritebackPreflightGate[];
+  artifactId: string | null;
+  proposal: ExternalActionProposal;
+}
+
 export interface ExecuteGitHubPrProposalResponse {
   generatedAt: number;
   proposalId: string;

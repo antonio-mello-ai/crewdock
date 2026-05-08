@@ -1583,6 +1583,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "preflight_company_brain_github_pr_writeback",
+  {
+    title: "Preflight Company Brain GitHub PR writeback",
+    description:
+      "Validate an approved github_pr_create proposal's PR writeback readiness without opening a PR. Checks default-off env, repo allowlist, token source, x-access-token git auth path, base branch visibility and optional git push --dry-run probe.",
+    inputSchema: {
+      proposalId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      pushProbe: z.boolean().optional(),
+      persistArtifact: z.boolean().optional(),
+    },
+  },
+  async ({ proposalId, ...rest }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/external-action-proposals/${proposalId}/github-pr/preflight`,
+      {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_github_pr_proposal",
   {
     title: "Execute approved Company Brain GitHub PR proposal",
