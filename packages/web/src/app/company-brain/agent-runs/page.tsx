@@ -18,8 +18,10 @@ import {
   useCancelCompanyBrainAgentRun,
   useCompanyBrainAgentRun,
   useCompanyBrainAgentRunLogs,
+  useCompanyBrainAgentRunSuggestions,
   useCompanyBrainAgentRunsList,
   useCompanyBrainAgentRunsSummary,
+  useDismissCompanyBrainAgentRunSuggestion,
   useEvaluateCompanyBrainAgentRunPolicy,
   useExecuteCompanyBrainAgentRun,
 } from "@/hooks/use-api";
@@ -315,12 +317,117 @@ function AgentRunDetail({ runId }: { runId: string }) {
   );
 }
 
+interface AgentRunSuggestionRow {
+  id: string;
+  workItemId: string;
+  runnerType: string;
+  status: "active" | "dismissed" | "superseded";
+  rationale: string;
+  policyDecision: string;
+  generatedFrom: {
+    workItemTitle: string;
+    workItemArea: string;
+    suggestedAction: string;
+    sourceIssueRef: string | null;
+    operatingLoopScheduleId: string | null;
+    operatingLoopScheduledAt: number | null;
+  };
+  createdAt: number;
+}
+
+function SuggestionRow({ suggestion }: { suggestion: AgentRunSuggestionRow }) {
+  const dismissMutation = useDismissCompanyBrainAgentRunSuggestion();
+  const [actor, setActor] = useState("");
+  const [rationale, setRationale] = useState("");
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="border-t border-border first:border-t-0">
+      <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary" className="text-[10px]">
+              {suggestion.policyDecision}
+            </Badge>
+            <Badge variant="outline" className="text-[10px]">
+              {suggestion.runnerType}
+            </Badge>
+            <Badge variant="outline" className="text-[10px]">
+              {suggestion.generatedFrom.workItemArea}
+            </Badge>
+            {suggestion.generatedFrom.sourceIssueRef ? (
+              <Badge variant="outline" className="text-[10px]">
+                {suggestion.generatedFrom.sourceIssueRef}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm font-medium">{suggestion.generatedFrom.workItemTitle}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{suggestion.rationale}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Suggested action: <code className="text-[11px]">{suggestion.generatedFrom.suggestedAction}</code>
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Created {formatTimeAgo(suggestion.createdAt)} · Observe-only — no subprocess will start.
+          </p>
+        </div>
+        <div className="flex flex-col gap-1 sm:w-64">
+          <Button size="sm" variant="ghost" onClick={() => setOpen(!open)} className="self-end">
+            {open ? "Cancel" : "Dismiss"}
+          </Button>
+          {open ? (
+            <div className="flex flex-col gap-1 rounded border border-border p-2">
+              <input
+                type="text"
+                value={actor}
+                onChange={(e) => setActor(e.target.value)}
+                placeholder="actor"
+                className="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+              />
+              <input
+                type="text"
+                value={rationale}
+                onChange={(e) => setRationale(e.target.value)}
+                placeholder="reason for dismissal"
+                className="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+              />
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() =>
+                  dismissMutation.mutate(
+                    { suggestionId: suggestion.id, actor, rationale },
+                    {
+                      onSuccess: () => {
+                        setOpen(false);
+                        setActor("");
+                        setRationale("");
+                      },
+                    }
+                  )
+                }
+                disabled={!actor.trim() || !rationale.trim() || dismissMutation.isPending}
+              >
+                {dismissMutation.isPending ? <Loader2 className="size-3 animate-spin" /> : <Ban className="size-3" />}
+                Confirm dismiss
+              </Button>
+              {dismissMutation.isError ? (
+                <p className="text-[10px] text-destructive">{dismissMutation.error.message}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export default function CompanyBrainAgentRunsPage() {
   const { data: summaryRes } = useCompanyBrainAgentRunsSummary();
   const { data: listRes, isLoading } = useCompanyBrainAgentRunsList({ limit: 50 });
+  const { data: suggestionsRes } = useCompanyBrainAgentRunSuggestions("active");
   const [expanded, setExpanded] = useState<string | null>(null);
   const summary = summaryRes?.data as AgentRunSummary | undefined;
   const list = listRes?.data as { items: AgentRunRow[]; total: number } | undefined;
+  const suggestions = (suggestionsRes?.data as { suggestions: AgentRunSuggestionRow[]; totals: { active: number; dismissed: number; superseded: number } } | undefined)?.suggestions ?? [];
 
   return (
     <main className="min-h-screen bg-background p-6 text-foreground">
@@ -373,6 +480,22 @@ export default function CompanyBrainAgentRunsPage() {
               <p className="text-xs text-muted-foreground">stale</p>
               <p className="text-lg font-semibold">{summary.staleCount}</p>
             </article>
+          </section>
+        ) : null}
+
+        {suggestions.length > 0 ? (
+          <section className="rounded-md border border-border">
+            <div className="flex items-center justify-between border-b border-border p-3">
+              <h2 className="text-lg font-semibold">Suggestions ({suggestions.length})</h2>
+              <p className="text-[11px] text-muted-foreground">
+                Operating Loop suggester · observe-only · no auto-dispatch
+              </p>
+            </div>
+            <ul>
+              {suggestions.map((s) => (
+                <SuggestionRow key={s.id} suggestion={s} />
+              ))}
+            </ul>
           </section>
         ) : null}
 

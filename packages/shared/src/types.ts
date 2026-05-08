@@ -1555,6 +1555,55 @@ export type AgentRunRunnerType =
   | "manual"
   | "other";
 
+export type AgentRunSuggestionStatus = "active" | "dismissed" | "superseded";
+
+export interface AgentRunSuggestionGeneratedFrom {
+  nextWorkRank: number;
+  nextWorkSource: string;
+  workItemTitle: string;
+  workItemArea: CompanyBrainArea;
+  suggestedAction: string;
+  sourceIssueRef: string | null;
+  operatingLoopScheduleId: string | null;
+  operatingLoopScheduledAt: number | null;
+}
+
+export interface AgentRunSuggestion {
+  id: string;
+  workItemId: string;
+  runnerType: AgentRunRunnerType;
+  signature: string;
+  status: AgentRunSuggestionStatus;
+  rationale: string;
+  policyDecision: Record<string, unknown>;
+  generatedFrom: AgentRunSuggestionGeneratedFrom;
+  dismissReason: string | null;
+  dismissedBy: string | null;
+  dismissedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ListAgentRunSuggestionsResponse {
+  generatedAt: number;
+  suggestions: AgentRunSuggestion[];
+  totals: {
+    active: number;
+    dismissed: number;
+    superseded: number;
+  };
+}
+
+export interface DismissAgentRunSuggestionRequest {
+  actor: string;
+  rationale: string;
+}
+
+export interface DismissAgentRunSuggestionResponse {
+  generatedAt: number;
+  suggestion: AgentRunSuggestion;
+}
+
 export interface AgentRun {
   id: string;
   workItemId: string | null;
@@ -3619,6 +3668,7 @@ export interface CompanyBrainOperatingSnapshot {
   sourceHealthReport: CompanyBrainSourceHealthReport;
   timeline: CompanyBrainTimeline;
   recentEvents: CompanyBrainTimelineEvent[];
+  agentRunSuggestions: AgentRunSuggestion[];
 }
 
 export type CompanyBrainSavedAuditViewSurface =

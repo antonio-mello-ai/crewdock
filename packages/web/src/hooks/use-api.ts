@@ -544,6 +544,34 @@ export function useCompanyBrainOperatingMap() {
   });
 }
 
+export function useCompanyBrainAgentRunSuggestions(status: string = "active") {
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "agent-run-suggestions", status],
+    queryFn: () =>
+      api(`/api/company-brain/agent-run-suggestions?status=${status}`),
+    refetchInterval: 10_000,
+  });
+}
+
+export function useDismissCompanyBrainAgentRunSuggestion() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<unknown>, Error, {
+    suggestionId: string;
+    actor: string;
+    rationale: string;
+  }>({
+    mutationFn: ({ suggestionId, ...rest }) =>
+      api(`/api/company-brain/agent-run-suggestions/${suggestionId}/dismiss`, {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-run-suggestions"] });
+      qc.invalidateQueries({ queryKey: ["company-brain", "operating-snapshot"] });
+    },
+  });
+}
+
 export function useCompanyBrainAgentRunsList(filters?: {
   status?: string;
   limit?: number;

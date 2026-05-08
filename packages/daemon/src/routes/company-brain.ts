@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type {
   ActionPolicy,
@@ -86,7 +86,13 @@ import type {
   AgentRunListResponse,
   AgentRunRunnerType,
   AgentRunStatus,
+  AgentRunSuggestion,
+  AgentRunSuggestionGeneratedFrom,
+  AgentRunSuggestionStatus,
   AgentRunSummary,
+  DismissAgentRunSuggestionRequest,
+  DismissAgentRunSuggestionResponse,
+  ListAgentRunSuggestionsResponse,
   CreateAgentRunRequest,
   UpdateAgentRunRequest,
   DecomposeOperatingGoalRequest,
@@ -211,6 +217,7 @@ import {
   cbMilestones,
   cbSignals,
   cbAgentRuns,
+  cbAgentRunSuggestions,
   cbSources,
   cbStrategicPriorities,
   cbStrategyTradeoffs,
@@ -5775,6 +5782,13 @@ function buildOperatingSnapshot(
           : "healthy";
   const summary = `${totals.readyCount}/${totals.cardCount} operating cards ready; ${totals.attentionCount} attention; ${totals.criticalCount} critical; ${totals.errorCount} errors; ${totals.missingCount} missing.`;
 
+  let agentRunSuggestions: AgentRunSuggestion[] = [];
+  try {
+    agentRunSuggestions = listAgentRunSuggestions({ status: "active" }).suggestions.slice(0, 10);
+  } catch {
+    agentRunSuggestions = [];
+  }
+
   return {
     generatedAt,
     overallStatus,
@@ -5789,6 +5803,7 @@ function buildOperatingSnapshot(
     sourceHealthReport,
     timeline,
     recentEvents: timeline.events.slice(0, 8),
+    agentRunSuggestions,
   };
 }
 
@@ -17181,6 +17196,20 @@ export async function runCompanyBrainOperatingCadence(
   }
 
   const operatingCadence = buildOperatingCadence(listAll());
+
+  // Observe-only: generate AgentRun suggestions for next-work without auto-dispatch.
+  try {
+    generateAgentRunSuggestionsForOperatingLoop({
+      scheduleId,
+      scheduledAt,
+    });
+  } catch (err) {
+    console.error(
+      "[company-brain] generateAgentRunSuggestionsForOperatingLoop failed",
+      err
+    );
+  }
+
   const response: RunOperatingCadenceResponse = {
     scheduleId,
     scheduledAt,
@@ -17192,6 +17221,285 @@ export async function runCompanyBrainOperatingCadence(
   };
   return response;
 }
+
+function buildAgentRunSuggestionSignature(args: {
+  workItemId: string;
+  runnerType: AgentRunRunnerType;
+  policyDecision: RunnerPolicyDecision;
+  satisfiedGates: string[];
+  blockedGates: string[];
+  workItemTitle: string;
+  workItemStatus: string;
+  workItemUpdatedAt: number;
+}): string {
+  const payload = JSON.stringify({
+    workItemId: args.workItemId,
+    runnerType: args.runnerType,
+    policyDecision: args.policyDecision,
+    satisfiedGates: [...args.satisfiedGates].sort(),
+    blockedGates: [...args.blockedGates].sort(),
+    workItemTitle: args.workItemTitle,
+    workItemStatus: args.workItemStatus,
+    workItemUpdatedAt: args.workItemUpdatedAt,
+  });
+  return createHash("sha256").update(payload).digest("hex");
+}
+
+function generateAgentRunSuggestionsForOperatingLoop(args: {
+  scheduleId: string | null;
+  scheduledAt: number | null;
+}): void {
+  const db = getDb();
+  const data = listAll();
+  const nextWork = buildNextWork(data);
+  if (!nextWork.recommended) return;
+
+  const recommended = nextWork.recommended;
+  const workItem = (data.workItems as WorkItem[]).find(
+    (item) => item.id === recommended.workItem.id
+  );
+  if (!workItem) return;
+
+  // Build a synthetic AgentRun-shaped object to feed evaluateRunnerPolicy.
+  // No DB row is created; this is preview-only.
+  const workflow = loadWorkflowFromRepoRoot();
+  const repo = workflow.config.tracker.repo ?? null;
+
+  const syntheticRun = {
+    id: `suggestion-${workItem.id}`,
+    workItemId: workItem.id,
+    workflowRunId: null,
+    agentContextId: null,
+    sourceId: workItem.sourceId ?? null,
+    repo,
+    branch: null,
+    workspaceRef: null,
+    runnerType: "claude_code" as AgentRunRunnerType,
+    status: "queued" as AgentRunStatus,
+    claimState: "unclaimed" as const,
+    attempt: 0,
+    startedAt: null,
+    finishedAt: null,
+    errorSummary: null,
+    prUrl: null,
+    externalRunRef: null,
+    tokensInput: null,
+    tokensOutput: null,
+    tokensTotal: null,
+    costUsd: null,
+    agentSessionId: null,
+    agentThreadId: null,
+    area: workItem.area,
+    riskClass: workItem.riskClass ?? "B",
+    actionPolicy: "observe_only" as const,
+    visibility: workItem.visibility ?? "internal",
+    pid: null,
+    executionRef: null,
+    lastLogAt: null,
+    lastLogLineCount: null,
+    metadata: null,
+    auditTrail: [],
+    provenance: null,
+    createdAt: now(),
+    updatedAt: now(),
+  } as unknown as typeof cbAgentRuns.$inferSelect;
+
+  let policy: RunnerExecutionPolicy;
+  try {
+    policy = evaluateRunnerPolicy({
+      agentRun: syntheticRun,
+      request: {
+        intent: "real_execution",
+        actor: "operating-loop:suggester",
+        rationale: "preview policy for queued-run suggestion",
+      },
+    });
+  } catch (err) {
+    console.error("[company-brain] evaluateRunnerPolicy failed for suggester", err);
+    return;
+  }
+
+  const satisfiedGates = policy.gates
+    .filter((gate) => gate.status === "passed")
+    .map((gate) => gate.key);
+  const blockedGates = policy.gates
+    .filter((gate) => gate.status === "failed")
+    .map((gate) => gate.key);
+
+  const signature = buildAgentRunSuggestionSignature({
+    workItemId: workItem.id,
+    runnerType: "claude_code",
+    policyDecision: policy.decision,
+    satisfiedGates,
+    blockedGates,
+    workItemTitle: workItem.title,
+    workItemStatus: workItem.status,
+    workItemUpdatedAt: workItem.updatedAt,
+  });
+
+  const existingForSig = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(eq(cbAgentRunSuggestions.signature, signature))
+    .get();
+  if (existingForSig) {
+    // Already recorded (active, dismissed, or superseded). Do not regenerate.
+    return;
+  }
+
+  const rationaleParts: string[] = [];
+  rationaleParts.push(`Top of next-work: "${workItem.title}".`);
+  if (recommended.rationale.length) {
+    rationaleParts.push(...recommended.rationale.slice(0, 2));
+  }
+  rationaleParts.push(
+    `Runner policy decision=${policy.decision}; satisfied=${satisfiedGates.length}; blocked=${blockedGates.length}.`
+  );
+  const rationale = rationaleParts.join(" ").slice(0, 800);
+
+  const generatedFrom: AgentRunSuggestionGeneratedFrom = {
+    nextWorkRank: 1,
+    nextWorkSource: "buildNextWork:recommended",
+    workItemTitle: workItem.title,
+    workItemArea: workItem.area,
+    suggestedAction: `Run supervised AgentRun for ${workItem.externalId ?? workItem.id} via /agent-runs/:id/execute-async after manual review`,
+    sourceIssueRef:
+      workItem.externalProvider === "github" && workItem.externalId
+        ? workItem.externalId
+        : null,
+    operatingLoopScheduleId: args.scheduleId,
+    operatingLoopScheduledAt: args.scheduledAt,
+  };
+
+  // Supersede any existing active rows for this work item before inserting.
+  const priorActive = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(
+      and(
+        eq(cbAgentRunSuggestions.workItemId, workItem.id),
+        eq(cbAgentRunSuggestions.status, "active")
+      )
+    )
+    .all() as AgentRunSuggestion[];
+  for (const prior of priorActive) {
+    db.update(cbAgentRunSuggestions)
+      .set({
+        status: "superseded",
+        updatedAt: now(),
+      } as never)
+      .where(eq(cbAgentRunSuggestions.id, prior.id))
+      .run();
+  }
+
+  const id = nanoid(12);
+  const timestamp = now();
+  const row: AgentRunSuggestion = {
+    id,
+    workItemId: workItem.id,
+    runnerType: "claude_code",
+    signature,
+    status: "active",
+    rationale,
+    policyDecision: policy.decision as unknown as Record<string, unknown>,
+    generatedFrom,
+    dismissReason: null,
+    dismissedBy: null,
+    dismissedAt: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  db.insert(cbAgentRunSuggestions).values(row as never).run();
+}
+
+function listAgentRunSuggestions(args: {
+  status?: AgentRunSuggestionStatus | "all";
+  workItemId?: string;
+}): ListAgentRunSuggestionsResponse {
+  const db = getDb();
+  const all = db.select().from(cbAgentRunSuggestions).all() as AgentRunSuggestion[];
+  const totals = {
+    active: all.filter((row) => row.status === "active").length,
+    dismissed: all.filter((row) => row.status === "dismissed").length,
+    superseded: all.filter((row) => row.status === "superseded").length,
+  };
+  let filtered = all;
+  if (args.status && args.status !== "all") {
+    filtered = filtered.filter((row) => row.status === args.status);
+  } else if (!args.status) {
+    filtered = filtered.filter((row) => row.status === "active");
+  }
+  if (args.workItemId) {
+    filtered = filtered.filter((row) => row.workItemId === args.workItemId);
+  }
+  filtered = [...filtered].sort((a, b) => b.createdAt - a.createdAt);
+  return {
+    generatedAt: now(),
+    suggestions: filtered,
+    totals,
+  };
+}
+
+app.get("/agent-run-suggestions", (c) => {
+  const status = c.req.query("status") as AgentRunSuggestionStatus | "all" | undefined;
+  const workItemId = c.req.query("workItemId") || undefined;
+  const data = listAgentRunSuggestions({ status, workItemId });
+  return c.json({ data });
+});
+
+app.post("/agent-run-suggestions/:id/dismiss", async (c) => {
+  const id = c.req.param("id");
+  const db = getDb();
+  const existing = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(eq(cbAgentRunSuggestions.id, id))
+    .get() as AgentRunSuggestion | undefined;
+  if (!existing) {
+    return c.json({ error: "not_found", message: `agent run suggestion ${id} not found` }, 404);
+  }
+  if (existing.status !== "active") {
+    return c.json(
+      {
+        error: "validation",
+        message: `agent run suggestion ${id} is ${existing.status}; only active suggestions can be dismissed`,
+      },
+      400
+    );
+  }
+  const body = (await c.req
+    .json<DismissAgentRunSuggestionRequest>()
+    .catch(() => ({}))) as DismissAgentRunSuggestionRequest;
+  const actor = body.actor?.trim();
+  const rationale = body.rationale?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  if (!rationale) {
+    return c.json({ error: "validation", message: "rationale is required" }, 400);
+  }
+  const timestamp = now();
+  db.update(cbAgentRunSuggestions)
+    .set({
+      status: "dismissed",
+      dismissReason: rationale,
+      dismissedBy: actor,
+      dismissedAt: timestamp,
+      updatedAt: timestamp,
+    } as never)
+    .where(eq(cbAgentRunSuggestions.id, id))
+    .run();
+  const refreshed = db
+    .select()
+    .from(cbAgentRunSuggestions)
+    .where(eq(cbAgentRunSuggestions.id, id))
+    .get() as AgentRunSuggestion;
+  const response: DismissAgentRunSuggestionResponse = {
+    generatedAt: timestamp,
+    suggestion: refreshed,
+  };
+  return c.json({ data: response });
+});
 
 app.get("/gate-closure-ritual", (c) => {
   const data = buildGateClosureRitual(listAll());
