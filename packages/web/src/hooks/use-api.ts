@@ -689,6 +689,30 @@ export function useCompanyBrainPilotTargets(filters?: {
   });
 }
 
+export function usePreviewCompanyBrainAgentRunLauncher() {
+  return useMutation<ApiResponse<unknown>, Error, Record<string, unknown>>({
+    mutationFn: (body) =>
+      api("/api/company-brain/agent-runs/launcher/preview", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function useLaunchCompanyBrainAgentRunFromWorkItem() {
+  const qc = useQueryClient();
+  return useMutation<ApiResponse<unknown>, Error, Record<string, unknown>>({
+    mutationFn: (body) =>
+      api("/api/company-brain/agent-runs/launcher/launch", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain", "agent-runs"] });
+    },
+  });
+}
+
 export function useCompanyBrainAgentRun(id: string | null) {
   return useQuery<ApiResponse<unknown>>({
     queryKey: ["company-brain", "agent-run", id],

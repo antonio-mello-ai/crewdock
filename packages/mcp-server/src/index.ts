@@ -2697,6 +2697,64 @@ server.registerTool(
 );
 
 server.registerTool(
+  "preview_company_brain_agent_run_launcher",
+  {
+    title: "Preview Company Brain human-approved AgentRun launcher",
+    description:
+      "Read-only preview that turns a WorkItem plus approved pilot target/profile into a launch plan. Shows target repo, selected runner profile, command/args, workspace path, policy gates, risk class and expected write boundaries. Does not create an AgentRun or launch a subprocess.",
+    inputSchema: {
+      workItemId: z.string().min(1),
+      pilotTargetId: z.string().optional(),
+      profileId: z.string().optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+      commandOverride: z.string().optional(),
+      argsOverride: z.array(z.string()).optional(),
+      promptOverride: z.string().optional(),
+      timeoutMsOverride: z.number().int().positive().optional(),
+      workspaceRootOverride: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-runs/launcher/preview",
+      { method: "POST", body: JSON.stringify(params) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "launch_company_brain_agent_run_from_work_item",
+  {
+    title: "Create an approved Company Brain AgentRun from a WorkItem",
+    description:
+      "Creates a queued AgentRun from a WorkItem only when the human-approved launcher preview passes target, profile and runner policy gates. Requires actor and rationale. Does not execute the subprocess; use the existing supervised execute tool after review.",
+    inputSchema: {
+      workItemId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      pilotTargetId: z.string().optional(),
+      profileId: z.string().optional(),
+      riskClass: z.enum(["A", "B", "C", "unknown"]).optional(),
+      commandOverride: z.string().optional(),
+      argsOverride: z.array(z.string()).optional(),
+      promptOverride: z.string().optional(),
+      timeoutMsOverride: z.number().int().positive().optional(),
+      workspaceRootOverride: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-runs/launcher/launch",
+      { method: "POST", body: JSON.stringify(params) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_agent_run_supervised",
   {
     title: "Execute a Company Brain agent run (supervised real subprocess)",

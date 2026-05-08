@@ -2996,7 +2996,7 @@ Dogfood local com DB `/tmp/aios-run35-smoke.sqlite`:
   de console em sessao limpa depois de subir o daemon com
   `AIOS_CORS_ORIGINS=http://localhost:3100`.
 
-Validacao parcial:
+Validacao:
 
 - `git diff --check` passou;
 - `npx turbo build --filter=@aios/web --filter=@aios/shared` passou.
@@ -3337,3 +3337,51 @@ Fechamento:
 - sync GitHub Issues `state=open` retornou `issuesSeen=3`;
 - `Next Work` agora recomenda `#129 AIOS-RUN-41` com WorkItem
   `v5QSUqfLBFp_`.
+
+### AIOS-RUN-41 human-approved launcher checkpoint
+
+Issue `#129` adiciona a ponte governada de `WorkItem` para `AgentRun` real,
+sem broad auto-dispatch.
+
+Entregue no branch `aios-run-41-human-approved-run-launcher`:
+
+- API preview `POST /api/company-brain/agent-runs/launcher/preview`;
+- API launch `POST /api/company-brain/agent-runs/launcher/launch`;
+- tipos compartilhados `AgentRunLaunchPreview` e `LaunchAgentRunResponse`;
+- MCP tools `preview_company_brain_agent_run_launcher` e
+  `launch_company_brain_agent_run_from_work_item`;
+- UI `Human-approved launcher` em `/company-brain/agent-runs`;
+- action doc
+  `docs/action/aios-run-41-human-approved-launcher-2026-05-08.md`.
+
+Contrato:
+
+- preview e read-only e mostra WorkItem, pilot target, profile, command/args,
+  workspace path, policy gates, risk class e write boundaries;
+- launch exige actor/rationale, target ativo, profile permitido, risk dentro do
+  ceiling, profile readiness e policy `allowed_real_execution`;
+- launch cria apenas `AgentRun` queued com metadata/audit trail;
+- subprocess continua sendo acionado pelo executor supervisionado existente.
+
+Dogfood local:
+
+- default-off em `/tmp/aios-run41-smoke.sqlite`, porta `43210`, profile
+  `claude-code-real`: `canLaunch=false`, policy `blocked_workspace`, HTTP 400,
+  nenhum `AgentRun`;
+- opt-in em `/tmp/aios-run41-ready-smoke.sqlite`, porta `43211`, profile
+  `dogfood-semantic-doc-change`, risk `A`: `canLaunch=true`, policy
+  `allowed_real_execution`, AgentRun `TB4bszD1e6qX` criado em `queued`, sem
+  subprocess execution.
+
+Validacao parcial:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
+  passou.
+- `npx turbo build` passou.
+
+Ainda pendente neste corte:
+
+- abrir PR com `Closes #129`;
+- merge/deploy;
+- session_result para WorkItem `v5QSUqfLBFp_` e status `done`.

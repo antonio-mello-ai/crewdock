@@ -1784,6 +1784,65 @@ export interface ListPilotTargetsResponse {
   targets: PilotTargetWithReadiness[];
 }
 
+export interface AgentRunLauncherWriteBoundaries {
+  repo: string;
+  workspacePath: string;
+  branchName: string;
+  command: string;
+  args: string[];
+  profileCapabilities: RunnerProfileCapability[];
+  envAllowedKeys: string[];
+  envRedactedKeys: string[];
+  allowedFilesystemRoots: string[];
+  externalWritebackAllowed: false;
+  blockedExternalActions: string[];
+}
+
+export interface PreviewAgentRunLaunchRequest {
+  workItemId: string;
+  pilotTargetId?: string | null;
+  profileId?: string | null;
+  riskClass?: RiskClass | null;
+  actor?: string | null;
+  rationale?: string | null;
+  commandOverride?: string | null;
+  argsOverride?: string[] | null;
+  promptOverride?: string | null;
+  timeoutMsOverride?: number | null;
+  workspaceRootOverride?: string | null;
+}
+
+export interface AgentRunLaunchPreview {
+  generatedAt: number;
+  workItem: WorkItem;
+  pilotTarget: PilotTarget;
+  targetReadiness: PilotTargetReadiness;
+  selectedProfile: RunnerProfile;
+  profileReadiness: RunnerProfileReadinessItem | null;
+  policy: RunnerExecutionPolicy;
+  riskClass: RiskClass;
+  command: string;
+  args: string[];
+  expectedWriteBoundaries: AgentRunLauncherWriteBoundaries;
+  canLaunch: boolean;
+  blockReasons: string[];
+  recommendedNextAction: string;
+}
+
+export interface LaunchAgentRunRequest extends PreviewAgentRunLaunchRequest {
+  actor: string;
+  rationale: string;
+}
+
+export type AgentRunLaunchOutcome = "queued" | "blocked";
+
+export interface LaunchAgentRunResponse {
+  generatedAt: number;
+  outcome: AgentRunLaunchOutcome;
+  preview: AgentRunLaunchPreview;
+  agentRun: AgentRun | null;
+}
+
 export type AutoDispatchDecision =
   | "blocked_default_off"
   | "blocked_repo"
