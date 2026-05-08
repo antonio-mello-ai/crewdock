@@ -1583,6 +1583,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "preview_company_brain_agent_run_github_pr_proposal",
+  {
+    title: "Preview Company Brain AgentRun GitHub PR proposal",
+    description:
+      "Build a preview-only ExternalActionProposal of kind github_pr_create from a completed AgentRun's patch packet. Idempotent per packet signature. Does NOT push, open PRs, merge or deploy.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().optional(),
+      titleOverride: z.string().optional(),
+      bodyOverride: z.string().optional(),
+    },
+  },
+  async ({ agentRunId, ...rest }) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/github-pr-proposal/preview`,
+      {
+        method: "POST",
+        body: JSON.stringify(rest),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_agent_run_patch_packet",
   {
     title: "Get Company Brain AgentRun patch/validation packet",
