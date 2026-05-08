@@ -14202,16 +14202,16 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
     return c.json({ data: response });
   }
 
-  // Push branch via git -c extraheader.
+  // Push branch via x-access-token URL (works for both PATs and
+  // GitHub App installation tokens).
+  const pushUrl = `https://x-access-token:${token}@github.com/${owner}/${name}.git`;
   const pushResult = spawnSync(
     "git",
     [
-      "-c",
-      `http.https://github.com/.extraheader=Authorization: Bearer ${token}`,
       "-C",
       workspacePath,
       "push",
-      "origin",
+      pushUrl,
       `${payload.sourceBranch}:${payload.sourceBranch}`,
     ],
     { encoding: "utf-8" }
