@@ -121,11 +121,15 @@ import type {
   GitHubPrWritebackPushProbe,
   PreviewGitHubPrProposalResponse,
   ListAgentRunSuggestionsResponse,
+  ListPilotTargetsResponse,
   ListRunnerProfilesResponse,
   OperatingLoopAutoDispatchOutcome,
   OperatingLoopReconciliationOutcome,
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
+  PilotTarget,
+  PilotTargetReadiness,
+  PilotTargetStatus,
   RunnerProfile,
   RunnerProfileAuthMode,
   RunnerProfileEvaluation,
@@ -259,6 +263,7 @@ import {
   cbSignals,
   cbAgentRuns,
   cbAgentRunSuggestions,
+  cbPilotTargets,
   cbSources,
   cbStrategicPriorities,
   cbStrategyTradeoffs,
@@ -13799,6 +13804,134 @@ function buildRunnerProfileReadinessMatrix(args: {
   };
 }
 
+function filterReadinessMatrixProfiles(
+  matrix: RunnerProfileReadinessMatrix,
+  allowedRunnerProfileIds: string[]
+): RunnerProfileReadinessMatrix {
+  const allowed = new Set(allowedRunnerProfileIds);
+  const profiles = matrix.profiles.filter((item) => allowed.has(item.profile.id));
+  const profilesByCategory = profiles.reduce<Record<string, RunnerProfileReadinessItem[]>>(
+    (acc, item) => {
+      acc[item.profile.category] = acc[item.profile.category] ?? [];
+      acc[item.profile.category].push(item);
+      return acc;
+    },
+    {}
+  );
+  return {
+    ...matrix,
+    totals: {
+      total: profiles.length,
+      ready: profiles.filter((item) => item.status === "ready").length,
+      blocked: profiles.filter((item) => item.status === "blocked").length,
+      warn: profiles.filter((item) => item.status === "warn").length,
+      realAgentReady: profiles.filter(
+        (item) => item.profile.category === "real_agent" && item.status === "ready"
+      ).length,
+      realAgentBlocked: profiles.filter(
+        (item) => item.profile.category === "real_agent" && item.status === "blocked"
+      ).length,
+    },
+    profilesByCategory,
+    profiles,
+  };
+}
+
+function buildPilotTargetReadiness(target: PilotTarget): PilotTargetReadiness {
+  const readiness = filterReadinessMatrixProfiles(
+    buildRunnerProfileReadinessMatrix({
+      repo: target.repo,
+      area: target.area,
+      riskClass: target.riskCeiling,
+    }),
+    target.allowedRunnerProfileIds
+  );
+  const realProfiles = readiness.profiles.filter(
+    (item) => item.profile.category === "real_agent"
+  );
+  const readyProfileIds = realProfiles
+    .filter((item) => item.status === "ready")
+    .map((item) => item.profile.id);
+  const blockedProfileIds = realProfiles
+    .filter((item) => item.status === "blocked")
+    .map((item) => item.profile.id);
+  const warnProfileIds = realProfiles
+    .filter((item) => item.status === "warn")
+    .map((item) => item.profile.id);
+  const blockReasons = new Set<string>();
+  if (target.status !== "active") blockReasons.add(`target_${target.status}`);
+  if (!realProfiles.length) blockReasons.add("no_real_agent_profile_allowed");
+  if (!readyProfileIds.length) blockReasons.add("no_ready_real_agent_profile");
+  for (const item of realProfiles) {
+    for (const reason of item.blockReasons) {
+      blockReasons.add(`${item.profile.id}:${reason}`);
+    }
+  }
+  const readyForManualLaunch = target.status === "active" && readyProfileIds.length > 0;
+  const status: RunnerProfileReadinessStatus = readyForManualLaunch
+    ? warnProfileIds.length
+      ? "warn"
+      : "ready"
+    : "blocked";
+  const recommendedNextAction =
+    target.status !== "active"
+      ? `Set target status to active only after owner review; current status=${target.status}.`
+      : readyForManualLaunch
+        ? `Manual real-agent launch is ready for ${readyProfileIds.join(", ")}; keep auto-dispatch default-off.`
+        : realProfiles[0]?.recommendedNextAction ??
+          "Add at least one allowed real-agent profile and satisfy its readiness gates.";
+  return {
+    status,
+    readyForManualLaunch,
+    readyProfileIds,
+    blockedProfileIds,
+    warnProfileIds,
+    blockReasons: Array.from(blockReasons),
+    recommendedNextAction,
+    readiness,
+  };
+}
+
+function listPilotTargets(args: {
+  repo?: string | null;
+  status?: PilotTargetStatus | "all";
+}): ListPilotTargetsResponse {
+  const generatedAt = now();
+  const status = args.status ?? "all";
+  const rows = getDb().select().from(cbPilotTargets).all() as PilotTarget[];
+  const filtered = rows.filter((target) => {
+    if (args.repo && target.repo !== args.repo) return false;
+    if (status !== "all" && target.status !== status) return false;
+    return true;
+  });
+  const targets = filtered
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+      return a.projectName.localeCompare(b.projectName);
+    })
+    .map((target) => ({
+      target,
+      readiness: buildPilotTargetReadiness(target),
+    }));
+  return {
+    generatedAt,
+    filters: {
+      repo: args.repo ?? null,
+      status,
+    },
+    totals: {
+      total: targets.length,
+      active: targets.filter((item) => item.target.status === "active").length,
+      readyForManualLaunch: targets.filter(
+        (item) => item.readiness.readyForManualLaunch
+      ).length,
+      blocked: targets.filter((item) => item.readiness.status === "blocked").length,
+      warn: targets.filter((item) => item.readiness.status === "warn").length,
+    },
+    targets,
+  };
+}
+
 function autoDispatchEnabled(): boolean {
   return process.env.AIOS_AGENT_AUTODISPATCH_ENABLED === "true";
 }
@@ -16613,6 +16746,22 @@ app.get("/runner-profile-readiness", (c) => {
   const area = (c.req.query("area")?.trim() as CompanyBrainArea | undefined) || null;
   const riskClass = (c.req.query("riskClass")?.trim() as RiskClass | undefined) || null;
   const data = buildRunnerProfileReadinessMatrix({ repo, area, riskClass });
+  return c.json({ data });
+});
+
+app.get("/pilot-targets", (c) => {
+  const repo = c.req.query("repo")?.trim() || null;
+  const statusQuery = c.req.query("status")?.trim() || "all";
+  const allowedStatuses: Array<PilotTargetStatus | "all"> = [
+    "active",
+    "paused",
+    "disabled",
+    "all",
+  ];
+  const status = allowedStatuses.includes(statusQuery as PilotTargetStatus | "all")
+    ? (statusQuery as PilotTargetStatus | "all")
+    : "all";
+  const data = listPilotTargets({ repo, status });
   return c.json({ data });
 });
 

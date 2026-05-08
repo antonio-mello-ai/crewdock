@@ -22,6 +22,7 @@ import {
   useCompanyBrainAgentRunsList,
   useCompanyBrainAgentRunsSummary,
   useCompanyBrainAutoDispatchPolicy,
+  useCompanyBrainPilotTargets,
   useCompanyBrainRunnerProfileReadiness,
   useDismissCompanyBrainAgentRunSuggestion,
   useEvaluateCompanyBrainAgentRunPolicy,
@@ -107,6 +108,42 @@ interface RunnerProfileReadinessMatrix {
     autoDispatchRepoAllowlist: string[];
   };
   profilesByCategory: Record<string, RunnerProfileReadinessItem[]>;
+}
+
+interface PilotTargetWithReadiness {
+  target: {
+    id: string;
+    projectName: string;
+    repo: string;
+    area: string;
+    defaultWorkflowBlueprintId: string;
+    allowedRunnerProfileIds: string[];
+    riskCeiling: string;
+    owner: string | null;
+    status: "active" | "paused" | "disabled";
+    notes: string | null;
+  };
+  readiness: {
+    status: "ready" | "blocked" | "warn";
+    readyForManualLaunch: boolean;
+    readyProfileIds: string[];
+    blockedProfileIds: string[];
+    warnProfileIds: string[];
+    blockReasons: string[];
+    recommendedNextAction: string;
+    readiness: RunnerProfileReadinessMatrix;
+  };
+}
+
+interface PilotTargetsResponse {
+  totals: {
+    total: number;
+    active: number;
+    readyForManualLaunch: number;
+    blocked: number;
+    warn: number;
+  };
+  targets: PilotTargetWithReadiness[];
 }
 
 function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
@@ -626,12 +663,14 @@ export default function CompanyBrainAgentRunsPage() {
   const { data: listRes, isLoading } = useCompanyBrainAgentRunsList({ limit: 50 });
   const { data: suggestionsRes } = useCompanyBrainAgentRunSuggestions("active");
   const { data: autoDispatchRes } = useCompanyBrainAutoDispatchPolicy();
+  const { data: pilotTargetsRes } = useCompanyBrainPilotTargets({ status: "all" });
   const { data: readinessRes } = useCompanyBrainRunnerProfileReadiness({
     repo: "antonio-mello-ai/crewdock",
     area: "development",
     riskClass: "B",
   });
   const autoDispatch = autoDispatchRes?.data as AutoDispatchPolicySummaryRow | undefined;
+  const pilotTargets = pilotTargetsRes?.data as PilotTargetsResponse | undefined;
   const readiness = readinessRes?.data as RunnerProfileReadinessMatrix | undefined;
   const [expanded, setExpanded] = useState<string | null>(null);
   const summary = summaryRes?.data as AgentRunSummary | undefined;
@@ -816,6 +855,92 @@ export default function CompanyBrainAgentRunsPage() {
                 </ul>
               </div>
             ) : null}
+          </section>
+        ) : null}
+
+        {pilotTargets ? (
+          <section className="rounded-md border border-border">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
+              <div>
+                <h2 className="text-lg font-semibold">Pilot targets</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Internal projects approved for supervised AIOS runs. This registry is the source of truth for the first real-agent pilot.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <Badge variant="outline" className="text-[10px]">
+                  total {pilotTargets.totals.total}
+                </Badge>
+                <Badge variant="default" className="text-[10px]">
+                  active {pilotTargets.totals.active}
+                </Badge>
+                <Badge
+                  variant={pilotTargets.totals.readyForManualLaunch ? "default" : "destructive"}
+                  className="text-[10px]"
+                >
+                  launch-ready {pilotTargets.totals.readyForManualLaunch}
+                </Badge>
+              </div>
+            </div>
+            <div className="grid gap-3 p-3 lg:grid-cols-2">
+              {pilotTargets.targets.map((item) => (
+                <article key={item.target.id} className="rounded-md border border-border bg-background p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{item.target.projectName}</p>
+                      <p className="mt-0.5 font-mono text-[11px] text-muted-foreground">
+                        {item.target.repo}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="outline" className="text-[10px]">
+                        {item.target.status}
+                      </Badge>
+                      <Badge variant={readinessVariant(item.readiness.status)} className="text-[10px]">
+                        {item.readiness.readyForManualLaunch ? "manual launch ready" : item.readiness.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <dl className="mt-2 grid gap-x-3 gap-y-1 text-[11px] sm:grid-cols-2">
+                    <dt className="text-muted-foreground">area</dt>
+                    <dd className="font-mono">{item.target.area}</dd>
+                    <dt className="text-muted-foreground">risk ceiling</dt>
+                    <dd className="font-mono">{item.target.riskCeiling}</dd>
+                    <dt className="text-muted-foreground">blueprint</dt>
+                    <dd className="truncate font-mono" title={item.target.defaultWorkflowBlueprintId}>
+                      {item.target.defaultWorkflowBlueprintId}
+                    </dd>
+                    <dt className="text-muted-foreground">allowed profiles</dt>
+                    <dd className="truncate font-mono" title={item.target.allowedRunnerProfileIds.join(", ")}>
+                      {formatReadinessList(item.target.allowedRunnerProfileIds)}
+                    </dd>
+                  </dl>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {item.readiness.readyProfileIds.map((id) => (
+                      <Badge key={id} variant="default" className="text-[10px]">
+                        ready {id}
+                      </Badge>
+                    ))}
+                    {item.readiness.blockedProfileIds.map((id) => (
+                      <Badge key={id} variant="destructive" className="text-[10px]">
+                        blocked {id}
+                      </Badge>
+                    ))}
+                  </div>
+                  {item.target.notes ? (
+                    <p className="mt-2 text-[11px] text-muted-foreground">{item.target.notes}</p>
+                  ) : null}
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Next: {item.readiness.recommendedNextAction}
+                  </p>
+                </article>
+              ))}
+              {!pilotTargets.targets.length ? (
+                <p className="text-sm text-muted-foreground">
+                  No pilot target registered. Seed or create an internal target before launching a real agent.
+                </p>
+              ) : null}
+            </div>
           </section>
         ) : null}
 

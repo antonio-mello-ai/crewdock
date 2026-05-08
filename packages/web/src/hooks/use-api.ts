@@ -673,6 +673,22 @@ export function useCompanyBrainRunnerProfileReadiness(filters?: {
   });
 }
 
+export function useCompanyBrainPilotTargets(filters?: {
+  repo?: string;
+  status?: "active" | "paused" | "disabled" | "all";
+}) {
+  const params = new URLSearchParams();
+  if (filters?.repo) params.set("repo", filters.repo);
+  if (filters?.status) params.set("status", filters.status);
+  const query = params.toString();
+  return useQuery<ApiResponse<unknown>>({
+    queryKey: ["company-brain", "pilot-targets", filters],
+    queryFn: () =>
+      api(`/api/company-brain/pilot-targets${query ? `?${query}` : ""}`),
+    refetchInterval: 10_000,
+  });
+}
+
 export function useCompanyBrainAgentRun(id: string | null) {
   return useQuery<ApiResponse<unknown>>({
     queryKey: ["company-brain", "agent-run", id],

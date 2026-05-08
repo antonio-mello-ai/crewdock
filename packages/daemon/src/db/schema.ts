@@ -22,6 +22,7 @@ import type {
   GuidanceStatus,
   HealthStatus,
   OwnerType,
+  PilotTargetStatus,
   Provenance,
   ReviewStatus,
   RiskClass,
@@ -735,6 +736,27 @@ export const cbAgentRunSuggestions = sqliteTable("cb_agent_run_suggestions", {
   dismissReason: text("dismiss_reason"),
   dismissedBy: text("dismissed_by"),
   dismissedAt: integer("dismissed_at", { mode: "number" }),
+  createdAt: integer("created_at", { mode: "number" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "number" }).notNull(),
+});
+
+export const cbPilotTargets = sqliteTable("cb_pilot_targets", {
+  id: text("id").primaryKey(),
+  projectName: text("project_name").notNull(),
+  repo: text("repo").notNull(),
+  area: text("area").$type<CompanyBrainArea>().notNull().default("development"),
+  defaultWorkflowBlueprintId: text("default_workflow_blueprint_id").notNull(),
+  allowedRunnerProfileIds: text("allowed_runner_profile_ids", { mode: "json" })
+    .$type<string[]>()
+    .notNull()
+    .default([]),
+  riskCeiling: text("risk_ceiling").$type<RiskClass>().notNull().default("B"),
+  owner: text("owner"),
+  ownerType: text("owner_type").$type<OwnerType>().notNull().default("human"),
+  status: text("status").$type<PilotTargetStatus>().notNull().default("active"),
+  notes: text("notes"),
+  visibility: text("visibility").$type<Visibility>().notNull().default("internal"),
+  metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown> | null>(),
   createdAt: integer("created_at", { mode: "number" }).notNull(),
   updatedAt: integer("updated_at", { mode: "number" }).notNull(),
 });

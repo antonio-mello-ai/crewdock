@@ -1732,6 +1732,58 @@ export interface RunnerProfileReadinessMatrix {
   profiles: RunnerProfileReadinessItem[];
 }
 
+export type PilotTargetStatus = "active" | "paused" | "disabled";
+
+export interface PilotTarget {
+  id: string;
+  projectName: string;
+  repo: string;
+  area: CompanyBrainArea;
+  defaultWorkflowBlueprintId: string;
+  allowedRunnerProfileIds: string[];
+  riskCeiling: RiskClass;
+  owner: string | null;
+  ownerType: OwnerType;
+  status: PilotTargetStatus;
+  notes: string | null;
+  visibility: Visibility;
+  metadata: Record<string, unknown> | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PilotTargetReadiness {
+  status: RunnerProfileReadinessStatus;
+  readyForManualLaunch: boolean;
+  readyProfileIds: string[];
+  blockedProfileIds: string[];
+  warnProfileIds: string[];
+  blockReasons: string[];
+  recommendedNextAction: string;
+  readiness: RunnerProfileReadinessMatrix;
+}
+
+export interface PilotTargetWithReadiness {
+  target: PilotTarget;
+  readiness: PilotTargetReadiness;
+}
+
+export interface ListPilotTargetsResponse {
+  generatedAt: number;
+  filters: {
+    repo: string | null;
+    status: PilotTargetStatus | "all";
+  };
+  totals: {
+    total: number;
+    active: number;
+    readyForManualLaunch: number;
+    blocked: number;
+    warn: number;
+  };
+  targets: PilotTargetWithReadiness[];
+}
+
 export type AutoDispatchDecision =
   | "blocked_default_off"
   | "blocked_repo"
