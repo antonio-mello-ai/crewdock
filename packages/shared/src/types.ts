@@ -3318,6 +3318,8 @@ export interface AgentRunEvaluation {
   guidanceItemsCreated: GuidanceItem[];
   improvementProposalSuggested: boolean;
   improvementProposalRationale: string | null;
+  improvementProposalId: string | null;
+  improvementProposalReused: boolean;
   reviewedReviewer: string | null;
   evidenceSummary: {
     runnerType: SessionResultRunnerType | null;
