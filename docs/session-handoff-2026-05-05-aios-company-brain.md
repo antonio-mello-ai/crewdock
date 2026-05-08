@@ -2853,3 +2853,47 @@ PR proposal preview, approved GitHub PR writeback para `antonio-mello-ai/crewdoc
 e dogfood controlado de primeiro PR AIOS-authored. Deve parar antes de broad
 multi-issue auto-dispatch, customer repo, novo segredo/permissao, servico pago,
 auto-merge/deploy ou writeback externo fora das policies.
+
+## 2026-05-08 - AIOS Agent Execution v7
+
+Milestone `AIOS Agent Execution v6` foi concluida:
+
+- PRs `#109` a `#114` mergeados;
+- issues `#104` a `#108` fechadas;
+- CT165 daemon `active`;
+- frontend deployado em Cloudflare Pages;
+- primeiro PR AIOS-authored aberto: `#113`
+  (`https://github.com/antonio-mello-ai/crewdock/pull/113`);
+- cadeia comprovada: WorkItem `G4FWzjBASmc0` -> AgentRun
+  `aios-run-33-dogfood` -> patch packet `T8Lkx2zYv7aE` ->
+  ExternalActionProposal `ZtH_lkpjxwFZ` -> PR `#113`;
+- re-execute idempotente retornou `alreadyExecuted=true`;
+- PR `#113` continua aberto aguardando revisao humana antes de merge;
+- producao permaneceu default-off para PR writeback
+  (`AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED` unset).
+
+Nova milestone aberta:
+
+- `AIOS Agent Execution v7` (GitHub milestone number `10`).
+
+Issues abertas:
+
+- `#115 AIOS-RUN-34: GitHub PR writeback preflight and auth smoke v7`;
+- `#116 AIOS-RUN-35: GitHub PR proposal governance UI v7`;
+- `#117 AIOS-RUN-36: Auto-dispatch to PR proposal chain v7`;
+- `#118 AIOS-RUN-37: Same-PR iteration loop for AgentRuns v7`;
+- `#119 AIOS-RUN-38: Semantic AIOS-authored PR dogfood pack v7`.
+
+Direcional da v7: tornar o loop de PR revisavel e iteravel. A v7 deve fechar
+as friccoes do dogfood v6: smoke de pushability/auth, aprovacao de
+`github_pr_create` via UI/API em vez de SQLite, chain auto-dispatch -> PR
+proposal sem AgentRun seed manual, iteracao no mesmo PR e dogfood com mudanca
+semantica real. Continua fora de escopo: auto-merge/deploy, customer repo,
+novos segredos/permissoes, servicos pagos e broad multi-issue auto-dispatch.
+
+Proximo prompt deve mandar a janela de implementacao consumir `#115` primeiro e
+seguir issue-by-issue pela milestone `AIOS Agent Execution v7`. Pode seguir sem
+parar em docs, APIs internas, UI/MCP, PR writeback preflight, governance UI para
+`github_pr_create`, chain auto-dispatch -> PR proposal, same-PR iteration e
+dogfood semantico controlado. Deve parar antes de auto-merge/deploy, customer
+repo, novo segredo/permissao, servico pago ou broad multi-issue auto-dispatch.
