@@ -2168,6 +2168,73 @@ server.registerTool(
 );
 
 server.registerTool(
+  "tail_company_brain_agent_run_logs",
+  {
+    title: "Tail Company Brain agent run logs",
+    description:
+      "Read the persisted log file for an AgentRun (from the supervised executor) plus a heartbeat snapshot. Returns the last N lines (default 200, max 2000), byte size, line count, last audit event/timestamp and isStaleHeartbeat flag (true when the run is in status=running but updatedAt is older than 5 minutes). Useful for operator monitoring without launching anything.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      tail: z.number().int().min(1).max(2000).optional(),
+    },
+  },
+  async (params) => {
+    const search = new URLSearchParams();
+    if (params.tail) search.set("tail", String(params.tail));
+    const query = search.toString();
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${params.agentRunId}/logs${query ? `?${query}` : ""}`
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "cancel_company_brain_agent_run",
+  {
+    title: "Cancel a Company Brain agent run",
+    description:
+      "Transition an AgentRun to status=cancelled with claimState=released. Requires actor and rationale. Records an agent_run_cancelled audit entry. Already-terminal runs return noop=true with the previous status. Does not kill any process tree beyond the supervised subprocess; if a real subprocess is still running, the operator must coordinate process termination separately.",
+    inputSchema: {
+      agentRunId: z.string().min(1),
+      actor: z.string().min(1),
+      rationale: z.string().min(1),
+      forceTerminal: z.boolean().optional(),
+    },
+  },
+  async (params) => {
+    const { agentRunId, ...rest } = params;
+    const result = await daemonFetch<{ data: unknown }>(
+      `/api/company-brain/agent-runs/${agentRunId}/cancel`,
+      { method: "POST", body: JSON.stringify(rest) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "sweep_company_brain_agent_run_timeouts",
+  {
+    title: "Sweep Company Brain agent runs for timeouts",
+    description:
+      "Find AgentRuns stuck in status=running for longer than thresholdMs (default 1h) and either preview them (dryRun=true, default) or transition them to failed with claimState=released and a timeout-sweep audit entry. Useful when the supervised subprocess crashed silently or the daemon restarted while a run was active.",
+    inputSchema: {
+      thresholdMs: z.number().int().positive().optional(),
+      dryRun: z.boolean().optional(),
+      actor: z.string().optional(),
+      rationale: z.string().optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-runs/sweep-timeouts",
+      { method: "POST", body: JSON.stringify(params) }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "execute_company_brain_agent_run_supervised",
   {
     title: "Execute a Company Brain agent run (supervised real subprocess)",

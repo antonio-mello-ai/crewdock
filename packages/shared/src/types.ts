@@ -1163,6 +1163,62 @@ export interface DryRunExecuteAgentRunRequest {
   rationale?: string | null;
 }
 
+export interface AgentRunLogTailResponse {
+  generatedAt: number;
+  agentRunId: string;
+  status: AgentRunStatus;
+  claimState: AgentRunClaimState;
+  logPath: string | null;
+  exists: boolean;
+  byteSize: number;
+  lineCount: number;
+  tail: string[];
+  lastEvent: string | null;
+  lastEventAt: number | null;
+  lastSeenAgeMs: number | null;
+  isStaleHeartbeat: boolean;
+  staleThresholdMs: number;
+}
+
+export interface CancelAgentRunRequest {
+  actor: string;
+  rationale: string;
+  forceTerminal?: boolean;
+}
+
+export interface CancelAgentRunResponse {
+  generatedAt: number;
+  agentRunId: string;
+  previousStatus: AgentRunStatus;
+  status: AgentRunStatus;
+  claimState: AgentRunClaimState;
+  cancelled: boolean;
+  noop: boolean;
+  reason: string;
+}
+
+export interface SweepAgentRunTimeoutsRequest {
+  thresholdMs?: number;
+  dryRun?: boolean;
+  actor?: string;
+  rationale?: string;
+}
+
+export interface SweepAgentRunTimeoutsResponse {
+  generatedAt: number;
+  thresholdMs: number;
+  dryRun: boolean;
+  scanned: number;
+  timedOutCount: number;
+  timedOut: Array<{
+    id: string;
+    workItemId: string | null;
+    previousStatus: AgentRunStatus;
+    newStatus: AgentRunStatus;
+    ageMs: number;
+  }>;
+}
+
 export type RunnerExecutionOutcome =
   | "completed"
   | "failed"

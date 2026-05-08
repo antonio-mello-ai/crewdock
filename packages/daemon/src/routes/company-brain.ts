@@ -39,7 +39,10 @@ import type {
   AgentRunDryRunExecutionResult,
   AgentRunDryRunPhase,
   AgentRunDryRunRetryPlan,
+  AgentRunLogTailResponse,
   AgentWorkspaceStatusResponse,
+  CancelAgentRunRequest,
+  CancelAgentRunResponse,
   DryRunExecuteAgentRunRequest,
   EvaluateRunnerPolicyRequest,
   ExecuteAgentRunRequest,
@@ -47,6 +50,8 @@ import type {
   PrepareAgentWorkspaceRequest,
   PreviewWorkflowLoaderRequest,
   RunnerExecutionOutcome,
+  SweepAgentRunTimeoutsRequest,
+  SweepAgentRunTimeoutsResponse,
   RunnerExecutionPolicy,
   RunnerPolicyDecision,
   RunnerPolicyGate,
@@ -13414,6 +13419,205 @@ app.post("/agent-runs/:id/execute", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "agent_run_execution_failed", message }, 400);
+  }
+});
+
+const AGENT_RUN_HEARTBEAT_STALE_MS = 5 * 60 * 1000;
+const AGENT_RUN_TIMEOUT_DEFAULT_MS = 60 * 60 * 1000;
+
+app.get("/agent-runs/:id/logs", (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const url = new URL(c.req.url);
+  const tailParam = Number(url.searchParams.get("tail") ?? "200");
+  const tailLines = Math.max(1, Math.min(2000, Number.isFinite(tailParam) ? tailParam : 200));
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  const generatedAt = now();
+  const logPath = run.workspaceRef
+    ? resolve(run.workspaceRef, ".aios-run", `${id}.log`)
+    : null;
+  let exists = false;
+  let byteSize = 0;
+  let lineCount = 0;
+  let tail: string[] = [];
+  if (logPath && existsSync(logPath)) {
+    exists = true;
+    const stat = statSync(logPath);
+    byteSize = stat.size;
+    const content = readFileSync(logPath, "utf-8");
+    const lines = content.split(/\r?\n/);
+    lineCount = lines.length;
+    tail = lines.slice(Math.max(0, lines.length - tailLines));
+  }
+  const lastEntry =
+    Array.isArray(run.auditTrail) && run.auditTrail.length > 0
+      ? run.auditTrail[run.auditTrail.length - 1]
+      : null;
+  const lastEventAt = lastEntry?.at ?? run.updatedAt;
+  const lastSeenAgeMs = generatedAt - lastEventAt;
+  const isRunning = run.status === "running" || run.claimState === "running";
+  const isStaleHeartbeat = isRunning && lastSeenAgeMs > AGENT_RUN_HEARTBEAT_STALE_MS;
+  const response: AgentRunLogTailResponse = {
+    generatedAt,
+    agentRunId: id,
+    status: run.status,
+    claimState: run.claimState,
+    logPath,
+    exists,
+    byteSize,
+    lineCount,
+    tail,
+    lastEvent: lastEntry?.event ?? null,
+    lastEventAt,
+    lastSeenAgeMs,
+    isStaleHeartbeat,
+    staleThresholdMs: AGENT_RUN_HEARTBEAT_STALE_MS,
+  };
+  return c.json({ data: response });
+});
+
+app.post("/agent-runs/:id/cancel", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<CancelAgentRunRequest>()
+      .catch(() => ({}))) as CancelAgentRunRequest;
+    if (!body.actor || !body.actor.trim()) {
+      return c.json({ error: "validation", message: "actor is required" }, 400);
+    }
+    if (!body.rationale || !body.rationale.trim()) {
+      return c.json({ error: "validation", message: "rationale is required" }, 400);
+    }
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+    const previousStatus = existing.status;
+    if (AGENT_RUN_TERMINAL_STATUSES.includes(existing.status)) {
+      const noopResponse: CancelAgentRunResponse = {
+        generatedAt: now(),
+        agentRunId: id,
+        previousStatus,
+        status: existing.status,
+        claimState: existing.claimState,
+        cancelled: false,
+        noop: true,
+        reason: `agent run already terminal (${existing.status})`,
+      };
+      return c.json({ data: noopResponse });
+    }
+    const timestamp = now();
+    const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+      actor: body.actor,
+      event: "agent_run_cancelled",
+      note: body.rationale,
+      metadata: { previousStatus },
+      at: timestamp,
+    });
+    db.update(cbAgentRuns)
+      .set({
+        status: "cancelled",
+        claimState: "released",
+        finishedAt: timestamp,
+        errorSummary: `cancelled by ${body.actor}: ${body.rationale}`,
+        auditTrail,
+        updatedAt: timestamp,
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+    const response: CancelAgentRunResponse = {
+      generatedAt: timestamp,
+      agentRunId: id,
+      previousStatus,
+      status: "cancelled",
+      claimState: "released",
+      cancelled: true,
+      noop: false,
+      reason: `cancelled by ${body.actor}`,
+    };
+    return c.json({ data: response });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_cancel_failed", message }, 400);
+  }
+});
+
+app.post("/agent-runs/sweep-timeouts", async (c) => {
+  try {
+    const db = getDb();
+    const body = (await c.req
+      .json<SweepAgentRunTimeoutsRequest>()
+      .catch(() => ({}))) as SweepAgentRunTimeoutsRequest;
+    const thresholdMs =
+      body.thresholdMs && body.thresholdMs > 0
+        ? body.thresholdMs
+        : AGENT_RUN_TIMEOUT_DEFAULT_MS;
+    const dryRun = body.dryRun !== false;
+    const timestamp = now();
+    const runs = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.status, "running"))
+      .all() as Array<typeof cbAgentRuns.$inferSelect>;
+    const timedOut: SweepAgentRunTimeoutsResponse["timedOut"] = [];
+    for (const run of runs) {
+      const ageMs = timestamp - run.updatedAt;
+      if (ageMs > thresholdMs) {
+        timedOut.push({
+          id: run.id,
+          workItemId: run.workItemId ?? null,
+          previousStatus: run.status,
+          newStatus: dryRun ? "running" : "failed",
+          ageMs,
+        });
+        if (!dryRun) {
+          const auditTrail = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+            actor: body.actor ?? "aios:sweep",
+            event: "agent_run_timed_out_by_sweep",
+            note:
+              body.rationale ??
+              `Marked failed because run was running for ${ageMs}ms (threshold ${thresholdMs}ms).`,
+            metadata: { ageMs, thresholdMs },
+            at: timestamp,
+          });
+          db.update(cbAgentRuns)
+            .set({
+              status: "failed",
+              claimState: "released",
+              finishedAt: timestamp,
+              errorSummary: `timeout sweep: stuck for ${Math.round(ageMs / 1000)}s`,
+              auditTrail,
+              updatedAt: timestamp,
+            } as never)
+            .where(eq(cbAgentRuns.id, run.id))
+            .run();
+        }
+      }
+    }
+    const response: SweepAgentRunTimeoutsResponse = {
+      generatedAt: timestamp,
+      thresholdMs,
+      dryRun,
+      scanned: runs.length,
+      timedOutCount: timedOut.length,
+      timedOut,
+    };
+    return c.json({ data: response });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_sweep_failed", message }, 400);
   }
 });
 
