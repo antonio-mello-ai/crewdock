@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { setDefaultResultOrder } from "node:dns";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, relative, resolve } from "node:path";
 import { Hono } from "hono";
@@ -42,8 +42,11 @@ import type {
   AgentWorkspaceStatusResponse,
   DryRunExecuteAgentRunRequest,
   EvaluateRunnerPolicyRequest,
+  ExecuteAgentRunRequest,
+  ExecuteAgentRunResponse,
   PrepareAgentWorkspaceRequest,
   PreviewWorkflowLoaderRequest,
+  RunnerExecutionOutcome,
   RunnerExecutionPolicy,
   RunnerPolicyDecision,
   RunnerPolicyGate,
@@ -12839,7 +12842,7 @@ function evaluateRunnerPolicy(args: {
   }
 
   // 7. command allowlist
-  const command = workflow.config.agent.command;
+  const command = args.request.commandOverride ?? workflow.config.agent.command;
   if (intent === "real_execution") {
     if (commandAllowlist.length === 0) {
       gates.push({
@@ -13093,6 +13096,324 @@ app.post("/agent-runs/:id/policy/evaluate", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "policy_evaluation_failed", message }, 400);
+  }
+});
+
+function buildSubprocessEnv(plan: RunnerSubprocessEnvPlan): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of plan.allowedKeys) {
+    const value = process.env[key];
+    if (value !== undefined) env[key] = value;
+  }
+  return env;
+}
+
+function renderPromptTemplate(
+  template: string,
+  context: { workItem?: typeof cbWorkItems.$inferSelect | null; agentRun: typeof cbAgentRuns.$inferSelect; branchName: string }
+): string {
+  if (!template.trim()) {
+    return `You are an AIOS agent. Work on agent run ${context.agentRun.id}.`;
+  }
+  const replacements: Record<string, string> = {
+    "issue.identifier": context.workItem?.externalId ?? context.agentRun.workItemId ?? context.agentRun.id,
+    "issue.title": context.workItem?.title ?? "(no title)",
+    "issue.description": context.workItem?.description ?? "(no description)",
+    "issue.external_id": context.workItem?.externalId ?? "",
+    "issue.linked_evidence": context.workItem?.artifactId ?? "",
+    "issue.acceptance_criteria": parseAcceptanceCriteria(context.workItem?.description).join("\n- "),
+    "issue.branch_suggestion": context.branchName,
+  };
+  let rendered = template;
+  for (const [key, value] of Object.entries(replacements)) {
+    const re = new RegExp(`\\{\\{\\s*${key.replace(/\./g, "\\.")}\\s*\\}\\}`, "g");
+    rendered = rendered.replace(re, value);
+  }
+  return rendered;
+}
+
+function trimForPreview(input: string, maxBytes = 1024): string {
+  if (!input) return "";
+  const buf = Buffer.from(input, "utf8");
+  if (buf.byteLength <= maxBytes) return input;
+  return `${buf.subarray(0, maxBytes).toString("utf8")}\n[... truncated, total ${buf.byteLength} bytes ...]`;
+}
+
+app.post("/agent-runs/:id/execute", async (c) => {
+  try {
+    const db = getDb();
+    const id = c.req.param("id");
+    const body = (await c.req
+      .json<ExecuteAgentRunRequest>()
+      .catch(() => ({}))) as ExecuteAgentRunRequest;
+    if (!body.actor || !body.actor.trim()) {
+      return c.json({ error: "validation", message: "actor is required" }, 400);
+    }
+    if (!body.rationale || !body.rationale.trim()) {
+      return c.json({ error: "validation", message: "rationale is required" }, 400);
+    }
+    const existing = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.id, id))
+      .get() as typeof cbAgentRuns.$inferSelect | undefined;
+    if (!existing) {
+      return c.json({ error: "not_found", message: "agent run not found" }, 404);
+    }
+
+    const policy = evaluateRunnerPolicy({
+      agentRun: existing,
+      request: {
+        actor: body.actor,
+        rationale: body.rationale,
+        intent: "real_execution",
+        commandOverride: body.commandOverride,
+      },
+    });
+    if (!policy.realExecutionAllowed) {
+      const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+        actor: body.actor,
+        event: "agent_run_real_execution_blocked",
+        note: body.rationale,
+        metadata: {
+          decision: policy.decision,
+          blockReasons: policy.blockReasons,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+      const blockedResponse: ExecuteAgentRunResponse = {
+        generatedAt: now(),
+        agentRunId: id,
+        outcome: "blocked_by_policy",
+        status: existing.status,
+        exitCode: null,
+        signal: null,
+        durationMs: 0,
+        command: policy.workflowSummary.command,
+        args: policy.workflowSummary.args,
+        workspacePath: policy.workspaceSummary.workspacePath || null,
+        branchName: policy.workspaceSummary.branchName || null,
+        promptRendered: "",
+        envAllowedKeys: policy.subprocessEnv.allowedKeys,
+        envRedactedKeys: policy.subprocessEnv.redactedKeys,
+        logSummary: {
+          logPath: null,
+          stdoutPreview: "",
+          stderrPreview: "",
+          byteCountStdout: 0,
+          byteCountStderr: 0,
+        },
+        policyDecision: policy.decision,
+        blockReasons: policy.blockReasons,
+        errorSummary: `policy decision=${policy.decision}; reasons=${policy.blockReasons.join(", ")}`,
+        realExecutionPerformed: false,
+      };
+      return c.json({ data: blockedResponse }, 400);
+    }
+
+    const workflow = loadWorkflowFromRepoRoot();
+    const repo = existing.repo ?? workflow.config.tracker.repo!;
+    const workItem = existing.workItemId
+      ? (db
+          .select()
+          .from(cbWorkItems)
+          .where(eq(cbWorkItems.id, existing.workItemId))
+          .get() as typeof cbWorkItems.$inferSelect | undefined)
+      : undefined;
+    const externalIdMatch = workItem?.externalId?.match(/#(\d+)$/);
+    const workItemKey = externalIdMatch
+      ? `${repo.replace("/", "_")}_${externalIdMatch[1]}`
+      : workItem?.externalId ?? existing.workItemId ?? existing.id;
+    const { location } = resolveWorkspaceLocation({ repo, workItemKey });
+    if (!existsSync(location.workspacePath)) {
+      mkdirSync(location.workspacePath, { recursive: true });
+    }
+    const aiosRunDir = resolve(location.workspacePath, ".aios-run");
+    if (!existsSync(aiosRunDir)) {
+      mkdirSync(aiosRunDir, { recursive: true });
+    }
+    const logPath = resolve(aiosRunDir, `${id}.log`);
+
+    const promptRendered = renderPromptTemplate(body.promptOverride ?? workflow.promptTemplate, {
+      workItem: workItem ?? null,
+      agentRun: existing,
+      branchName: location.branchName,
+    });
+
+    const command = body.commandOverride ?? workflow.config.agent.command;
+    const argsRaw = body.argsOverride ?? workflow.config.agent.args;
+    const args = argsRaw.map((arg) => arg.replace(/\$\{prompt\}/g, promptRendered));
+    const subprocessEnv = buildSubprocessEnv(policy.subprocessEnv);
+    subprocessEnv.AIOS_BRANCH_NAME = location.branchName;
+    subprocessEnv.AIOS_WORKSPACE_PATH = location.workspacePath;
+    subprocessEnv.AIOS_WORK_ITEM_ID = existing.workItemId ?? "";
+    subprocessEnv.AIOS_REPO = repo;
+
+    let auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+      actor: body.actor,
+      event: "agent_run_real_execution_started",
+      note: body.rationale,
+      metadata: {
+        command,
+        args,
+        workspacePath: location.workspacePath,
+        envAllowedKeys: policy.subprocessEnv.allowedKeys,
+      },
+    });
+    const startedAt = now();
+    db.update(cbAgentRuns)
+      .set({
+        status: "running",
+        claimState: "running",
+        startedAt,
+        attempt: (existing.attempt ?? 0) + 1,
+        repo,
+        branch: location.branchName,
+        workspaceRef: location.workspacePath,
+        auditTrail,
+        updatedAt: startedAt,
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+
+    const timeoutMs =
+      body.timeoutMsOverride && body.timeoutMsOverride > 0
+        ? body.timeoutMsOverride
+        : workflow.config.codex.turnTimeoutMs;
+
+    let stdoutText = "";
+    let stderrText = "";
+    let exitCode: number | null = null;
+    let signal: string | null = null;
+    let outcome: RunnerExecutionOutcome = "completed";
+    let errorSummary: string | null = null;
+    let finalStatus: AgentRunStatus = "completed";
+    try {
+      const result = spawnSync(command, args, {
+        cwd: location.workspacePath,
+        env: subprocessEnv,
+        encoding: "utf-8",
+        timeout: timeoutMs,
+        input: promptRendered,
+      });
+      if (result.error && (result.error as NodeJS.ErrnoException).code === "ENOENT") {
+        outcome = "spawn_error";
+        errorSummary = `spawn ${command} failed: command not found`;
+        finalStatus = "failed";
+      } else if (result.signal === "SIGTERM" && result.error?.message?.includes("ETIMEDOUT")) {
+        outcome = "timed_out";
+        errorSummary = `subprocess timed out after ${timeoutMs}ms`;
+        finalStatus = "failed";
+      } else if (result.error) {
+        outcome = "spawn_error";
+        errorSummary = result.error.message;
+        finalStatus = "failed";
+      }
+      stdoutText = result.stdout ?? "";
+      stderrText = result.stderr ?? "";
+      exitCode = result.status;
+      signal = result.signal as string | null;
+      if (outcome === "completed") {
+        if (signal) {
+          outcome = "timed_out";
+          errorSummary = `subprocess terminated by signal ${signal}`;
+          finalStatus = "failed";
+        } else if (exitCode === 0) {
+          outcome = "completed";
+          finalStatus = "completed";
+        } else {
+          outcome = "failed";
+          errorSummary = `non-zero exit code ${exitCode}`;
+          finalStatus = "failed";
+        }
+      }
+    } catch (err) {
+      outcome = "spawn_error";
+      errorSummary = err instanceof Error ? err.message : String(err);
+      finalStatus = "failed";
+    }
+    const finishedAt = now();
+    const durationMs = finishedAt - startedAt;
+
+    try {
+      writeFileSync(
+        logPath,
+        `# AIOS AgentRun ${id} log\n# command: ${command} ${args.join(" ")}\n# startedAt: ${new Date(startedAt).toISOString()}\n# finishedAt: ${new Date(finishedAt).toISOString()}\n# exitCode: ${exitCode}\n# signal: ${signal ?? "(none)"}\n# outcome: ${outcome}\n\n## stdout\n${stdoutText}\n\n## stderr\n${stderrText}\n`
+      );
+    } catch (writeErr) {
+      // log write failure should not bring down the run; capture as audit
+      auditTrail = appendAgentRunAuditEntry(auditTrail, {
+        actor: body.actor,
+        event: "agent_run_log_write_failed",
+        note: writeErr instanceof Error ? writeErr.message : String(writeErr),
+      });
+    }
+
+    const finalClaim: AgentRunClaimState = "released";
+    auditTrail = appendAgentRunAuditEntry(auditTrail, {
+      actor: body.actor,
+      event:
+        outcome === "completed"
+          ? "agent_run_real_execution_completed"
+          : outcome === "timed_out"
+            ? "agent_run_real_execution_timed_out"
+            : outcome === "spawn_error"
+              ? "agent_run_real_execution_spawn_error"
+              : "agent_run_real_execution_failed",
+      note: errorSummary,
+      metadata: {
+        exitCode,
+        signal,
+        durationMs,
+        logPath,
+      },
+    });
+    db.update(cbAgentRuns)
+      .set({
+        status: finalStatus,
+        claimState: finalClaim,
+        finishedAt,
+        errorSummary,
+        auditTrail,
+        updatedAt: finishedAt,
+      } as never)
+      .where(eq(cbAgentRuns.id, id))
+      .run();
+
+    const response: ExecuteAgentRunResponse = {
+      generatedAt: now(),
+      agentRunId: id,
+      outcome,
+      status: finalStatus,
+      exitCode,
+      signal,
+      durationMs,
+      command,
+      args,
+      workspacePath: location.workspacePath,
+      branchName: location.branchName,
+      promptRendered,
+      envAllowedKeys: policy.subprocessEnv.allowedKeys,
+      envRedactedKeys: policy.subprocessEnv.redactedKeys,
+      logSummary: {
+        logPath,
+        stdoutPreview: trimForPreview(stdoutText),
+        stderrPreview: trimForPreview(stderrText),
+        byteCountStdout: Buffer.byteLength(stdoutText, "utf8"),
+        byteCountStderr: Buffer.byteLength(stderrText, "utf8"),
+      },
+      policyDecision: policy.decision,
+      blockReasons: [],
+      errorSummary,
+      realExecutionPerformed: true,
+    };
+    return c.json({ data: response });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_run_execution_failed", message }, 400);
   }
 });
 
