@@ -417,6 +417,7 @@ export type ExternalActionKind =
   | "github_status"
   | "github_check"
   | "github_issue_create"
+  | "github_pr_create"
   | "thread_reply"
   | "slack_thread_reply"
   | "draft"
@@ -1791,6 +1792,36 @@ export interface AgentRunSuggestion {
   dismissedAt: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface GitHubPrProposalPayload {
+  repo: string;
+  sourceBranch: string;
+  baseBranch: string;
+  title: string;
+  body: string;
+  agentRunId: string;
+  workItemId: string | null;
+  patchPacketArtifactId: string | null;
+  patchPacketSignature: string;
+  changedFileCount: number;
+  diffStat: { filesChanged: number; insertions: number; deletions: number };
+  commitCount: number;
+  validationsSummary: string;
+  safetyMarkers: {
+    aiosAuthored: boolean;
+    requiresHumanReview: boolean;
+    dryRunOnly: boolean;
+  };
+}
+
+export interface PreviewGitHubPrProposalResponse {
+  generatedAt: number;
+  proposalId: string;
+  alreadyExisted: boolean;
+  payload: GitHubPrProposalPayload;
+  /** Inline preview of the proposal record after upsert */
+  proposal: ExternalActionProposal;
 }
 
 export type AgentRunPatchPacketStatus =

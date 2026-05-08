@@ -105,6 +105,8 @@ import type {
   AgentRunReconciliationFinding,
   CollectAgentRunPatchPacketResponse,
   EvaluateAutoDispatchEligibilityRequest,
+  GitHubPrProposalPayload,
+  PreviewGitHubPrProposalResponse,
   ListAgentRunSuggestionsResponse,
   ListRunnerProfilesResponse,
   OperatingLoopAutoDispatchOutcome,
@@ -13983,6 +13985,258 @@ app.get("/agent-runs/:id/patch-packet", (c) => {
     packet,
   };
   return c.json({ data: response });
+});
+
+app.post("/agent-runs/:id/github-pr-proposal/preview", async (c) => {
+  const db = getDb();
+  const id = c.req.param("id");
+  const body = (await c.req.json().catch(() => ({}))) as {
+    actor?: string;
+    rationale?: string;
+    titleOverride?: string;
+    bodyOverride?: string;
+  };
+  const actor = body.actor?.trim();
+  if (!actor) {
+    return c.json({ error: "validation", message: "actor is required" }, 400);
+  }
+  const run = db
+    .select()
+    .from(cbAgentRuns)
+    .where(eq(cbAgentRuns.id, id))
+    .get() as typeof cbAgentRuns.$inferSelect | undefined;
+  if (!run) {
+    return c.json({ error: "not_found", message: "agent run not found" }, 404);
+  }
+  if (!run.repo) {
+    return c.json(
+      {
+        error: "validation",
+        message: "AgentRun.repo is missing; cannot build PR proposal",
+      },
+      400
+    );
+  }
+  if (!run.branch) {
+    return c.json(
+      {
+        error: "validation",
+        message: "AgentRun.branch is missing; cannot build PR proposal",
+      },
+      400
+    );
+  }
+
+  // Collect a fresh patch packet (do not persist a new artifact — reuse
+  // the most recent persisted one if it matches the current signature).
+  const packet = collectAgentRunPatchPacket({ agentRun: run });
+  if (packet.status !== "clean" && packet.status !== "dirty") {
+    return c.json(
+      {
+        error: "blocked",
+        message: `patch packet status=${packet.status}; cannot build PR proposal`,
+        data: { packet },
+      },
+      400
+    );
+  }
+  if (
+    packet.diffStat.filesChanged === 0 &&
+    packet.changedFiles.length === 0 &&
+    packet.commits.length === 0
+  ) {
+    return c.json(
+      {
+        error: "blocked",
+        message: "patch packet has no diff and no commits; nothing to propose",
+        data: { packet },
+      },
+      400
+    );
+  }
+
+  const workflow = loadWorkflowFromRepoRoot();
+  const baseBranch = packet.baseRef ?? workflow.config.workspace.baseBranch ?? "main";
+  const sourceBranch = run.branch;
+  const repo = run.repo;
+
+  // Build idempotency key from packet signature so re-running preview
+  // for the same workspace state returns the same proposal.
+  const packetSignature = createHash("sha256")
+    .update(
+      JSON.stringify({
+        agentRunId: run.id,
+        repo,
+        sourceBranch,
+        baseBranch,
+        changedFiles: packet.changedFiles,
+        commits: packet.commits.map((c) => c.sha),
+      })
+    )
+    .digest("hex");
+  const idempotencyKey = `aios-pr-proposal:${run.id}:${packetSignature.slice(0, 16)}`;
+
+  const workItem = run.workItemId
+    ? ((db
+        .select()
+        .from(cbWorkItems)
+        .where(eq(cbWorkItems.id, run.workItemId))
+        .get() as WorkItem | undefined) ?? null)
+    : null;
+
+  const titleBase =
+    body.titleOverride?.trim() ||
+    (workItem ? workItem.title : `AIOS AgentRun ${run.id} proposal`);
+  const title = `feat(aios): ${titleBase}`.slice(0, 240);
+
+  const validationsSummary = packet.validations.length
+    ? packet.validations
+        .map((v) => `${v.kind}=${v.status}`)
+        .join("; ")
+        .slice(0, 240)
+    : "(no validations recorded)";
+
+  const bodyText =
+    body.bodyOverride?.trim() ||
+    [
+      `## Summary`,
+      "",
+      workItem ? `Closes ${workItem.externalId ?? `#${workItem.id}`}.` : "",
+      "",
+      "Authored by AIOS Agent Run.",
+      "",
+      `### Patch packet`,
+      "",
+      `- agentRunId: ${run.id}`,
+      `- workItemId: ${workItem?.id ?? "-"}`,
+      `- baseRef: ${baseBranch}`,
+      `- changedFiles: ${packet.changedFiles.length} (${packet.changedFiles
+        .slice(0, 10)
+        .map((f) => `${f.status} ${f.path}`)
+        .join(", ")})`,
+      `- diffStat: ${packet.diffStat.filesChanged} files / +${packet.diffStat.insertions} / -${packet.diffStat.deletions}`,
+      `- commits: ${packet.commits.length} ahead of ${baseBranch}`,
+      "",
+      `### Validations`,
+      "",
+      validationsSummary,
+      "",
+      `### Safety`,
+      "",
+      "- AIOS-authored. Requires human review before merge.",
+      "- This is a preview proposal; no GitHub mutation has occurred.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+  const payload: GitHubPrProposalPayload = {
+    repo,
+    sourceBranch,
+    baseBranch,
+    title,
+    body: bodyText,
+    agentRunId: run.id,
+    workItemId: run.workItemId,
+    patchPacketArtifactId: packet.artifactId,
+    patchPacketSignature: packetSignature,
+    changedFileCount: packet.changedFiles.length,
+    diffStat: packet.diffStat,
+    commitCount: packet.commits.length,
+    validationsSummary,
+    safetyMarkers: {
+      aiosAuthored: true,
+      requiresHumanReview: true,
+      dryRunOnly: true,
+    },
+  };
+
+  // Idempotency: if a proposal with this idempotencyKey exists, return it.
+  const existing = db
+    .select()
+    .from(cbExternalActionProposals)
+    .where(eq(cbExternalActionProposals.idempotencyKey, idempotencyKey))
+    .get();
+  if (existing) {
+    const response: PreviewGitHubPrProposalResponse = {
+      generatedAt: now(),
+      proposalId: existing.id,
+      alreadyExisted: true,
+      payload,
+      proposal: existing as unknown as ExternalActionProposal,
+    };
+    return c.json({ data: response });
+  }
+
+  const timestamp = now();
+  const proposalId = nanoid(12);
+  const auditEntry = {
+    at: timestamp,
+    actor,
+    event: "external_action_proposal_created" as const,
+    note: body.rationale?.trim() ?? null,
+    metadata: {
+      kind: "github_pr_create",
+      idempotencyKey,
+      patchPacketSignature: packetSignature,
+    },
+  };
+  const proposalRow: ExternalActionProposal = {
+    id: proposalId,
+    guidanceItemId: "", // PR proposals are AgentRun-driven, not Guidance-driven
+    signalId: null,
+    findingId: null,
+    workItemId: run.workItemId,
+    workflowRunId: null,
+    title,
+    rationale:
+      body.rationale?.trim() ??
+      `Preview-only PR proposal generated from AgentRun ${run.id} patch packet`,
+    destinationType: "github",
+    destinationRef: `${repo}:${sourceBranch}->${baseBranch}`,
+    actionType: "github_pr_create",
+    payload: payload as unknown as Record<string, unknown>,
+    riskClass: workItem?.riskClass ?? "B",
+    actionPolicy: "request_human",
+    policySummary:
+      "Preview-only PR proposal. No GitHub push/merge/deploy occurs from this record. Human review required before any executor runs.",
+    approvalStatus: "pending",
+    approvalRequired: true,
+    requestedBy: actor,
+    approvedBy: null,
+    approvedAt: null,
+    rejectionReason: null,
+    executionStatus: "not_started",
+    externalId: null,
+    externalUrl: null,
+    errorSummary: null,
+    rollbackRef: null,
+    idempotencyKey,
+    auditTrail: [auditEntry],
+    visibility: "internal",
+    provenance: {
+      sourceId: run.sourceId ?? "",
+      rawRef: `aios://agent-run/${run.id}`,
+      artifactId: packet.artifactId ?? undefined,
+      createdFrom: "company_brain:agent_run_pr_proposal_preview",
+      confidence: 1,
+      extractedAt: timestamp,
+      humanReviewStatus: "pending",
+      visibility: "internal",
+      notes: `signature=${packetSignature.slice(0, 12)}; agentRunId=${run.id}`,
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  db.insert(cbExternalActionProposals).values(proposalRow as never).run();
+
+  const response: PreviewGitHubPrProposalResponse = {
+    generatedAt: timestamp,
+    proposalId,
+    alreadyExisted: false,
+    payload,
+    proposal: proposalRow,
+  };
+  return c.json({ data: response }, 201);
 });
 
 app.get("/runner-profiles", (c) => {
