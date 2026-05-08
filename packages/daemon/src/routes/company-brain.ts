@@ -12427,6 +12427,10 @@ function workspaceListed(workspacePath: string): boolean {
   return stdout.split("\n").some((line) => line.startsWith("worktree ") && line.slice(9).trim() === workspacePath);
 }
 
+function isInternalAgentRunWorkspacePath(path: string): boolean {
+  return path === ".aios-run" || path.startsWith(".aios-run/");
+}
+
 function findLatestExecutedPrProposalForWorkItem(workItemId: string | null): ExternalActionProposal | null {
   if (!workItemId) return null;
   const proposals = getDb()
@@ -12521,6 +12525,46 @@ function collectAgentRunPatchPacket(args: {
     }
     return out;
   })();
+  const buildValidationEvidence = (args: {
+    changedFiles: AgentRunPatchPacketChangedFile[];
+    diffStat: AgentRunPatchPacket["diffStat"];
+    commits: AgentRunPatchPacketCommit[];
+  }): AgentRunPatchPacketValidation[] => {
+    const validations = [...validationsFromMetadata];
+    const seen = new Set(validations.map((item) => `${item.kind}:${item.status}`));
+    const addValidation = (
+      kind: string,
+      status: AgentRunPatchPacketValidation["status"],
+      notes: string
+    ) => {
+      const key = `${kind}:${status}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      validations.push({ kind, status, notes });
+    };
+    if (run.status === "completed") {
+      addValidation(
+        "runner_exit_zero",
+        "passed",
+        "AgentRun reached terminal status=completed after subprocess execution."
+      );
+    }
+    if (args.changedFiles.length > 0 || args.diffStat.filesChanged > 0) {
+      addValidation(
+        "patch_content",
+        "passed",
+        `Patch packet contains ${args.changedFiles.length} changed file entries and diffStat=${args.diffStat.filesChanged} files.`
+      );
+    }
+    if (args.commits.length > 0) {
+      addValidation(
+        "git_commit",
+        "passed",
+        `Patch packet contains ${args.commits.length} commit(s) ahead of base.`
+      );
+    }
+    return validations;
+  };
 
   if (!workspacePath) {
     return {
@@ -12600,9 +12644,18 @@ function collectAgentRunPatchPacket(args: {
 
   const errorSummary: string[] = [];
 
-  // git status --porcelain
+  // git status --porcelain for uncommitted changes. Internal runner logs are
+  // ignored because they are evidence storage, not the proposed patch.
   let isDirty = false;
   const changedFiles: AgentRunPatchPacketChangedFile[] = [];
+  const changedFileKeys = new Set<string>();
+  const addChangedFile = (path: string, status: string) => {
+    if (!path || isInternalAgentRunWorkspacePath(path)) return;
+    const key = `${status}:${path}`;
+    if (changedFileKeys.has(key)) return;
+    changedFileKeys.add(key);
+    changedFiles.push({ path, status });
+  };
   try {
     const st = spawnSync("git", ["-C", workspacePath, "status", "--porcelain"], {
       encoding: "utf-8",
@@ -12612,15 +12665,41 @@ function collectAgentRunPatchPacket(args: {
       for (const line of lines) {
         const status = line.slice(0, 2).trim();
         const path = line.slice(3).trim();
-        if (path) changedFiles.push({ path, status });
+        addChangedFile(path, status);
       }
-      isDirty = lines.length > 0;
+      isDirty = changedFiles.length > 0;
     } else if (st.status !== 0) {
       errorSummary.push(`git status failed: ${(st.stderr ?? "").trim().slice(0, 200)}`);
     }
   } catch (err) {
     errorSummary.push(
       `git status threw: ${err instanceof Error ? err.message : "unknown"}`
+    );
+  }
+
+  // Committed changes against base ref. This is what PR review actually sees.
+  try {
+    if (baseRef) {
+      const diffNames = spawnSync(
+        "git",
+        ["-C", workspacePath, "diff", "--name-status", baseRef + "..HEAD"],
+        { encoding: "utf-8" }
+      );
+      if (diffNames.status === 0 && diffNames.stdout) {
+        for (const line of diffNames.stdout.split("\n").filter(Boolean)) {
+          const [status, ...pathParts] = line.split(/\s+/);
+          const path = pathParts.join(" ").trim();
+          addChangedFile(path, status);
+        }
+      } else if (diffNames.status !== 0) {
+        errorSummary.push(
+          `git diff --name-status failed: ${(diffNames.stderr ?? "").trim().slice(0, 200)}`
+        );
+      }
+    }
+  } catch (err) {
+    errorSummary.push(
+      `git diff --name-status threw: ${err instanceof Error ? err.message : "unknown"}`
     );
   }
 
@@ -12701,6 +12780,8 @@ function collectAgentRunPatchPacket(args: {
     );
   }
 
+  const validations = buildValidationEvidence({ changedFiles, diffStat, commits });
+
   return {
     agentRunId: run.id,
     workItemId: run.workItemId,
@@ -12715,10 +12796,10 @@ function collectAgentRunPatchPacket(args: {
     changedFiles,
     diffStat,
     commits,
-    validations: validationsFromMetadata,
+    validations,
     validationDelta: buildValidationDelta({
       previous: previousPatchPacket,
-      current: validationsFromMetadata,
+      current: validations,
     }),
     logRefs: baseLogRefs,
     errorSummary: errorSummary.length > 0 ? errorSummary.join("; ") : null,
@@ -12739,8 +12820,14 @@ function computeAgentRunPatchPacketSignature(args: {
         repo: args.repo ?? args.agentRun.repo ?? null,
         sourceBranch: args.sourceBranch ?? args.packet.branch ?? args.agentRun.branch ?? null,
         baseBranch: args.baseBranch ?? args.packet.baseRef ?? null,
+        signatureVersion: 3,
         changedFiles: args.packet.changedFiles,
         commits: args.packet.commits.map((c) => c.sha),
+        validations: args.packet.validations.map((v) => ({
+          kind: v.kind,
+          status: v.status,
+          notes: v.notes ?? null,
+        })),
       })
     )
     .digest("hex");
@@ -13193,6 +13280,44 @@ const RUNNER_PROFILE_REGISTRY: RunnerProfile[] = [
       expectedExitCodes: [0],
       description:
         "A local empty commit ahead of the base branch; suitable for PR proposal dogfood, never pushes by itself.",
+    },
+    defaultEnabled: true,
+    category: "dogfood",
+  },
+  {
+    id: "dogfood-semantic-doc-change",
+    title: "Dogfood semantic doc change",
+    description:
+      "Creates a small reviewable docs/action file in the prepared AgentRun worktree and commits it. This is the low-risk semantic dogfood profile for proving the auto-dispatch -> PR governance loop without touching runtime behavior.",
+    command: "bash",
+    args: [
+      "-lc",
+      [
+        "set -euo pipefail",
+        'safe=$(printf "%s" "${AIOS_WORK_ITEM_ID:-unknown}" | tr -c "A-Za-z0-9._-" "_")',
+        "mkdir -p docs/action",
+        'f="docs/action/aios-semantic-dogfood-${safe}.md"',
+        'printf "# AIOS Semantic Dogfood\\n\\n" > "$f"',
+        'printf "%s\\n\\n" "Generated by dogfood-semantic-doc-change." >> "$f"',
+        'printf "%s\\n" "- WorkItem: ${AIOS_WORK_ITEM_ID:-unknown}" >> "$f"',
+        'printf "%s\\n" "- Repo: ${AIOS_REPO:-unknown}" >> "$f"',
+        'printf "%s\\n\\n" "- Workspace: ${AIOS_WORKSPACE_PATH:-unknown}" >> "$f"',
+        'printf "%s\\n" "This file proves the supervised AgentRun can create a reviewable semantic docs change before PR governance opens or updates GitHub." >> "$f"',
+        'git add "$f"',
+        'git -c user.name="AIOS Dogfood" -c user.email=aios@example.invalid commit -m "docs: add semantic aios dogfood note"',
+      ].join("; "),
+    ],
+    capabilities: ["git_commit"],
+    authMode: "none",
+    allowedRepos: ["antonio-mello-ai/crewdock"],
+    allowedAreas: ["development", "platform"],
+    maxConcurrency: 1,
+    riskCeiling: "A",
+    outputContract: {
+      format: "fallback",
+      expectedExitCodes: [0],
+      description:
+        "A committed docs/action file ahead of the base branch; suitable for semantic PR proposal dogfood and never pushes by itself.",
     },
     defaultEnabled: true,
     category: "dogfood",
@@ -15265,9 +15390,13 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
 
   if (iterationPr) {
     const existingBody = iterationPr.body ?? "";
+    const previousMarkerSet = new Set<string>();
+    for (const match of existingBody.matchAll(/<!-- aios:proposalId=.*?-->/g)) {
+      const existingMarker = match[0];
+      if (existingMarker !== marker) previousMarkerSet.add(existingMarker);
+    }
+    const previousMarkers = Array.from(previousMarkerSet);
     const iterationNote = [
-      marker,
-      "",
       "<!-- aios-iteration",
       `proposalId=${proposal.id}`,
       `agentRunId=${payload.agentRunId}`,
@@ -15275,6 +15404,15 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
       `sourceBranch=${payload.sourceBranch}`,
       "-->",
     ].join("\n");
+    const markerHistory = previousMarkers.length
+      ? [
+          "",
+          "### Previous AIOS proposal markers",
+          "",
+          ...previousMarkers,
+        ].join("\n")
+      : "";
+    const bodyWithLatestEvidence = `${marker}\n\n${payload.body}${markerHistory}\n\n${iterationNote}`;
     let prUpdated: { number: number; html_url: string } | null = null;
     let prUpdateError: string | null = null;
     try {
@@ -15284,7 +15422,7 @@ app.post("/external-action-proposals/:id/execute-pr", async (c) => {
           method: "PATCH",
           requireToken: true,
           body: {
-            body: `${existingBody.trimEnd()}\n\n${iterationNote}`,
+            body: bodyWithLatestEvidence,
           },
         }
       );
