@@ -3398,3 +3398,58 @@ Fechamento:
 - sync GitHub Issues `state=open` retornou `issuesSeen=2`;
 - `Next Work` agora recomenda `#130 AIOS-RUN-42` com WorkItem
   `Qmr3m7dFDNss`.
+
+### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
+
+Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
+Brain: review humano, comentarios e estado do PR voltam como evidence/signal
+sem merge, close, deploy, label ou assign.
+
+Entregue no branch `aios-run-42-aios-pr-review-intake`:
+
+- tipos compartilhados `AiosAuthoredPrReviewItem`,
+  `SyncAiosPrReviewsRequest`, `SyncAiosPrReviewsResponse` e
+  `ListAiosPrReviewIntakeResponse`;
+- API `POST /api/company-brain/adapters/github/aios-pr-reviews/sync`;
+- API `GET /api/company-brain/aios-pr-review-intake`;
+- MCP tools `sync_company_brain_aios_pr_reviews` e
+  `get_company_brain_aios_pr_review_intake`;
+- UI `AIOS-authored PR review` em `/company-brain/operating`;
+- action doc
+  `docs/action/aios-run-42-aios-pr-review-intake-2026-05-08.md`.
+
+Contrato:
+
+- adapter identifica PR AIOS-authored pelo marker
+  `<!-- aios:proposalId=...:agentRunId=...:sig=... -->`;
+- usa o primeiro marker do body como marker atual, porque markers antigos podem
+  aparecer depois em `Previous AIOS proposal markers`;
+- cria Artifact `github_aios_pr_review`;
+- cria Signal para `awaiting_human_review` e `changes_requested`;
+- linka Artifact a `work_item`, `agent_run`, `external_action_proposal`,
+  patch packet artifact e signal quando disponiveis;
+- mantem `actionPolicy=observe_only`.
+
+Dogfood local:
+
+- DB temporario `/tmp/aios-run42-smoke.sqlite`, porta `43212`;
+- sync `antonio-mello-ai/crewdock`, `state=open`, `limit=50`;
+- resultado: `pullRequestsSeen=3`, `aiosPullRequestsSeen=3`,
+  `pendingHumanReviewCount=3`, `artifactsCreated=3`, `signalsCreated=3`;
+- PR `#125` apareceu como `awaiting_human_review`, ligado a WorkItem
+  `bqA5AghugOJn`, patch packet `kn6hZSKvfl0C`, proposal
+  `1VrS7duqMhpF`, AgentRun `fJAlfYi8SmPi`, Artifact `Jz1HRi9Pkvyb`
+  e Signal `5PB6FpRyqdIn`.
+
+Validacao:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
+  passou;
+- `npx turbo build --filter=@aios/daemon` passou apos fix de selecao do marker.
+
+Pendencia antes de fechar o ciclo:
+
+- abrir PR com `Closes #130`;
+- merge/deploy;
+- rodar production sync e confirmar PR `#125` no intake/Operating Surface.

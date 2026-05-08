@@ -98,6 +98,9 @@ import type {
   AutoDispatchPolicyConfig,
   AutoDispatchPolicySummary,
   AutoDispatchRuntimeState,
+  AiosAuthoredPrReviewItem,
+  AiosAuthoredPrReviewMarker,
+  AiosAuthoredPrReviewStatus,
   DismissAgentRunSuggestionRequest,
   DismissAgentRunSuggestionResponse,
   AgentRunPatchPacket,
@@ -121,6 +124,7 @@ import type {
   GitHubPrWritebackPushProbe,
   PreviewGitHubPrProposalResponse,
   ListAgentRunSuggestionsResponse,
+  ListAiosPrReviewIntakeResponse,
   AgentRunLaunchPreview,
   LaunchAgentRunRequest,
   LaunchAgentRunResponse,
@@ -233,6 +237,8 @@ import type {
   SubmitSessionResultRequest,
   SubmitSessionResultResponse,
   SyncGitHubIssuesRequest,
+  SyncAiosPrReviewsRequest,
+  SyncAiosPrReviewsResponse,
   SyncGitHubNotificationsRequest,
   SyncGitHubPrCiRequest,
   SyncGitHubPrCiResponse,
@@ -827,6 +833,34 @@ interface GitHubCheckRunPayload {
 interface GitHubCheckRunsPayload {
   total_count: number;
   check_runs: GitHubCheckRunPayload[];
+}
+
+interface GitHubPullReviewPayload {
+  id: number;
+  user: { login: string } | null;
+  state: string;
+  body: string | null;
+  submitted_at: string | null;
+  html_url: string | null;
+}
+
+interface GitHubIssueCommentPayload {
+  id: number;
+  user: { login: string } | null;
+  body: string | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+}
+
+interface GitHubPullReviewCommentPayload {
+  id: number;
+  user: { login: string } | null;
+  body: string | null;
+  created_at: string;
+  updated_at: string;
+  html_url: string;
+  path: string | null;
 }
 
 interface GitHubNotificationPayload {
@@ -2499,6 +2533,653 @@ async function fetchGitHubPullRequestsWithCi(repo: string, state: string, limit:
     });
   }
   return { repo: parsed, pulls: enriched };
+}
+
+async function fetchGitHubPullRequestReviewState(repo: string, number: number) {
+  const parsed = parseGitHubRepo(repo);
+  const [reviews, comments, reviewComments] = await Promise.all([
+    githubApi<GitHubPullReviewPayload[]>(
+      `/repos/${parsed.owner}/${parsed.name}/pulls/${number}/reviews`,
+      { per_page: "100" }
+    ).catch(() => []),
+    githubApi<GitHubIssueCommentPayload[]>(
+      `/repos/${parsed.owner}/${parsed.name}/issues/${number}/comments`,
+      { per_page: "100" }
+    ).catch(() => []),
+    githubApi<GitHubPullReviewCommentPayload[]>(
+      `/repos/${parsed.owner}/${parsed.name}/pulls/${number}/comments`,
+      { per_page: "100" }
+    ).catch(() => []),
+  ]);
+  return { reviews, comments, reviewComments };
+}
+
+const AIOS_PR_MARKER_RE =
+  /<!--\s*aios:proposalId=([^:\s]+):agentRunId=([^:\s]+):sig=([^>\s]+)\s*-->/g;
+
+function extractAiosPrReviewMarker(body: string | null): AiosAuthoredPrReviewMarker | null {
+  if (!body) return null;
+  const matches = Array.from(body.matchAll(AIOS_PR_MARKER_RE));
+  // The PR writeback keeps the current marker at the top of the body and may
+  // append older markers later under "Previous AIOS proposal markers".
+  const latest = matches[0];
+  if (!latest) return null;
+  return {
+    proposalId: latest[1],
+    agentRunId: latest[2],
+    patchPacketSignature: latest[3],
+  };
+}
+
+function parseAiosPrBodyField(body: string | null, field: string): string | null {
+  if (!body) return null;
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = body.match(new RegExp(`^- ${escaped}:\\s*(.+)$`, "m"));
+  return match?.[1]?.trim() ?? null;
+}
+
+function classifyAiosPrReviewStatus(args: {
+  pull: GitHubPullRequestPayload;
+  reviews: GitHubPullReviewPayload[];
+}): AiosAuthoredPrReviewStatus {
+  if (args.pull.merged_at) return "merged";
+  if (args.pull.state === "closed") return "closed";
+  if (args.pull.draft) return "draft";
+  if (args.reviews.some((review) => review.state === "CHANGES_REQUESTED")) {
+    return "changes_requested";
+  }
+  if (args.reviews.some((review) => review.state === "APPROVED")) return "approved";
+  return "awaiting_human_review";
+}
+
+function buildAiosPrReviewItem(args: {
+  repo: string;
+  pull: GitHubPullRequestPayload;
+  marker: AiosAuthoredPrReviewMarker;
+  reviews: GitHubPullReviewPayload[];
+  comments: GitHubIssueCommentPayload[];
+  reviewComments: GitHubPullReviewCommentPayload[];
+  artifactId: string | null;
+  signalId: string | null;
+}): AiosAuthoredPrReviewItem {
+  const workItemId = parseAiosPrBodyField(args.pull.body, "workItemId");
+  const patchPacketArtifactId = parseAiosPrBodyField(
+    args.pull.body,
+    "patchPacketArtifactId"
+  );
+  const approvals = args.reviews.filter((review) => review.state === "APPROVED").length;
+  const changesRequested = args.reviews.filter(
+    (review) => review.state === "CHANGES_REQUESTED"
+  ).length;
+  const reviewStatus = classifyAiosPrReviewStatus({
+    pull: args.pull,
+    reviews: args.reviews,
+  });
+  return {
+    repo: args.repo,
+    number: args.pull.number,
+    title: args.pull.title,
+    url: args.pull.html_url,
+    state: args.pull.state,
+    draft: args.pull.draft ?? false,
+    mergedAt: args.pull.merged_at,
+    author: args.pull.user?.login ?? null,
+    headRef: args.pull.head.ref,
+    baseRef: args.pull.base.ref,
+    headSha: args.pull.head.sha,
+    updatedAt: args.pull.updated_at,
+    marker: args.marker,
+    workItemId,
+    patchPacketArtifactId,
+    reviewStatus,
+    reviewDecision:
+      reviewStatus === "approved"
+        ? "APPROVED"
+        : reviewStatus === "changes_requested"
+          ? "CHANGES_REQUESTED"
+          : null,
+    approvals,
+    changesRequested,
+    comments: args.comments.length,
+    reviewComments: args.reviewComments.length,
+    staleReviewAgeMs: Math.max(0, now() - Date.parse(args.pull.updated_at)),
+    artifactId: args.artifactId,
+    signalId: args.signalId,
+  };
+}
+
+function isAiosPrReviewItem(value: unknown): value is AiosAuthoredPrReviewItem {
+  const item = metadataRecord(value);
+  return (
+    typeof item.repo === "string" &&
+    typeof item.number === "number" &&
+    typeof item.title === "string" &&
+    typeof item.url === "string" &&
+    typeof item.reviewStatus === "string" &&
+    typeof item.marker === "object" &&
+    item.marker !== null
+  );
+}
+
+function aiosPrReviewSortScore(item: AiosAuthoredPrReviewItem) {
+  if (item.reviewStatus === "changes_requested") return 0;
+  if (item.reviewStatus === "awaiting_human_review") return 1;
+  if (item.reviewStatus === "draft") return 2;
+  if (item.reviewStatus === "approved") return 3;
+  if (item.reviewStatus === "closed") return 4;
+  return 5;
+}
+
+function buildAiosPrReviewIntake(): ListAiosPrReviewIntakeResponse {
+  const artifacts = getDb()
+    .select()
+    .from(cbArtifacts)
+    .where(eq(cbArtifacts.artifactType, "github_aios_pr_review"))
+    .all();
+  const items: AiosAuthoredPrReviewItem[] = [];
+  for (const artifact of artifacts) {
+    const item = metadataRecord(artifact.metadata).reviewItem;
+    if (!isAiosPrReviewItem(item)) continue;
+    items.push({
+      ...item,
+      artifactId: artifact.id,
+    });
+  }
+  items.sort((a, b) => {
+    const statusDelta = aiosPrReviewSortScore(a) - aiosPrReviewSortScore(b);
+    if (statusDelta !== 0) return statusDelta;
+    return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+  });
+  return {
+    generatedAt: now(),
+    totals: {
+      total: items.length,
+      awaitingHumanReview: items.filter(
+        (item) => item.reviewStatus === "awaiting_human_review"
+      ).length,
+      approved: items.filter((item) => item.reviewStatus === "approved").length,
+      changesRequested: items.filter(
+        (item) => item.reviewStatus === "changes_requested"
+      ).length,
+      merged: items.filter((item) => item.reviewStatus === "merged").length,
+      closed: items.filter((item) => item.reviewStatus === "closed").length,
+      draft: items.filter((item) => item.reviewStatus === "draft").length,
+    },
+    items,
+  };
+}
+
+function linkAiosPrReviewArtifact(args: {
+  artifactId: string;
+  targetType: string;
+  targetId: string | null;
+  relationship: string;
+  rationale: string;
+  timestamp: number;
+}) {
+  if (!args.targetId) return;
+  const db = getDb();
+  const exists = db
+    .select()
+    .from(cbArtifactLinks)
+    .all()
+    .some(
+      (link) =>
+        link.artifactId === args.artifactId &&
+        link.targetType === args.targetType &&
+        link.targetId === args.targetId &&
+        link.relationship === args.relationship
+    );
+  if (exists) return;
+  db.insert(cbArtifactLinks)
+    .values({
+      id: nanoid(12),
+      artifactId: args.artifactId,
+      targetType: args.targetType,
+      targetId: args.targetId,
+      relationship: args.relationship,
+      confidence: 1,
+      rationale: args.rationale,
+      createdAt: args.timestamp,
+    })
+    .run();
+}
+
+async function runAiosPrReviewsSync(
+  body: SyncAiosPrReviewsRequest
+): Promise<SyncAiosPrReviewsResponse> {
+  const db = getDb();
+  const timestamp = now();
+  const { repo, pulls } = await fetchGitHubPullRequestsWithCi(
+    requireText(body.repo, "repo"),
+    body.state ?? "open",
+    body.limit ?? 25
+  );
+  const externalRef = `https://github.com/${repo.fullName}/pulls#aios-review`;
+  let source = body.sourceId
+    ? db.select().from(cbSources).where(eq(cbSources.id, body.sourceId)).get()
+    : null;
+  if (body.sourceId && !source) throw new Error("sourceId not found");
+  if (!source) {
+    source =
+      db
+        .select()
+        .from(cbSources)
+        .all()
+        .find(
+          (item) =>
+            item.sourceType === "github_repo" && item.externalRef === externalRef
+        ) ?? null;
+  }
+  if (!source) {
+    source = {
+      id: nanoid(12),
+      name: body.sourceName ?? `${repo.fullName} AIOS-authored PR Reviews`,
+      sourceType: "github_repo" as const,
+      area: body.area ?? "development",
+      externalRef,
+      status: "active" as const,
+      healthStatus: "unknown" as const,
+      owner: body.owner ?? null,
+      ownerType: body.owner ? ("human" as const) : ("unknown" as const),
+      visibility: body.visibility ?? "internal",
+      lastSyncAt: null,
+      syncError: null,
+      metadata: {
+        adapter: "github_aios_pr_reviews",
+        repo: repo.fullName,
+        readOnly: true,
+        actionPolicy: "observe_only",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbSources).values(source).run();
+  }
+
+  const existingArtifacts = db.select().from(cbArtifacts).all();
+  const existingSignals = db.select().from(cbSignals).all();
+  const artifactsCreated: Artifact[] = [];
+  const artifactsUpdated: Artifact[] = [];
+  const signalsCreated: typeof cbSignals.$inferSelect[] = [];
+  const items: AiosAuthoredPrReviewItem[] = [];
+
+  for (const enriched of pulls) {
+    const pull = enriched.pull;
+    const marker = extractAiosPrReviewMarker(pull.body);
+    if (!marker) continue;
+
+    const { reviews, comments, reviewComments } =
+      await fetchGitHubPullRequestReviewState(repo.fullName, pull.number);
+    const rawRef = `${pull.html_url}#aios-review`;
+    const provisionalItem = buildAiosPrReviewItem({
+      repo: repo.fullName,
+      pull,
+      marker,
+      reviews,
+      comments,
+      reviewComments,
+      artifactId: null,
+      signalId: null,
+    });
+    const payloadForHash = stableJson({
+      pullRequestId: pull.id,
+      number: pull.number,
+      state: pull.state,
+      draft: pull.draft ?? false,
+      mergedAt: pull.merged_at,
+      updatedAt: pull.updated_at,
+      marker,
+      reviewStatus: provisionalItem.reviewStatus,
+      reviewDecision: provisionalItem.reviewDecision,
+      approvals: provisionalItem.approvals,
+      changesRequested: provisionalItem.changesRequested,
+      comments: comments.map((comment) => ({
+        id: comment.id,
+        user: comment.user?.login ?? null,
+        updatedAt: comment.updated_at,
+      })),
+      reviewComments: reviewComments.map((comment) => ({
+        id: comment.id,
+        path: comment.path,
+        user: comment.user?.login ?? null,
+        updatedAt: comment.updated_at,
+      })),
+      reviews: reviews.map((review) => ({
+        id: review.id,
+        state: review.state,
+        user: review.user?.login ?? null,
+        submittedAt: review.submitted_at,
+      })),
+    });
+    const hash = stableHash(payloadForHash);
+    let artifact = existingArtifacts.find(
+      (candidate) =>
+        candidate.artifactType === "github_aios_pr_review" &&
+        candidate.rawRef === rawRef
+    );
+    const reviewSummary = `AIOS-authored PR #${pull.number} is ${provisionalItem.reviewStatus}; approvals=${provisionalItem.approvals}; changesRequested=${provisionalItem.changesRequested}; comments=${provisionalItem.comments}; reviewComments=${provisionalItem.reviewComments}.`;
+    if (!artifact) {
+      artifact = {
+        id: nanoid(12),
+        sourceId: source.id,
+        artifactType: "github_aios_pr_review",
+        area: body.area ?? source.area,
+        title: `AIOS PR #${pull.number} review: ${pull.title}`,
+        summary: reviewSummary,
+        contentRef: pull.url,
+        rawRef,
+        author: pull.user?.login ?? null,
+        occurredAt: Date.parse(pull.updated_at || pull.created_at),
+        ingestedAt: timestamp,
+        hash,
+        visibility: body.visibility ?? source.visibility,
+        provenance: {
+          sourceId: source.id,
+          rawRef,
+          createdFrom: "adapter:github_aios_pr_reviews",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: "pending",
+          visibility: body.visibility ?? source.visibility,
+          notes: "read_only=true; action_policy=observe_only; no merge/close/deploy/label executor",
+        },
+        humanReviewStatus: "pending" as const,
+        confidence: 1,
+        metadata: {
+          adapter: "github_aios_pr_reviews",
+          readOnly: true,
+          actionPolicy: "observe_only",
+          repo: repo.fullName,
+          pullRequestId: pull.id,
+          pullRequestNumber: pull.number,
+          proposalId: marker.proposalId,
+          agentRunId: marker.agentRunId,
+          patchPacketSignature: marker.patchPacketSignature,
+          workItemId: provisionalItem.workItemId,
+          patchPacketArtifactId: provisionalItem.patchPacketArtifactId,
+          reviews,
+          comments,
+          reviewComments,
+          reviewItem: provisionalItem,
+        },
+      };
+      db.insert(cbArtifacts).values(artifact).run();
+      existingArtifacts.push(artifact);
+      artifactsCreated.push(artifact as Artifact);
+    } else {
+      const refreshedArtifact = {
+        ...artifact,
+        sourceId: source.id,
+        area: body.area ?? artifact.area,
+        title: `AIOS PR #${pull.number} review: ${pull.title}`,
+        summary: reviewSummary,
+        contentRef: pull.url,
+        author: pull.user?.login ?? null,
+        occurredAt: Date.parse(pull.updated_at || pull.created_at),
+        ingestedAt: timestamp,
+        hash,
+        visibility: body.visibility ?? artifact.visibility,
+        provenance: {
+          ...metadataRecord(artifact.provenance),
+          sourceId: source.id,
+          rawRef,
+          createdFrom: "adapter:github_aios_pr_reviews",
+          confidence: 1,
+          extractedAt: timestamp,
+          humanReviewStatus: artifact.humanReviewStatus,
+          visibility: body.visibility ?? artifact.visibility,
+          notes: "read_only=true; refreshed=true; action_policy=observe_only",
+        },
+        metadata: {
+          ...metadataRecord(artifact.metadata),
+          adapter: "github_aios_pr_reviews",
+          readOnly: true,
+          actionPolicy: "observe_only",
+          repo: repo.fullName,
+          pullRequestId: pull.id,
+          pullRequestNumber: pull.number,
+          proposalId: marker.proposalId,
+          agentRunId: marker.agentRunId,
+          patchPacketSignature: marker.patchPacketSignature,
+          workItemId: provisionalItem.workItemId,
+          patchPacketArtifactId: provisionalItem.patchPacketArtifactId,
+          reviews,
+          comments,
+          reviewComments,
+          reviewItem: provisionalItem,
+        },
+      };
+      db.update(cbArtifacts)
+        .set({
+          sourceId: refreshedArtifact.sourceId,
+          area: refreshedArtifact.area,
+          title: refreshedArtifact.title,
+          summary: refreshedArtifact.summary,
+          contentRef: refreshedArtifact.contentRef,
+          author: refreshedArtifact.author,
+          occurredAt: refreshedArtifact.occurredAt,
+          ingestedAt: refreshedArtifact.ingestedAt,
+          hash: refreshedArtifact.hash,
+          visibility: refreshedArtifact.visibility,
+          provenance: refreshedArtifact.provenance,
+          metadata: refreshedArtifact.metadata,
+        })
+        .where(eq(cbArtifacts.id, artifact.id))
+        .run();
+      artifact = refreshedArtifact;
+      artifactsUpdated.push(artifact as Artifact);
+    }
+
+    let signalId: string | null = null;
+    const needsSignal =
+      body.createSignals !== false &&
+      ["awaiting_human_review", "changes_requested"].includes(
+        provisionalItem.reviewStatus
+      );
+    if (needsSignal) {
+      const signalRawRef = `${rawRef}#${provisionalItem.reviewStatus}:${pull.updated_at}`;
+      const existingSignal = existingSignals.find(
+        (signal) =>
+          signal.rawRef === signalRawRef &&
+          signal.metadata?.pullRequestNumber === pull.number &&
+          signal.metadata?.reviewStatus === provisionalItem.reviewStatus
+      );
+      signalId = existingSignal?.id ?? null;
+      if (!existingSignal) {
+        const severity: SignalSeverity =
+          provisionalItem.reviewStatus === "changes_requested" ? "critical" : "warn";
+        const summary =
+          provisionalItem.reviewStatus === "changes_requested"
+            ? `AIOS-authored PR #${pull.number} has requested changes and needs agent follow-up.`
+            : `AIOS-authored PR #${pull.number} is waiting for human review.`;
+        const tags = [
+          "github_aios_pr_review",
+          repo.fullName,
+          `pr:${pull.number}`,
+          provisionalItem.reviewStatus,
+        ];
+        const envelope = {
+          source: "qa" as const,
+          scope: "core" as const,
+          entity_type: "job" as const,
+          entity_id: `${repo.fullName}#${pull.number}:review`,
+          timestamp,
+          summary,
+          raw_ref: signalRawRef,
+          severity,
+          confidence: 0.95,
+          tags,
+        };
+        const signal = {
+          id: nanoid(12),
+          source: "qa" as const,
+          scope: "core" as const,
+          entityType: "job" as const,
+          entityId: `${repo.fullName}#${pull.number}:review`,
+          timestamp,
+          summary,
+          rawRef: signalRawRef,
+          severity,
+          confidence: 0.95,
+          tags,
+          area: body.area ?? source.area,
+          sourceId: source.id,
+          artifactId: artifact.id,
+          workItemId: provisionalItem.workItemId,
+          workflowRunId: null,
+          watcherId: null,
+          watcherRunId: null,
+          visibility: body.visibility ?? source.visibility,
+          provenance: {
+            sourceId: source.id,
+            rawRef: signalRawRef,
+            artifactId: artifact.id,
+            createdFrom: "adapter:github_aios_pr_reviews:signal",
+            confidence: 0.95,
+            extractedAt: timestamp,
+            humanReviewStatus: "pending" as const,
+            visibility: body.visibility ?? source.visibility,
+            notes: "read_only=true; action_policy=observe_only",
+          },
+          metadata: {
+            autoImproveEnvelope: envelope,
+            repo: repo.fullName,
+            pullRequestNumber: pull.number,
+            proposalId: marker.proposalId,
+            agentRunId: marker.agentRunId,
+            patchPacketSignature: marker.patchPacketSignature,
+            workItemId: provisionalItem.workItemId,
+            patchPacketArtifactId: provisionalItem.patchPacketArtifactId,
+            reviewStatus: provisionalItem.reviewStatus,
+            reviewDecision: provisionalItem.reviewDecision,
+            approvals: provisionalItem.approvals,
+            changesRequested: provisionalItem.changesRequested,
+          },
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        db.insert(cbSignals).values(signal).run();
+        existingSignals.push(signal);
+        signalsCreated.push(signal);
+        signalId = signal.id;
+        linkAiosPrReviewArtifact({
+          artifactId: artifact.id,
+          targetType: "signal",
+          targetId: signal.id,
+          relationship: "generated_signal",
+          rationale:
+            "AIOS PR review adapter normalized review state into an internal Signal.",
+          timestamp,
+        });
+      }
+    }
+
+    const item = buildAiosPrReviewItem({
+      repo: repo.fullName,
+      pull,
+      marker,
+      reviews,
+      comments,
+      reviewComments,
+      artifactId: artifact.id,
+      signalId,
+    });
+    const metadata = {
+      ...metadataRecord(artifact.metadata),
+      signalId,
+      reviewItem: item,
+    };
+    db.update(cbArtifacts)
+      .set({ metadata })
+      .where(eq(cbArtifacts.id, artifact.id))
+      .run();
+    (artifact as Artifact).metadata = metadata;
+
+    linkAiosPrReviewArtifact({
+      artifactId: artifact.id,
+      targetType: "external_action_proposal",
+      targetId: marker.proposalId,
+      relationship: "reviews_aios_pr_for_proposal",
+      rationale: "AIOS-authored PR marker references this ExternalActionProposal.",
+      timestamp,
+    });
+    linkAiosPrReviewArtifact({
+      artifactId: artifact.id,
+      targetType: "agent_run",
+      targetId: marker.agentRunId,
+      relationship: "reviews_agent_run_output",
+      rationale: "AIOS-authored PR marker references this AgentRun.",
+      timestamp,
+    });
+    linkAiosPrReviewArtifact({
+      artifactId: artifact.id,
+      targetType: "work_item",
+      targetId: item.workItemId,
+      relationship: "reviews_work_item_output",
+      rationale: "AIOS-authored PR body links back to this WorkItem.",
+      timestamp,
+    });
+    linkAiosPrReviewArtifact({
+      artifactId: artifact.id,
+      targetType: "artifact",
+      targetId: item.patchPacketArtifactId,
+      relationship: "reviews_patch_packet",
+      rationale: "AIOS-authored PR body links back to this patch packet artifact.",
+      timestamp,
+    });
+
+    items.push(item);
+  }
+
+  const pendingHumanReviewCount = items.filter(
+    (item) => item.reviewStatus === "awaiting_human_review"
+  ).length;
+  const sourceMetadata = metadataRecord(source.metadata);
+  const updatedSource = {
+    ...source,
+    lastSyncAt: timestamp,
+    healthStatus: "healthy" as const,
+    syncError: null,
+    metadata: {
+      ...sourceMetadata,
+      adapter: "github_aios_pr_reviews",
+      repo: repo.fullName,
+      readOnly: true,
+      actionPolicy: "observe_only",
+      lastSyncState: body.state ?? "open",
+      pullRequestsSeen: pulls.length,
+      aiosPullRequestsSeen: items.length,
+      pendingHumanReviewCount,
+      lastPullRequestNumbers: items.map((item) => item.number),
+    },
+    updatedAt: timestamp,
+  };
+  db.update(cbSources)
+    .set({
+      lastSyncAt: updatedSource.lastSyncAt,
+      healthStatus: updatedSource.healthStatus,
+      syncError: updatedSource.syncError,
+      metadata: updatedSource.metadata,
+      updatedAt: updatedSource.updatedAt,
+    })
+    .where(eq(cbSources.id, source.id))
+    .run();
+
+  return {
+    source: updatedSource,
+    artifactsCreated,
+    artifactsUpdated,
+    signalsCreated,
+    pullRequestsSeen: pulls.length,
+    aiosPullRequestsSeen: items.length,
+    pendingHumanReviewCount,
+    items: items.sort((a, b) => {
+      const statusDelta = aiosPrReviewSortScore(a) - aiosPrReviewSortScore(b);
+      if (statusDelta !== 0) return statusDelta;
+      return Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+    }),
+  };
 }
 
 async function fetchGitHubNotifications(args: {
@@ -24927,6 +25608,21 @@ app.post("/adapters/github/issues/sync", async (c) => {
       },
       201
     );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "sync_failed", message }, 400);
+  }
+});
+
+app.get("/aios-pr-review-intake", (c) => {
+  return c.json({ data: buildAiosPrReviewIntake() });
+});
+
+app.post("/adapters/github/aios-pr-reviews/sync", async (c) => {
+  try {
+    const body = await c.req.json<SyncAiosPrReviewsRequest>();
+    const data = await runAiosPrReviewsSync(body);
+    return c.json({ data }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "sync_failed", message }, 400);

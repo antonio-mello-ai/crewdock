@@ -1048,6 +1048,68 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_aios_pr_review_intake",
+  {
+    title: "Get AIOS-authored PR review intake",
+    description:
+      "List read-only Company Brain artifacts for AIOS-authored GitHub PRs and their human review state. No GitHub writeback, merge, close, label or deploy action.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/aios-pr-review-intake"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
+  "sync_company_brain_aios_pr_reviews",
+  {
+    title: "Sync AIOS-authored PR reviews into Company Brain",
+    description:
+      "Read GitHub PRs created by AIOS markers and normalize review state/comments into Company Brain artifacts and signals. Read-only; does not merge, close, label, assign or deploy.",
+    inputSchema: {
+      repo: z.string().min(1).describe("GitHub repository as owner/name or github.com URL"),
+      state: z.enum(["open", "closed", "all"]).default("open"),
+      limit: z.number().int().positive().max(100).default(25),
+      sourceId: z.string().optional(),
+      sourceName: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .default("development"),
+      owner: z.string().optional(),
+      createSignals: z.boolean().default(true),
+    },
+  },
+  async (input) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/adapters/github/aios-pr-reviews/sync",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...input,
+          visibility: "internal",
+        }),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "sync_company_brain_github_notifications",
   {
     title: "Sync GitHub notifications into Company Brain",

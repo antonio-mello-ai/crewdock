@@ -10,16 +10,19 @@ import {
   Download,
   ExternalLink,
   FileText,
+  GitPullRequest,
   Loader2,
   RefreshCw,
   ShieldCheck,
   Target,
 } from "lucide-react";
 import {
+  useCompanyBrainAiosPrReviewIntake,
   useCompanyBrainOperatingSnapshot,
   useGenerateCompanyBrainDailyAgentHandoff,
   useRunCompanyBrainOperatingCadence,
   useRunCompanyBrainWatcher,
+  useSyncCompanyBrainAiosPrReviews,
 } from "@/hooks/use-api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,14 +57,23 @@ function formatTimestamp(value: number | null) {
 
 export default function CompanyBrainOperatingPage() {
   const { data, isLoading } = useCompanyBrainOperatingSnapshot();
+  const { data: prReviewData } = useCompanyBrainAiosPrReviewIntake();
   const runCadence = useRunCompanyBrainOperatingCadence();
   const runWatcher = useRunCompanyBrainWatcher();
   const generateHandoff = useGenerateCompanyBrainDailyAgentHandoff();
+  const syncPrReviews = useSyncCompanyBrainAiosPrReviews();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   const [nextWorkCopyState, setNextWorkCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   const snapshot = data?.data;
+  const prReviewIntake = prReviewData?.data;
+  const pendingPrReviews =
+    prReviewIntake?.items.filter((item) =>
+      ["awaiting_human_review", "changes_requested", "draft"].includes(
+        item.reviewStatus
+      )
+    ) ?? [];
   const operatingLoop = snapshot?.operatingCadence.operatingLoop;
   const handoffMarkdown = snapshot?.latestAgentContext?.content ?? "";
   const handoffFilename = useMemo(() => {
@@ -146,6 +158,19 @@ export default function CompanyBrainOperatingPage() {
 
   const running =
     runCadence.isPending || runWatcher.isPending || generateHandoff.isPending;
+
+  const syncAiosPrReviews = () => {
+    syncPrReviews.mutate({
+      repo: "antonio-mello-ai/crewdock",
+      state: "open",
+      limit: 50,
+      sourceName: "AIOS-authored PR Reviews",
+      area: "development",
+      owner: "Antonio",
+      visibility: "internal",
+      createSignals: true,
+    });
+  };
 
   if (isLoading || !snapshot) {
     return (
@@ -423,6 +448,104 @@ export default function CompanyBrainOperatingPage() {
                 </article>
               );
             })}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-border p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <GitPullRequest className="size-4 text-muted-foreground" />
+                <h2 className="text-lg font-semibold">AIOS-authored PR review</h2>
+                <Badge
+                  variant={
+                    pendingPrReviews.some(
+                      (item) => item.reviewStatus === "changes_requested"
+                    )
+                      ? "destructive"
+                      : pendingPrReviews.length
+                        ? "secondary"
+                        : "default"
+                  }
+                >
+                  {pendingPrReviews.length
+                    ? `${pendingPrReviews.length} pending`
+                    : "clear"}
+                </Badge>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Tracks AIOS-authored GitHub PRs that need human review. Read-only;
+                no merge, close, label, assign or deploy action.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {prReviewIntake ? (
+                <>
+                  <Badge variant="outline">{prReviewIntake.totals.total} total</Badge>
+                  <Badge variant="outline">
+                    {prReviewIntake.totals.awaitingHumanReview} awaiting
+                  </Badge>
+                  <Badge variant="outline">
+                    {prReviewIntake.totals.changesRequested} changes
+                  </Badge>
+                </>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={syncAiosPrReviews}
+                disabled={syncPrReviews.isPending}
+              >
+                {syncPrReviews.isPending ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="size-3" />
+                )}
+                Sync reviews
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 divide-y divide-border">
+            {pendingPrReviews.slice(0, 5).map((item) => (
+              <div
+                key={`${item.repo}#${item.number}`}
+                className="grid gap-2 py-3 md:grid-cols-[150px_1fr_auto]"
+              >
+                <div className="text-xs text-muted-foreground">
+                  {formatTimeAgo(Date.parse(item.updatedAt))}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate text-sm font-medium text-primary hover:underline"
+                    >
+                      #{item.number} {item.title}
+                    </a>
+                    <Badge variant={stateVariant(item.reviewStatus)}>
+                      {item.reviewStatus}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    agentRun={item.marker.agentRunId} proposal=
+                    {item.marker.proposalId} workItem={item.workItemId ?? "-"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{item.approvals} approvals</span>
+                  <span>{item.changesRequested} changes</span>
+                  <span>{item.comments + item.reviewComments} comments</span>
+                </div>
+              </div>
+            ))}
+            {!pendingPrReviews.length ? (
+              <div className="py-6 text-sm text-muted-foreground">
+                No AIOS-authored PR is currently waiting for human review.
+              </div>
+            ) : null}
           </div>
         </section>
 
