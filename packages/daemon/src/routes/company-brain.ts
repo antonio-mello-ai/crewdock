@@ -15537,6 +15537,66 @@ app.get("/agent-runs/:id/workspace/cleanup-preview", (c) => {
     !summary.risks.some(
       (r) => r.kind === "path_outside_root" || r.kind === "agent_run_active"
     );
+  // Derive a single combined review state operators can read at a glance.
+  const hasPathRisk = summary.risks.some((r) => r.kind === "path_outside_root");
+  const hasActiveRunRisk = summary.risks.some(
+    (r) => r.kind === "agent_run_active"
+  );
+  const hasMissingWorktree = summary.risks.some(
+    (r) => r.kind === "missing_worktree"
+  );
+  const hasOtherRisks =
+    summary.risks.length > 0 &&
+    !hasPathRisk &&
+    !hasActiveRunRisk;
+
+  let reviewStatus: "clear" | "needs_review" | "blocked";
+  let reviewSummary: string;
+  let recommendedAction:
+    | "proceed_remove"
+    | "proceed_quarantine"
+    | "inspect_dirty_changes"
+    | "wait_for_run"
+    | "verify_path_root"
+    | "noop_already_clean";
+
+  if (!summary.workspaceExists) {
+    reviewStatus = "clear";
+    reviewSummary =
+      "Workspace path does not exist. Cleanup is a noop; nothing to inspect.";
+    recommendedAction = "noop_already_clean";
+  } else if (hasPathRisk) {
+    reviewStatus = "blocked";
+    reviewSummary =
+      "Path escapes the configured workspace root. Cleanup refused for safety.";
+    recommendedAction = "verify_path_root";
+  } else if (hasActiveRunRisk) {
+    reviewStatus = "blocked";
+    reviewSummary =
+      "AgentRun is still queued/claimed/running. Cancel or wait for terminal status before cleanup.";
+    recommendedAction = "wait_for_run";
+  } else if (summary.isDirty) {
+    reviewStatus = "needs_review";
+    reviewSummary = hasMissingWorktree
+      ? "Workspace contains uncommitted changes AND worktree was never registered. Inspect changes or quarantine."
+      : "Workspace contains uncommitted changes. Inspect with `git -C <path> status` before destructive remove.";
+    recommendedAction = "inspect_dirty_changes";
+  } else if (hasMissingWorktree) {
+    reviewStatus = "needs_review";
+    reviewSummary =
+      "Workspace exists but worktree was never registered with `git worktree add`. Quarantine recommended; remove will fall back to rmSync only.";
+    recommendedAction = "proceed_quarantine";
+  } else if (hasOtherRisks) {
+    reviewStatus = "needs_review";
+    reviewSummary = `Risks present: ${summary.risks.map((r) => r.kind).join(", ")}. Review before destructive remove.`;
+    recommendedAction = "proceed_quarantine";
+  } else {
+    reviewStatus = "clear";
+    reviewSummary =
+      "Workspace is clean, run is terminal, no risks. Safe to remove with confirmation token.";
+    recommendedAction = "proceed_remove";
+  }
+
   const response: WorkspaceCleanupPreviewResponse = {
     generatedAt: now(),
     agentRunId: id,
@@ -15555,6 +15615,9 @@ app.get("/agent-runs/:id/workspace/cleanup-preview", (c) => {
       : quarantineAllowed
         ? "Workspace is dirty or has missing worktree; quarantine allowed but destructive remove blocked unless allowDirty=true."
         : "Cleanup blocked. Resolve risks (path safety / dirty / active run) before continuing.",
+    reviewStatus,
+    reviewSummary,
+    recommendedAction,
   };
   return c.json({ data: response });
 });
