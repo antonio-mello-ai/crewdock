@@ -98,9 +98,11 @@ import type {
   AutoDispatchRuntimeState,
   DismissAgentRunSuggestionRequest,
   DismissAgentRunSuggestionResponse,
+  AgentRunReconciliationFinding,
   EvaluateAutoDispatchEligibilityRequest,
   ListAgentRunSuggestionsResponse,
   OperatingLoopAutoDispatchOutcome,
+  OperatingLoopReconciliationOutcome,
   PromoteAgentRunSuggestionRequest,
   PromoteAgentRunSuggestionResponse,
   CreateAgentRunRequest,
@@ -309,6 +311,9 @@ const operatingLoopState: CompanyBrainOperatingLoopState = {
   autoDispatchTickCount: 0,
   autoDispatchSuccessCount: 0,
   autoDispatchBlockedCount: 0,
+  lastReconciliationOutcome: null,
+  reconciliationTickCount: 0,
+  reconciliationFindingsCount: 0,
 };
 let operatingLoopTimer: ReturnType<typeof setTimeout> | null = null;
 let operatingLoopTickInFlight = false;
@@ -17958,6 +17963,33 @@ export async function runCompanyBrainOperatingCadence(
     );
   }
 
+  // Reconcile running AgentRuns + suggestions vs current state (no destructive
+  // cleanup, no external writeback). Runs before auto-dispatch so closed
+  // WorkItems are not eligible for new dispatch.
+  try {
+    const reconOutcome = await runOperatingLoopReconciliationTick({
+      scheduleId,
+      scheduledAt,
+    });
+    operatingLoopState.lastReconciliationOutcome = reconOutcome;
+    operatingLoopState.reconciliationTickCount += 1;
+    operatingLoopState.reconciliationFindingsCount += reconOutcome.findings.length;
+  } catch (err) {
+    console.error(
+      "[company-brain] runOperatingLoopReconciliationTick failed",
+      err
+    );
+    operatingLoopState.lastReconciliationOutcome = {
+      generatedAt: now(),
+      scheduleId,
+      scheduledAt,
+      scannedRunCount: 0,
+      scannedSuggestionCount: 0,
+      findings: [],
+      errorSummary: err instanceof Error ? err.message : "unknown error",
+    };
+  }
+
   // Single-run controlled auto-dispatch (default-blocked).
   // Spawns a subprocess only when AIOS_AGENT_AUTODISPATCH_ENABLED=true and
   // every gate in evaluateAutoDispatchEligibility passes. Max one per tick.
@@ -18226,6 +18258,317 @@ async function runOperatingLoopAutoDispatchTick(args: {
     suggestionId: target.id,
     agentRunId: promotedAgentRunId,
     decision: eligibility.decision,
+  };
+}
+
+async function runOperatingLoopReconciliationTick(args: {
+  scheduleId: string | null;
+  scheduledAt: number | null;
+}): Promise<OperatingLoopReconciliationOutcome> {
+  const generatedAt = now();
+  const findings: AgentRunReconciliationFinding[] = [];
+  const db = getDb();
+  // Heartbeat threshold: 5 minutes since last log update
+  const STALE_HEARTBEAT_MS = 5 * 60 * 1000;
+  // Default max runtime when AgentRun has no metadata.maxRuntimeMs
+  const DEFAULT_MAX_RUNTIME_MS = 60 * 60 * 1000; // 60 min
+
+  let scannedRunCount = 0;
+  let scannedSuggestionCount = 0;
+
+  try {
+    // 1. Reconcile running/claimed AgentRuns.
+    const activeRuns = db
+      .select()
+      .from(cbAgentRuns)
+      .where(
+        sqlOr(
+          eq(cbAgentRuns.status, "running"),
+          eq(cbAgentRuns.status, "claimed")
+        )
+      )
+      .all() as AgentRun[];
+    scannedRunCount = activeRuns.length;
+    for (const run of activeRuns) {
+      const inRegistry = agentRunProcesses.has(run.id);
+      // Stale: status=running, started before now, no process in registry,
+      // and pid recorded — likely daemon restart
+      if (run.status === "running" && run.pid && !inRegistry) {
+        const audit = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+          actor: "operating-loop:reconciliation",
+          event: "agent_run_reconciled_stale_no_process",
+          note: "Subprocess registry missing after daemon restart; marked failed.",
+          metadata: {
+            previousPid: run.pid,
+            previousStatus: run.status,
+          },
+        });
+        db.update(cbAgentRuns)
+          .set({
+            status: "failed",
+            errorSummary:
+              run.errorSummary ??
+              "reconciliation: subprocess registry missing after daemon restart",
+            finishedAt: generatedAt,
+            auditTrail: audit,
+            updatedAt: generatedAt,
+          } as never)
+          .where(eq(cbAgentRuns.id, run.id))
+          .run();
+        findings.push({
+          kind: "stale_no_process",
+          agentRunId: run.id,
+          suggestionId: null,
+          workItemId: run.workItemId,
+          rationale:
+            "Subprocess not present in agentRunProcesses Map; daemon restart suspected",
+          newStatus: "failed",
+          appliedAt: generatedAt,
+          evidence: {
+            previousPid: run.pid,
+            previousStatus: run.status,
+          },
+        });
+        continue;
+      }
+      // Stale heartbeat
+      if (
+        run.status === "running" &&
+        run.lastLogAt &&
+        generatedAt - run.lastLogAt > STALE_HEARTBEAT_MS &&
+        !inRegistry
+      ) {
+        const audit = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+          actor: "operating-loop:reconciliation",
+          event: "agent_run_reconciled_stale_heartbeat",
+          note: `lastLogAt heartbeat exceeded ${STALE_HEARTBEAT_MS}ms; moved to needs_review.`,
+          metadata: {
+            lastLogAt: run.lastLogAt,
+            heartbeatGapMs: generatedAt - run.lastLogAt,
+          },
+        });
+        db.update(cbAgentRuns)
+          .set({
+            status: "needs_review",
+            auditTrail: audit,
+            updatedAt: generatedAt,
+          } as never)
+          .where(eq(cbAgentRuns.id, run.id))
+          .run();
+        findings.push({
+          kind: "stale_heartbeat",
+          agentRunId: run.id,
+          suggestionId: null,
+          workItemId: run.workItemId,
+          rationale: `Last log heartbeat ${Math.round((generatedAt - run.lastLogAt) / 1000)}s old, no active subprocess`,
+          newStatus: "needs_review",
+          appliedAt: generatedAt,
+          evidence: {
+            lastLogAt: run.lastLogAt,
+            heartbeatGapMs: generatedAt - run.lastLogAt,
+          },
+        });
+        continue;
+      }
+      // Timed out
+      const maxRuntimeMs =
+        ((run.metadata as Record<string, unknown> | null)?.maxRuntimeMs as
+          | number
+          | undefined) ?? DEFAULT_MAX_RUNTIME_MS;
+      if (
+        run.status === "running" &&
+        run.startedAt &&
+        generatedAt - run.startedAt > maxRuntimeMs &&
+        !inRegistry
+      ) {
+        const audit = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+          actor: "operating-loop:reconciliation",
+          event: "agent_run_reconciled_timed_out",
+          note: `Run exceeded maxRuntimeMs=${maxRuntimeMs}; subprocess no longer in registry; marked timed_out.`,
+          metadata: {
+            startedAt: run.startedAt,
+            ageMs: generatedAt - run.startedAt,
+            maxRuntimeMs,
+          },
+        });
+        db.update(cbAgentRuns)
+          .set({
+            status: "failed",
+            errorSummary:
+              run.errorSummary ??
+              `reconciliation: timed_out (age ${Math.round(
+                (generatedAt - run.startedAt) / 1000
+              )}s > ${maxRuntimeMs}ms)`,
+            finishedAt: generatedAt,
+            auditTrail: audit,
+            updatedAt: generatedAt,
+          } as never)
+          .where(eq(cbAgentRuns.id, run.id))
+          .run();
+        findings.push({
+          kind: "timed_out",
+          agentRunId: run.id,
+          suggestionId: null,
+          workItemId: run.workItemId,
+          rationale: `Run age ${Math.round((generatedAt - run.startedAt) / 1000)}s exceeds maxRuntimeMs=${maxRuntimeMs}ms`,
+          newStatus: "failed",
+          appliedAt: generatedAt,
+          evidence: {
+            startedAt: run.startedAt,
+            ageMs: generatedAt - run.startedAt,
+            maxRuntimeMs,
+          },
+        });
+        continue;
+      }
+    }
+
+    // 2. Reconcile suggestions linked to closed/done WorkItems.
+    const activeSuggestions = db
+      .select()
+      .from(cbAgentRunSuggestions)
+      .where(eq(cbAgentRunSuggestions.status, "active"))
+      .all() as AgentRunSuggestion[];
+    scannedSuggestionCount = activeSuggestions.length;
+    for (const sug of activeSuggestions) {
+      const wi =
+        (db
+          .select()
+          .from(cbWorkItems)
+          .where(eq(cbWorkItems.id, sug.workItemId))
+          .get() as WorkItem | undefined) ?? null;
+      if (!wi) continue;
+      if (wi.status === "done" || wi.status === "cancelled") {
+        db.update(cbAgentRunSuggestions)
+          .set({
+            status: "superseded",
+            updatedAt: generatedAt,
+          } as never)
+          .where(eq(cbAgentRunSuggestions.id, sug.id))
+          .run();
+        findings.push({
+          kind: "suggestion_superseded_done_work_item",
+          agentRunId: null,
+          suggestionId: sug.id,
+          workItemId: wi.id,
+          rationale: `WorkItem ${wi.id} status=${wi.status}; suggestion superseded`,
+          newStatus: null,
+          appliedAt: generatedAt,
+          evidence: { workItemStatus: wi.status },
+        });
+        continue;
+      }
+      if (wi.status === "blocked") {
+        db.update(cbAgentRunSuggestions)
+          .set({
+            status: "superseded",
+            updatedAt: generatedAt,
+          } as never)
+          .where(eq(cbAgentRunSuggestions.id, sug.id))
+          .run();
+        findings.push({
+          kind: "suggestion_superseded_blocked_work_item",
+          agentRunId: null,
+          suggestionId: sug.id,
+          workItemId: wi.id,
+          rationale: `WorkItem ${wi.id} blocked: ${wi.blockedReason ?? "no reason recorded"}`,
+          newStatus: null,
+          appliedAt: generatedAt,
+          evidence: {
+            workItemStatus: wi.status,
+            blockedReason: wi.blockedReason,
+          },
+        });
+      }
+    }
+
+    // 3. Reconcile via session_result artifacts (running -> needs_review/completed).
+    // We look for session_result artifacts whose metadata.workItemId matches a
+    // running AgentRun; if outcome=pr_opened/awaiting_review/completed, move
+    // the AgentRun status accordingly.
+    const stillRunning = db
+      .select()
+      .from(cbAgentRuns)
+      .where(eq(cbAgentRuns.status, "running"))
+      .all() as AgentRun[];
+    for (const run of stillRunning) {
+      if (!run.workItemId) continue;
+      const sessionArtifacts = db
+        .select()
+        .from(cbArtifacts)
+        .where(eq(cbArtifacts.artifactType, "session_result"))
+        .all();
+      const matched = (sessionArtifacts as Array<{
+        ingestedAt: number;
+        metadata: Record<string, unknown> | null;
+      }>)
+        .filter((a) => {
+          const md = a.metadata ?? {};
+          return md["workItemId"] === run.workItemId &&
+            (md["outcome"] === "pr_opened" ||
+              md["outcome"] === "awaiting_review" ||
+              md["outcome"] === "completed");
+        })
+        .sort((a, b) => b.ingestedAt - a.ingestedAt)[0];
+      if (!matched) continue;
+      const outcome = (matched.metadata ?? {})["outcome"] as string;
+      const newStatus =
+        outcome === "completed" ? "completed" : "needs_review";
+      const audit = appendAgentRunAuditEntry(run.auditTrail ?? [], {
+        actor: "operating-loop:reconciliation",
+        event: "agent_run_reconciled_via_session_result",
+        note: `Session result artifact outcome=${outcome}; AgentRun moved to ${newStatus}.`,
+        metadata: {
+          sessionResultIngestedAt: matched.ingestedAt,
+          sessionResultOutcome: outcome,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({
+          status: newStatus,
+          finishedAt: run.finishedAt ?? matched.ingestedAt,
+          auditTrail: audit,
+          updatedAt: generatedAt,
+        } as never)
+        .where(eq(cbAgentRuns.id, run.id))
+        .run();
+      findings.push({
+        kind:
+          newStatus === "completed"
+            ? "completed_via_session_result"
+            : "needs_review_via_session_result",
+        agentRunId: run.id,
+        suggestionId: null,
+        workItemId: run.workItemId,
+        rationale: `session_result outcome=${outcome}`,
+        newStatus,
+        appliedAt: generatedAt,
+        evidence: {
+          sessionResultOutcome: outcome,
+          sessionResultIngestedAt: matched.ingestedAt,
+        },
+      });
+    }
+  } catch (err) {
+    return {
+      generatedAt,
+      scheduleId: args.scheduleId,
+      scheduledAt: args.scheduledAt,
+      scannedRunCount,
+      scannedSuggestionCount,
+      findings,
+      errorSummary: err instanceof Error ? err.message : "unknown error",
+    };
+  }
+
+  return {
+    generatedAt,
+    scheduleId: args.scheduleId,
+    scheduledAt: args.scheduledAt,
+    scannedRunCount,
+    scannedSuggestionCount,
+    findings,
+    errorSummary: null,
   };
 }
 
