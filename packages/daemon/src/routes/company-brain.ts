@@ -13793,6 +13793,8 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
     rationale.push(`Branch derived as ${location.branchName} from base ${location.baseBranch}.`);
     const exists = existsSync(location.workspacePath);
     const isDirty = exists && workspaceIsDirty(location.workspacePath);
+    const hasGitMetadata = exists && existsSync(resolve(location.workspacePath, ".git"));
+    const isRegisteredWorktree = exists && workspaceListed(location.workspacePath);
     const allowlist = workspaceAllowlist();
     if (allowlist.length && !allowlist.includes(repo)) {
       blockReasons.push(
@@ -13815,6 +13817,11 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
       status = "blocked_dirty";
       blockReasons.push(
         "existing workspace has uncommitted changes; refuse to clobber without explicit cleanup"
+      );
+    } else if (exists && (!hasGitMetadata || !isRegisteredWorktree)) {
+      status = "blocked_safety";
+      blockReasons.push(
+        "existing workspace path is not a registered git worktree; refuse to reuse it without explicit cleanup"
       );
     } else if (exists) {
       status = "reused";
@@ -13915,6 +13922,59 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
     return c.json({ error: "workspace_prepare_failed", message }, 400);
   }
 });
+
+async function ensureAgentRunWorkspaceReady(args: {
+  agentRunId: string;
+  actor: string;
+  rationale: string;
+}): Promise<
+  | { ok: true; result: WorkspacePreparationResult }
+  | { ok: false; status: number; message: string; result: WorkspacePreparationResult | null }
+> {
+  try {
+    const prepareResp = await app.request(
+      "/agent-runs/" + args.agentRunId + "/workspace/prepare",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actor: args.actor,
+          rationale: args.rationale,
+          dryRun: false,
+        }),
+      }
+    );
+    const prepared = (await prepareResp.json().catch(() => ({}))) as {
+      data?: WorkspacePreparationResult;
+      message?: string;
+    };
+    const result = prepared.data ?? null;
+    if (!prepareResp.ok) {
+      return {
+        ok: false,
+        status: prepareResp.status,
+        message: prepared.message ?? `workspace prepare failed with status ${prepareResp.status}`,
+        result,
+      };
+    }
+    if (!result || (result.status !== "created" && result.status !== "reused")) {
+      return {
+        ok: false,
+        status: 400,
+        message: `workspace prepare status=${result?.status ?? "unknown"}; expected created/reused before execution`,
+        result,
+      };
+    }
+    return { ok: true, result };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 400,
+      message: `workspace prepare threw: ${err instanceof Error ? err.message : "unknown"}`,
+      result: null,
+    };
+  }
+}
 
 function runnerEnabled(): boolean {
   return process.env.AIOS_AGENT_RUNNER_ENABLED === "true";
@@ -19284,11 +19344,37 @@ app.post("/agent-runs/:id/execute", async (c) => {
           .where(eq(cbWorkItems.id, existing.workItemId))
           .get() as typeof cbWorkItems.$inferSelect | undefined)
       : undefined;
-    const workItemKey = resolveAgentRunWorkItemKey({ agentRun: existing, repo });
-    const { location } = resolveWorkspaceLocation({ repo, workItemKey, runId: existing.id });
-    if (!existsSync(location.workspacePath)) {
-      mkdirSync(location.workspacePath, { recursive: true });
+    const workspaceReady = await ensureAgentRunWorkspaceReady({
+      agentRunId: id,
+      actor: body.actor,
+      rationale: `${body.rationale}; prepare git worktree before synchronous execution`,
+    });
+    if (!workspaceReady.ok) {
+      const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+        actor: body.actor,
+        event: "agent_run_workspace_prepare_failed_before_execution",
+        note: body.rationale,
+        metadata: {
+          message: workspaceReady.message,
+          prepareStatus: workspaceReady.result?.status ?? null,
+          blockReasons: workspaceReady.result?.blockReasons ?? [],
+          workspacePath: workspaceReady.result?.location.workspacePath ?? null,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+      return c.json(
+        {
+          error: "workspace_prepare_failed",
+          message: workspaceReady.message,
+          data: workspaceReady.result,
+        },
+        400
+      );
     }
+    const location = workspaceReady.result.location;
     const aiosRunDir = resolve(location.workspacePath, ".aios-run");
     if (!existsSync(aiosRunDir)) {
       mkdirSync(aiosRunDir, { recursive: true });
@@ -19731,11 +19817,37 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
           .where(eq(cbWorkItems.id, existing.workItemId))
           .get() as typeof cbWorkItems.$inferSelect | undefined)
       : undefined;
-    const workItemKey = resolveAgentRunWorkItemKey({ agentRun: existing, repo });
-    const { location } = resolveWorkspaceLocation({ repo, workItemKey, runId: existing.id });
-    if (!existsSync(location.workspacePath)) {
-      mkdirSync(location.workspacePath, { recursive: true });
+    const workspaceReady = await ensureAgentRunWorkspaceReady({
+      agentRunId: id,
+      actor: body.actor,
+      rationale: `${body.rationale}; prepare git worktree before async execution`,
+    });
+    if (!workspaceReady.ok) {
+      const auditTrail = appendAgentRunAuditEntry(existing.auditTrail ?? [], {
+        actor: body.actor,
+        event: "agent_run_workspace_prepare_failed_before_async_execution",
+        note: body.rationale,
+        metadata: {
+          message: workspaceReady.message,
+          prepareStatus: workspaceReady.result?.status ?? null,
+          blockReasons: workspaceReady.result?.blockReasons ?? [],
+          workspacePath: workspaceReady.result?.location.workspacePath ?? null,
+        },
+      });
+      db.update(cbAgentRuns)
+        .set({ auditTrail, updatedAt: now() } as never)
+        .where(eq(cbAgentRuns.id, id))
+        .run();
+      return c.json(
+        {
+          error: "workspace_prepare_failed",
+          message: workspaceReady.message,
+          data: workspaceReady.result,
+        },
+        400
+      );
     }
+    const location = workspaceReady.result.location;
     const aiosRunDir = resolve(location.workspacePath, ".aios-run");
     if (!existsSync(aiosRunDir)) {
       mkdirSync(aiosRunDir, { recursive: true });
