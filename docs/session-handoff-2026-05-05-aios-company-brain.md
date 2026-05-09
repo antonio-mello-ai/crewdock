@@ -3462,6 +3462,65 @@ Evidencia duravel:
 Proximo item esperado:
 
 - `#138` AIOS-PILOT-02: Controlled runner enablement window.
+
+### AIOS-PILOT-02 Controlled runner enablement window
+
+Issue `#138` consumida operacionalmente.
+
+Preflight em producao:
+
+- `runnerEnabled=false`;
+- `workspaceWritesEnabled=false`;
+- `autoDispatchEnabled=false`;
+- `realAgentReady=0`;
+- `claude` presente em `/usr/bin/claude`;
+- `codex` ausente no PATH do CT165;
+- `ANTHROPIC_API_KEY` e `OPENAI_API_KEY` ausentes de `.env.prod`,
+  `/home/claude/.env` e `/etc/environment`.
+
+Decisao:
+
+- nao adicionar segredo novo;
+- nao tentar Claude/Codex real ainda;
+- validar a janela com `dogfood-semantic-doc-change`, que usa `bash` e
+  `authMode=none`.
+
+Janela temporaria em CT165:
+
+- backup `.env.prod.before-aios-pilot-02-20260509020149`;
+- `AIOS_AGENT_RUNNER_ENABLED=true`;
+- `AIOS_AGENT_WORKSPACE_ENABLED=true`;
+- `AIOS_AGENT_RUNNER_REPO_ALLOWLIST=antonio-mello-ai/crewdock`;
+- `AIOS_AGENT_WORKSPACE_ALLOWLIST=antonio-mello-ai/crewdock`;
+- `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST=claude,codex,echo,true,git,bash`;
+- `AIOS_AGENT_AUTODISPATCH_ENABLED=false`;
+- `AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED=false`;
+- `aios-daemon` reiniciado e ativo.
+
+Readiness durante janela:
+
+- `ready=4`;
+- `blocked=2`;
+- `dogfood-semantic-doc-change.status=ready`;
+- `dogfood-semantic-doc-change.blockReasons=[]`;
+- real agents ainda bloqueados por auth/profile/command gates.
+
+Kill switch/restaure:
+
+- backup restaurado;
+- `aios-daemon` reiniciado e ativo;
+- pos-restore: `runner=false`, `workspace=false`, `autoDispatch=false`,
+  `prWriteback=false`, allowlists vazias;
+- first-project readiness: `7/9 ready`, `2 warn`, `0 blocked`,
+  `pendingAiosPrReviews=0`.
+
+Evidencia:
+
+- `docs/action/aios-pilot-02-controlled-runner-window-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#139` AIOS-PILOT-03: First real supervised AgentRun on AIOS repo.
 - `npx turbo build` passou.
 
 Fechamento:
