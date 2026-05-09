@@ -12403,6 +12403,50 @@ function asStringArray(value: unknown, fallback: string[]): string[] {
   return fallback;
 }
 
+function agentRunLaunchMetadata(
+  agentRun: Pick<typeof cbAgentRuns.$inferSelect, "metadata">
+): { command: string | null; args: string[] | null; runnerProfileId: string | null } {
+  const metadata =
+    agentRun.metadata && typeof agentRun.metadata === "object"
+      ? (agentRun.metadata as Record<string, unknown>)
+      : {};
+  const command = asNullableString(metadata.command);
+  const args = Array.isArray(metadata.args)
+    ? metadata.args.filter((item): item is string => typeof item === "string")
+    : null;
+  return {
+    command,
+    args,
+    runnerProfileId: asNullableString(metadata.runnerProfileId),
+  };
+}
+
+function resolveAgentRunExecutionPlan(args: {
+  agentRun: typeof cbAgentRuns.$inferSelect;
+  workflow: WorkflowDefinition;
+  request: Pick<ExecuteAgentRunRequest, "commandOverride" | "argsOverride">;
+}): { command: string; args: string[]; commandSource: string; argsSource: string } {
+  const metadata = agentRunLaunchMetadata(args.agentRun);
+  const commandOverride = args.request.commandOverride?.trim();
+  const command = commandOverride || metadata.command || args.workflow.config.agent.command;
+  const commandSource = commandOverride
+    ? "request.commandOverride"
+    : metadata.command
+      ? "agentRun.metadata.command"
+      : "workflow.agent.command";
+  const rawArgs = Array.isArray(args.request.argsOverride)
+    ? args.request.argsOverride
+    : metadata.args !== null
+      ? metadata.args
+      : args.workflow.config.agent.args;
+  const argsSource = Array.isArray(args.request.argsOverride)
+    ? "request.argsOverride"
+    : metadata.args !== null
+      ? "agentRun.metadata.args"
+      : "workflow.agent.args";
+  return { command, args: rawArgs, commandSource, argsSource };
+}
+
 function asNullableString(value: unknown): string | null {
   if (typeof value === "string" && value.trim() !== "") return value;
   return null;
@@ -19171,13 +19215,19 @@ app.post("/agent-runs/:id/execute", async (c) => {
       return c.json({ error: "not_found", message: "agent run not found" }, 404);
     }
 
+    const workflow = loadWorkflowFromRepoRoot();
+    const executionPlan = resolveAgentRunExecutionPlan({
+      agentRun: existing,
+      workflow,
+      request: body,
+    });
     const policy = evaluateRunnerPolicy({
       agentRun: existing,
       request: {
         actor: body.actor,
         rationale: body.rationale,
         intent: "real_execution",
-        commandOverride: body.commandOverride,
+        commandOverride: executionPlan.command,
       },
     });
     if (!policy.realExecutionAllowed) {
@@ -19202,8 +19252,8 @@ app.post("/agent-runs/:id/execute", async (c) => {
         exitCode: null,
         signal: null,
         durationMs: 0,
-        command: policy.workflowSummary.command,
-        args: policy.workflowSummary.args,
+        command: executionPlan.command,
+        args: executionPlan.args,
         workspacePath: policy.workspaceSummary.workspacePath || null,
         branchName: policy.workspaceSummary.branchName || null,
         promptRendered: "",
@@ -19226,7 +19276,6 @@ app.post("/agent-runs/:id/execute", async (c) => {
       return c.json({ data: blockedResponse }, 400);
     }
 
-    const workflow = loadWorkflowFromRepoRoot();
     const repo = existing.repo ?? workflow.config.tracker.repo!;
     const workItem = existing.workItemId
       ? (db
@@ -19252,8 +19301,8 @@ app.post("/agent-runs/:id/execute", async (c) => {
       branchName: location.branchName,
     });
 
-    const command = body.commandOverride ?? workflow.config.agent.command;
-    const argsRaw = body.argsOverride ?? workflow.config.agent.args;
+    const command = executionPlan.command;
+    const argsRaw = executionPlan.args;
     const args = argsRaw.map((arg) => arg.replace(/\$\{prompt\}/g, promptRendered));
     const subprocessEnv = buildSubprocessEnv(policy.subprocessEnv);
     subprocessEnv.AIOS_BRANCH_NAME = location.branchName;
@@ -19268,6 +19317,8 @@ app.post("/agent-runs/:id/execute", async (c) => {
       metadata: {
         command,
         args,
+        commandSource: executionPlan.commandSource,
+        argsSource: executionPlan.argsSource,
         workspacePath: location.workspacePath,
         envAllowedKeys: policy.subprocessEnv.allowedKeys,
       },
@@ -19610,13 +19661,19 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
       return c.json({ error: "not_found", message: "agent run not found" }, 404);
     }
 
+    const workflow = loadWorkflowFromRepoRoot();
+    const executionPlan = resolveAgentRunExecutionPlan({
+      agentRun: existing,
+      workflow,
+      request: body,
+    });
     const policy = evaluateRunnerPolicy({
       agentRun: existing,
       request: {
         actor: body.actor,
         rationale: body.rationale,
         intent: "real_execution",
-        commandOverride: body.commandOverride,
+        commandOverride: executionPlan.command,
       },
     });
     if (!policy.realExecutionAllowed) {
@@ -19642,8 +19699,8 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
         exitCode: null,
         signal: null,
         durationMs: 0,
-        command: policy.workflowSummary.command,
-        args: policy.workflowSummary.args,
+        command: executionPlan.command,
+        args: executionPlan.args,
         workspacePath: policy.workspaceSummary.workspacePath || null,
         branchName: policy.workspaceSummary.branchName || null,
         promptRendered: "",
@@ -19666,7 +19723,6 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
       return c.json({ data: blockedResponse }, 400);
     }
 
-    const workflow = loadWorkflowFromRepoRoot();
     const repo = existing.repo ?? workflow.config.tracker.repo!;
     const workItem = existing.workItemId
       ? (db
@@ -19695,8 +19751,8 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
       }
     );
 
-    const command = body.commandOverride ?? workflow.config.agent.command;
-    const argsRaw = body.argsOverride ?? workflow.config.agent.args;
+    const command = executionPlan.command;
+    const argsRaw = executionPlan.args;
     const args = argsRaw.map((arg) => arg.replace(/\$\{prompt\}/g, promptRendered));
     const subprocessEnv = buildSubprocessEnv(policy.subprocessEnv);
     subprocessEnv.AIOS_BRANCH_NAME = location.branchName;
@@ -19716,6 +19772,8 @@ app.post("/agent-runs/:id/execute-async", async (c) => {
       metadata: {
         command,
         args,
+        commandSource: executionPlan.commandSource,
+        argsSource: executionPlan.argsSource,
         workspacePath: location.workspacePath,
         envAllowedKeys: policy.subprocessEnv.allowedKeys,
       },
