@@ -3512,6 +3512,78 @@ Proximo item:
 
 - `#158` AIOS-ERP-05 ERP pilot evaluation and promotion decision.
 
+### AIOS-ERP-05 pilot evaluation and promotion decision
+
+Issue `#158` fecha o primeiro piloto cross-project do AIOS em ERP.
+
+Evidence packet operacional:
+
+- PilotTarget `pilot-target-erp-desmanches`;
+- ERP WorkItem `cRBiAu_EMtgU` / ERP issue `#108`;
+- source artifact `uHbMq2DuRrMH`;
+- AgentRun `R0oAMnjT_LRn`;
+- AgentRun session result `5yhvhp33ljwX`;
+- patch packet `IdVCz3a5xRtZ`;
+- PR preflight artifact `p_csBdBPD-Ir`;
+- ERP PR `https://github.com/antonio-mello-ai/erp-desmanches/pull/111`;
+- review artifact `fiSgAWeEcRjx`;
+- review signal `HDFwwBOcRuXZ`;
+- final session result `R_G44DAsa3Qz`;
+- AgentRun evaluation `QREyO3yZk9ie`.
+
+Evaluation:
+
+- `POST /agent-run-evaluations` sobre `R_G44DAsa3Qz`;
+- primaryKind `success`;
+- confidence `0.85`;
+- validationsFailed `0`;
+- blockerCount `0`;
+- nextStepCount `2`.
+
+Decision:
+
+- Decision `JDG7za-20CJw`;
+- status `accepted`;
+- titulo
+  `ERP pilot promotion decision: harden supervised dogfood before real implementation runs`;
+- decisao: promover ERP de `registration-only` para
+  `supervised dogfood PR flow`;
+- nao promover ainda para AgentRuns reais de implementacao.
+
+Riscos/friccoes:
+
+- Evidence packet de `github_pr_create` ainda reporta falsos gaps criticos
+  (`missing_preview_event`, `missing_execution_event`) porque o audit review
+  generico nao reconhece eventos de PR preflight/execute.
+- Branch remoto ruim da primeira tentativa pre-fix existe sem PR:
+  `aios-antonio-mello-ai_erp-desmanches_108-bdrnbqzq`.
+- ERP PR `#111` ainda precisa review humano.
+- Criterios de promocao para primeiro AgentRun real ERP ainda precisam ser
+  explicitados.
+
+Nova milestone:
+
+- `AIOS ERP Pilot Hardening v2`, number `14`.
+
+Issues abertas:
+
+- `#165` AIOS-ERP-HARD-01: PR evidence packet audit mapping;
+- `#166` AIOS-ERP-HARD-02: Governed cleanup path for failed ERP branch;
+- `#167` AIOS-ERP-HARD-03: Human review loop for ERP PR #111;
+- `#168` AIOS-ERP-HARD-04: Promotion criteria for real ERP AgentRuns.
+
+Closeout:
+
+- `#154`, `#155`, `#156`, `#157` fechadas;
+- `#158` fecha com o PR que adiciona a evidencia deste corte;
+- producao default-off verificada;
+- CT165 daemon ativo;
+- health `https://api.felhen.ai/api/health` retornou `200`.
+
+Evidencia:
+
+- `docs/action/aios-erp-05-pilot-evaluation-promotion-decision-2026-05-08.md`
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
