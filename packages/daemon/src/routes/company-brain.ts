@@ -5901,9 +5901,23 @@ function isVisibleInLatestGitHubIssueSync(
   return lastOpenIssueExternalIds.includes(workItem.externalId);
 }
 
-function buildNextWork(data: ReturnType<typeof listAll>): CompanyBrainNextWork {
+function workItemMatchesRepoScope(workItem: WorkItem, repo: string | null): boolean {
+  if (!repo) return true;
+  if (workItem.externalProvider !== "github" || !workItem.externalId) {
+    return false;
+  }
+  return workItem.externalId.startsWith(`${repo}#`);
+}
+
+function buildNextWork(
+  data: ReturnType<typeof listAll>,
+  args?: { repo?: string | null }
+): CompanyBrainNextWork {
   const generatedAt = now();
-  const workItems = data.workItems as WorkItem[];
+  const repo = args?.repo?.trim() || null;
+  const workItems = (data.workItems as WorkItem[]).filter((item) =>
+    workItemMatchesRepoScope(item, repo)
+  );
   const visibleActiveWorkItems = workItems.filter(
     (item) =>
       NEXT_WORK_ACTIVE_STATUSES.includes(item.status) &&
@@ -11946,7 +11960,8 @@ app.get("/operating-snapshot", (c) => {
 });
 
 app.get("/next-work", (c) => {
-  const data = buildNextWork(listAll());
+  const repo = c.req.query("repo")?.trim() || null;
+  const data = buildNextWork(listAll(), { repo });
   return c.json({ data });
 });
 
