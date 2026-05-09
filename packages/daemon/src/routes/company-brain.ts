@@ -1061,6 +1061,10 @@ function isGitHubIssueCreateAction(actionType: ExternalActionKind) {
   return actionType === "github_issue_create";
 }
 
+function isGitHubPrCreateAction(actionType: ExternalActionKind) {
+  return actionType === "github_pr_create";
+}
+
 function encodeMarkerValue(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -1934,6 +1938,12 @@ function previewEventForProposal(proposal: ExternalActionProposal) {
   ) {
     return "github_issue_create_previewed";
   }
+  if (
+    proposal.destinationType === "github" &&
+    isGitHubPrCreateAction(proposal.actionType)
+  ) {
+    return "github_pr_writeback_preflight_checked";
+  }
   if (proposal.destinationType === "slack" && isSlackThreadReplyAction(proposal.actionType)) {
     return "slack_thread_reply_previewed";
   }
@@ -1958,12 +1968,22 @@ function buildWritebackExecutionReview(
       : null;
   const previewRequest = metadataRecord(auditMetadata(previewAfterApproval).request);
   const currentHash = currentPayloadHash(proposal);
+  const isPrPreflightPreview =
+    proposal.destinationType === "github" &&
+    isGitHubPrCreateAction(proposal.actionType) &&
+    previewAfterApproval?.event === "github_pr_writeback_preflight_checked";
   const payloadHashApproved = metadataString(approvalMetadata.payloadHash);
-  const payloadHashPreview = metadataString(previewRequest.payloadHash);
+  const payloadHashPreview =
+    metadataString(previewRequest.payloadHash) ??
+    (isPrPreflightPreview ? currentHash : null);
   const destinationRefApproved = metadataString(approvalMetadata.destinationRef);
-  const destinationRefPreview = metadataString(previewRequest.destinationRef);
+  const destinationRefPreview =
+    metadataString(previewRequest.destinationRef) ??
+    (isPrPreflightPreview ? proposal.destinationRef : null);
   const idempotencyKeyApproved = metadataString(approvalMetadata.idempotencyKey);
-  const idempotencyKeyPreview = metadataString(previewRequest.idempotencyKey);
+  const idempotencyKeyPreview =
+    metadataString(previewRequest.idempotencyKey) ??
+    (isPrPreflightPreview ? proposal.idempotencyKey : null);
   const flags: CompanyBrainWritebackSafetyDashboard["items"][number]["reviewFlags"] =
     [];
   const addFlag = (flag: (typeof flags)[number]) => {
@@ -7853,38 +7873,44 @@ function hasDuplicateAvoidanceAudit(proposal: ExternalActionProposal) {
 }
 
 function latestWritebackExecutionAudit(proposal: ExternalActionProposal) {
+  const eventNames = [
+    "github_comment_posted",
+    "github_comment_reused",
+    "github_comment_failed",
+    "github_comment_execution_blocked",
+    "github_comment_retry_required",
+    "github_label_added",
+    "github_label_completed_noop",
+    "github_label_failed",
+    "github_label_execution_blocked",
+    "github_label_retry_required",
+    "github_issue_created",
+    "github_issue_create_reused",
+    "github_issue_create_failed",
+    "github_issue_create_execution_blocked",
+    "github_issue_create_retry_required",
+    "github_status_set",
+    "github_status_completed_noop",
+    "github_status_failed",
+    "github_status_execution_blocked",
+    "github_status_retry_required",
+    "slack_thread_reply_posted",
+    "slack_thread_reply_reused",
+    "slack_thread_reply_failed",
+    "slack_thread_reply_execution_blocked",
+    "slack_thread_reply_retry_required",
+  ];
+  if (isGitHubPrCreateAction(proposal.actionType)) {
+    eventNames.push(
+      "external_action_proposal_executed",
+      "external_action_proposal_executed_idempotent",
+      "external_action_proposal_executed_pr_iteration"
+    );
+  }
   return (
     [...proposal.auditTrail]
       .reverse()
-      .find((event) =>
-        [
-          "github_comment_posted",
-          "github_comment_reused",
-          "github_comment_failed",
-          "github_comment_execution_blocked",
-          "github_comment_retry_required",
-          "github_label_added",
-          "github_label_completed_noop",
-          "github_label_failed",
-          "github_label_execution_blocked",
-          "github_label_retry_required",
-          "github_issue_created",
-          "github_issue_create_reused",
-          "github_issue_create_failed",
-          "github_issue_create_execution_blocked",
-          "github_issue_create_retry_required",
-          "github_status_set",
-          "github_status_completed_noop",
-          "github_status_failed",
-          "github_status_execution_blocked",
-          "github_status_retry_required",
-          "slack_thread_reply_posted",
-          "slack_thread_reply_reused",
-          "slack_thread_reply_failed",
-          "slack_thread_reply_execution_blocked",
-          "slack_thread_reply_retry_required",
-        ].includes(event.event)
-      ) ?? null
+      .find((event) => eventNames.includes(event.event)) ?? null
   );
 }
 
@@ -7905,6 +7931,8 @@ function hasExternalMutationAttemptAudit(proposal: ExternalActionProposal) {
         "github_label_added",
         "github_issue_created",
         "github_status_set",
+        "external_action_proposal_executed",
+        "external_action_proposal_executed_pr_iteration",
         "slack_thread_reply_posted",
       ].includes(event.event)
     );
@@ -16896,6 +16924,11 @@ async function buildGitHubPrWritebackPreflight(args: {
         pushProbe,
         failedGateKeys: failedGates.map((gate) => gate.key),
         artifactId,
+        request: {
+          payloadHash: currentPayloadHash(proposal),
+          destinationRef: proposal.destinationRef,
+          idempotencyKey: proposal.idempotencyKey,
+        },
       },
     },
   ]);
