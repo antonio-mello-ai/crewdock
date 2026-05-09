@@ -3427,6 +3427,91 @@ Proximo passo:
 - criar uma nova proposal governada;
 - nao reutilizar a proposal falhada `KEPV7SIpCJmr`.
 
+### AIOS-ERP-04 PR proposal and review intake loop
+
+Issue `#157` foi consumida depois do fix de source repo do workspace manager.
+
+Novo AgentRun:
+
+- AgentRun `R0oAMnjT_LRn`;
+- WorkItem ERP `cRBiAu_EMtgU`;
+- repo `antonio-mello-ai/erp-desmanches`;
+- profile `erp-dogfood-semantic-doc-change`;
+- outcome `completed`, exitCode `0`;
+- branch `aios-antonio-mello-ai_erp-desmanches_108-r0oamnjt`;
+- workspace:
+  `/home/claude/.aios/agent-workspaces/antonio-mello-ai_erp-desmanches/antonio-mello-ai_erp-desmanches_108-r0oamnjt`;
+- session result artifact `5yhvhp33ljwX`;
+- commit `60a9694d8867b287f69554a6db808f6e70ea3c87`.
+
+Workspace provenance:
+
+- remote `https://github.com/antonio-mello-ai/erp-desmanches.git`;
+- merge-base com ERP `origin/main`:
+  `39a76ce3934cd66afb288450976d140e2a84f1dc`.
+
+Patch packet:
+
+- artifact `IdVCz3a5xRtZ`;
+- status `clean`;
+- baseRef `main`;
+- diff `1 file changed, 9 insertions, 0 deletions`;
+- changed file `docs/action/aios-erp-dogfood-cRBiAu_EMtgU.md`;
+- validations `runner_exit_zero`, `patch_content`, `git_commit` passadas.
+
+PR proposal/writeback:
+
+- proposal `rBGhT13JpqFZ`;
+- actionType `github_pr_create`;
+- destination
+  `antonio-mello-ai/erp-desmanches:aios-antonio-mello-ai_erp-desmanches_108-r0oamnjt->main`;
+- approvalStatus `approved`;
+- preflight artifact `p_csBdBPD-Ir`;
+- preflight `ready`, tokenSource `GITHUB_TOKEN`, workspaceReady `true`,
+  pushProbe `passed`;
+- execute abriu ERP PR `#111`:
+  `https://github.com/antonio-mello-ai/erp-desmanches/pull/111`;
+- re-execute retornou `alreadyExecuted=true`.
+
+Review intake:
+
+- sync repo `antonio-mello-ai/erp-desmanches`, state `open`;
+- `pullRequestsSeen=1`;
+- `aiosPullRequestsSeen=1`;
+- `pendingHumanReviewCount=1`;
+- review status `awaiting_human_review`;
+- artifact `fiSgAWeEcRjx`;
+- signal `HDFwwBOcRuXZ`;
+- marker proposal `rBGhT13JpqFZ`;
+- marker AgentRun `R0oAMnjT_LRn`;
+- patch signature prefix `e09b52d8a76b`.
+
+Backups restaurados:
+
+- runner/workspace:
+  `/home/claude/.aios/env-backups/.env.prod.before-aios-erp-03-retry-20260509033926`;
+- PR writeback:
+  `/home/claude/.aios/env-backups/.env.prod.before-aios-erp-04-pr-writeback-retry-20260509034253`;
+- daemon ativo apos restore;
+- producao voltou default-off.
+
+Boundaries mantidos:
+
+- sem auto-dispatch;
+- sem auto-merge;
+- sem deploy;
+- sem close/reopen de issue ERP;
+- sem label/status mutation;
+- sem ERP DB/producao ou marketplace API.
+
+Evidencia:
+
+- `docs/action/aios-erp-04-pr-proposal-review-loop-2026-05-08.md`
+
+Proximo item:
+
+- `#158` AIOS-ERP-05 ERP pilot evaluation and promotion decision.
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
