@@ -3401,6 +3401,67 @@ Fechamento:
   ja fechadas `#115`, `#116`, `#117` e `#118`;
 - `Next Work` agora retorna empty state com `activeWorkItemCount=0`,
   `blockedWorkItemCount=0`, `doneWorkItemCount=79`.
+
+### AIOS First Internal Pilot v1 checkpoint
+
+Milestone GitHub `AIOS First Internal Pilot v1` criada em 2026-05-08
+(milestone number `12`) para executar o primeiro piloto operacional controlado
+no proprio AIOS antes de ERP/Pulso.
+
+Issues abertas:
+
+- `#137` AIOS-PILOT-01: Review and close pending AIOS-authored PRs
+- `#138` AIOS-PILOT-02: Controlled runner enablement window
+- `#139` AIOS-PILOT-03: First real supervised AgentRun on AIOS repo
+- `#140` AIOS-PILOT-04: PR proposal, review and session result end-to-end
+- `#141` AIOS-PILOT-05: Decide next project target after AIOS pilot
+- `#142` AIOS-PILOT-06: Register second pilot target with boundaries
+
+Sync GitHub Issues em producao criou 6 WorkItems. `Next Work` apontou para
+`#137` com WorkItem `zdbp8ghryoMr`.
+
+### AIOS-PILOT-01 PR review queue closure
+
+Issue `#137` consumida operacionalmente.
+
+PRs AIOS-authored pendentes revisados e fechados:
+
+- `#113` mergeado em `b29da4e`
+- `#123` mergeado em `b4cce6c`
+- `#125` mergeado em `5a19cb9`
+
+Cada PR recebeu comentario de review antes do merge. Todos eram docs-only
+dogfood evidence. Nenhum runtime code, segredo, deploy config, permissao ou
+comportamento de writeback externo mudou.
+
+Company Brain sync:
+
+- `POST /api/company-brain/adapters/github/aios-pr-reviews/sync`
+  com `state=all`, `limit=50`;
+- `pullRequestsSeen=50`;
+- `aiosPullRequestsSeen=5`;
+- `pendingHumanReviewCount=0`;
+- `artifactsCreated=2`;
+- `artifactsUpdated=3`;
+- `signalsCreated=0`;
+- PRs `#113`, `#123` e `#125` ficaram `reviewStatus=merged`.
+
+First-project readiness em producao:
+
+- `overallStatus=warn`;
+- `7/9 ready`;
+- `2 warn`;
+- `0 blocked`;
+- `pendingAiosPrReviews=0`;
+- item `AIOS-authored PR review intake` ficou `ready`.
+
+Evidencia duravel:
+
+- `docs/action/aios-pilot-01-pr-review-queue-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#138` AIOS-PILOT-02: Controlled runner enablement window.
 - `npx turbo build` passou.
 
 Fechamento:
