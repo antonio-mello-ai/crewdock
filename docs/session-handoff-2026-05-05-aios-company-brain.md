@@ -3724,6 +3724,55 @@ Evidencia:
 
 - `docs/action/aios-erp-hard-03-human-review-loop-pr-111-2026-05-08.md`
 
+### AIOS-ERP-HARD-04 Promotion criteria for real ERP AgentRuns
+
+Issue `#168` foi consumida sem lancar AgentRun real.
+
+Checklist canonico:
+
+- `docs/aios-erp-real-agentrun-promotion-checklist.md`
+
+Veredito:
+
+- `ready_to_prepare`;
+- nao `ready_to_launch`;
+- primeiro candidato selecionado, mas launch deferido ate aprovacao humana
+  explicita.
+
+Primeiro candidato:
+
+- repo: `antonio-mello-ai/erp-desmanches`;
+- issue: `#99 DEMO-DATA-01 — Recriar seed/demo canonico para v0.31+`;
+- WorkItem: `KKm2D9oJgUu4`;
+- URL: `https://github.com/antonio-mello-ai/erp-desmanches/issues/99`.
+
+Gates antes do primeiro real run:
+
+- humano aprova promocao de dogfood/docs-only para implementacao real;
+- humano decide se PR `#111` pode seguir aberto ou deve ser mergeado antes;
+- escolher exatamente um real profile (`claude-code-real` ou
+  `codex-cli-real`);
+- abrir janela CT165 scoped para `antonio-mello-ai/erp-desmanches`;
+- manter `AIOS_AGENT_AUTODISPATCH_ENABLED=false`;
+- manter `AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED=false` durante execucao;
+- restaurar default-off imediatamente apos o run;
+- PR writeback so depois de patch packet limpo, preview/preflight e aprovacao.
+
+Evidencia revisada:
+
+- proposal `rBGhT13JpqFZ` tem critical gaps `[]`;
+- cleanup candidate artifact `Oabpo4efW350`;
+- review artifact `fiSgAWeEcRjx`;
+- review signal `HDFwwBOcRuXZ`;
+- Decision `L_0A82_ZT052`;
+- promotion Decision `uKzF6xKwwPV2`;
+- CT165 daemon ativo e sem env gates ativos para runner/workspace/autodispatch/
+  PR writeback.
+
+Evidencia:
+
+- `docs/action/aios-erp-hard-04-promotion-criteria-real-erp-agentruns-2026-05-08.md`
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
