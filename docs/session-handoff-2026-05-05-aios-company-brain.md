@@ -3900,6 +3900,82 @@ Pos-merge/deploy esperado:
 - manter producao default-off;
 - nao iniciar AgentRun neste corte.
 
+### AIOS-ERP-02 ERP issue sync and first WorkItem
+
+Issue `#155` consumida em modo read-only.
+
+ERP GitHub Issues sync:
+
+- repo `antonio-mello-ai/erp-desmanches`;
+- state `open`;
+- area `development`;
+- owner `Antonio`;
+- sourceId `4po23mTIe1o1`;
+- `issuesSeen=3`;
+- `workItemsCreated=3`;
+- `lastIssueNumbers=[109,108,99]`.
+
+Nenhuma issue ERP foi fechada, relabelada, atribuida ou mutada.
+
+Candidatos:
+
+- ERP `#108`
+  - title `MIG-00 - Discovery de exportabilidade IBR/Mercado Livre para
+    onboarding`;
+  - WorkItem `cRBiAu_EMtgU`;
+  - Artifact `uHbMq2DuRrMH`;
+  - labels incluem `risk:class-a`, `type:docs`, `type:data`,
+    `domain:migration`, `priority:p1`;
+  - risco declarado Classe A;
+  - escopo discovery/documentacao.
+- ERP `#109`
+  - title `MIG-01 - Arquitetura de staging para importacao de ERPs legados`;
+  - WorkItem `JNXOeZz7eG8A`;
+  - Artifact `6lEG5z9UNmXP`;
+  - risco declarado Classe B;
+  - diferido por ser arquitetura/base-data posterior ao discovery.
+- ERP `#99`
+  - title `DEMO-DATA-01 - Recriar seed/demo canonico para v0.31+`;
+  - WorkItem `KKm2D9oJgUu4`;
+  - Artifact `qDs8RFH97S4o`;
+  - risco B por labels;
+  - diferido por tocar demo data e possivel validacao runtime/deploy.
+
+Decision record:
+
+- id `UtUclapR7EL5`;
+- title `First ERP AIOS pilot WorkItem: MIG-00 exportability discovery`;
+- status `accepted`;
+- selected WorkItem `cRBiAu_EMtgU`;
+- selected external issue `antonio-mello-ai/erp-desmanches#108`;
+- source artifacts `uHbMq2DuRrMH`, `6lEG5z9UNmXP`, `qDs8RFH97S4o`.
+
+Rationale:
+
+- `#108` e o alvo mais seguro porque e Classe A, docs/discovery-only, tem
+  criterios claros e reduz risco de onboarding sem tocar runtime ERP, dados de
+  producao ou marketplace integrations.
+
+Boundaries para `#156`:
+
+- usar WorkItem `cRBiAu_EMtgU`;
+- usar profile `erp-dogfood-semantic-doc-change`;
+- um AgentRun supervisionado no maximo;
+- output esperado: arquivo `docs/action/aios-erp-dogfood-<workItem>.md` no
+  repo ERP;
+- sem writeback externo neste corte;
+- sem fechar/relabelar issue ERP;
+- sem DB prod, marketplace API, deploy, billing, permissions, email ou
+  notification-read.
+
+Evidencia:
+
+- `docs/action/aios-erp-02-issue-sync-first-workitem-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#156` AIOS-ERP-03: First supervised ERP AgentRun dogfood.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
