@@ -3379,6 +3379,54 @@ Validacao:
 - `npx turbo build --filter=@aios/shared --filter=@aios/daemon --filter=@aios/mcp-server --filter=@aios/web`
   passou.
 
+### AIOS-ERP-04 workspace source repo fix
+
+Durante o corte `#157` (ERP PR proposal/review), a primeira tentativa de abrir
+PR a partir do AgentRun ERP falhou com GitHub API `422`: o branch remoto
+`aios-antonio-mello-ai_erp-desmanches_108-bdrnbqzq` nao tinha historico comum
+com `main`.
+
+Root cause:
+
+- o path do workspace era derivado do repo alvo `antonio-mello-ai/erp-desmanches`;
+- mas `git worktree add` rodava a partir do checkout do daemon;
+- no CT165, o daemon checkout e `antonio-mello-ai/crewdock`;
+- logo o workspace com nome de ERP era, na pratica, um worktree de `crewdock`.
+
+Fix implementado:
+
+- `workspace/prepare` resolve um source repo por `owner/name`;
+- quando o checkout do daemon bate com o repo alvo, usa o proprio checkout;
+- quando o repo alvo e diferente, clona/faz fetch em
+  `AIOS_AGENT_REPO_CACHE_ROOT` ou `~/.aios/repo-cache`;
+- `git worktree add` passa a rodar com `git -C <sourceRepoPath>`;
+- `workspaceListed()` consulta o proprio workspace quando `.git` existe.
+
+Validacao local:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/daemon --force` passou;
+- smoke com DB temporario, porta `43232`, target
+  `antonio-mello-ai/erp-desmanches`;
+- workspace remoto confirmado:
+  `https://github.com/antonio-mello-ai/erp-desmanches.git`;
+- merge-base contra ERP `origin/main`:
+  `39a76ce3934cd66afb288450976d140e2a84f1dc`.
+
+Residual deliberado:
+
+- o branch remoto ERP ruim
+  `aios-antonio-mello-ai_erp-desmanches_108-bdrnbqzq` existe sem PR;
+- nao deletar automaticamente sem aprovacao explicita, porque delecao de
+  branch remota e mutacao externa destrutiva.
+
+Proximo passo:
+
+- deployar o fix;
+- rerodar um AgentRun ERP novo;
+- criar uma nova proposal governada;
+- nao reutilizar a proposal falhada `KEPV7SIpCJmr`.
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
