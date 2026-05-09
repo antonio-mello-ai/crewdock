@@ -106,6 +106,7 @@ Built-in profiles queryable via `GET /runner-profiles?repo=...&area=...&riskClas
 | `dogfood-true` | dogfood | `true` | true | A | `no_op` |
 | `dogfood-empty-commit` | dogfood | `git -c user.name=AIOS Dogfood -c user.email=aios@example.invalid commit --allow-empty -m "aios dogfood empty commit"` | true | A | `git_commit` |
 | `dogfood-semantic-doc-change` | dogfood | `bash -lc ... docs/action/aios-semantic-dogfood-<workItem>.md` | true | A | `git_commit` |
+| `erp-dogfood-semantic-doc-change` | dogfood | `bash -lc ... docs/action/aios-erp-dogfood-<workItem>.md` | true | A | `git_commit` |
 | `claude-code-real` | real_agent | `claude -p` | false | B | `shell_command`, `code_edit`, `git_commit`, `github_pr_open`, `test_runner` |
 | `codex-cli-real` | real_agent | `codex` | false | B | same as `claude-code-real` |
 

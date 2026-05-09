@@ -3809,6 +3809,97 @@ Residual:
 - Proximo milestone deve ser ERP pilot execution, com um WorkItem de baixo
   risco e janela explicita de perfil/env.
 
+### AIOS ERP Pilot Execution v1 checkpoint
+
+Milestone GitHub `AIOS ERP Pilot Execution v1` criada em 2026-05-08
+(milestone number `13`) para o primeiro piloto cross-project em
+`antonio-mello-ai/erp-desmanches`.
+
+Issues abertas:
+
+- `#154` AIOS-ERP-01: ERP-safe dogfood profile and target readiness.
+- `#155` AIOS-ERP-02: Sync ERP issue queue and select first WorkItem.
+- `#156` AIOS-ERP-03: First supervised ERP AgentRun dogfood.
+- `#157` AIOS-ERP-04: ERP PR proposal and review intake loop.
+- `#158` AIOS-ERP-05: ERP pilot evaluation and promotion decision.
+
+Sync GitHub Issues `state=open` em producao:
+
+- `issuesSeen=5`;
+- `workItemsCreated=5`;
+- `lastIssueNumbers=[158,157,156,155,154]`;
+- `Next Work` passou a considerar 5 candidatos.
+
+### AIOS-ERP-01 ERP-safe dogfood profile and target readiness
+
+Issue `#154` implementada como corte de readiness, sem iniciar AgentRun.
+
+Problema encontrado:
+
+- `pilot-target-erp-desmanches` estava correto, mas
+  `PilotTargetReadiness` so considerava profiles `real_agent`.
+- Isso fazia o target dogfood-only parecer estruturalmente bloqueado por
+  `no_real_agent_profile_allowed`.
+- Para o primeiro piloto ERP, o passo correto e um dogfood no-secret antes de
+  liberar Claude/Codex real.
+
+Mudancas:
+
+- novo runner profile `erp-dogfood-semantic-doc-change`;
+- categoria `dogfood`;
+- command `bash`;
+- auth none;
+- repo permitido `antonio-mello-ai/erp-desmanches`;
+- area `development`;
+- risk ceiling `A`;
+- output esperado: commit de
+  `docs/action/aios-erp-dogfood-<workItem>.md`;
+- `PilotTargetReadiness` agora avalia perfis launchable:
+  - `dogfood`;
+  - `real_agent`;
+- `noop` continua fora de readiness de launch;
+- novo `PATCH /api/company-brain/pilot-targets/:id`;
+- novo tipo compartilhado `UpdatePilotTargetRequest`;
+- `WORKFLOW.md` atualizado com o profile ERP.
+
+PATCH `/pilot-targets/:id`:
+
+- exige `actor`;
+- exige `rationale`;
+- valida runner profile ids;
+- valida workflow blueprint id;
+- atualiza status/boundaries/metadata;
+- nao permite trocar o repo do target;
+- registra `lastUpdatedFrom`, `lastUpdatedAt`, `lastUpdatedBy` e
+  `lastUpdateRationale` em metadata.
+
+Smoke local:
+
+- DB `/tmp/aios-erp-profile-smoke.sqlite`;
+- daemon local `43221`;
+- `erp-dogfood-semantic-doc-change` aparece em runner profile readiness para
+  `antonio-mello-ai/erp-desmanches`;
+- `POST /pilot-targets` criou target de teste;
+- `PATCH /pilot-targets/test-erp` trocou allowed profiles para
+  `erp-dogfood-semantic-doc-change`;
+- readiness nao inclui mais `no_real_agent_profile_allowed`;
+- readiness segue bloqueada por env gates default-off:
+  - `runner_enabled`;
+  - `workspace_writes_enabled`;
+  - `command_allowlisted`;
+  - `runner_repo_allowlisted`.
+
+Evidencia:
+
+- `docs/action/aios-erp-01-dogfood-profile-readiness-2026-05-08.md`
+
+Pos-merge/deploy esperado:
+
+- atualizar `pilot-target-erp-desmanches` para allowed profile
+  `erp-dogfood-semantic-doc-change`;
+- manter producao default-off;
+- nao iniciar AgentRun neste corte.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
