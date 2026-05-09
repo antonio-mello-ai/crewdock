@@ -3735,6 +3735,80 @@ Proximo item esperado:
 
 - `#142` AIOS-PILOT-06: Register second pilot target with boundaries.
 
+### AIOS-PILOT-06 ERP PilotTarget registration
+
+Issue `#142` consumida com registro real do segundo target interno.
+
+Runtime change:
+
+- PR `#152`;
+- commit `754d1fe`;
+- adiciona `POST /api/company-brain/pilot-targets`;
+- adiciona shared type `CreatePilotTargetRequest`;
+- valida repo `owner/name`, stable id, status, risk ceiling, runner profile
+  ids e workflow blueprint id;
+- CT165 deployado com daemon ativo e `/api/health` `200`.
+
+Target registrado em producao:
+
+- id `pilot-target-erp-desmanches`;
+- project `ERP Desmanches`;
+- repo `antonio-mello-ai/erp-desmanches`;
+- area `development`;
+- default workflow blueprint `development-blueprint-v0`;
+- allowed profile inicial `dogfood-semantic-doc-change`;
+- risk ceiling `A`;
+- owner `Antonio`;
+- status `active`;
+- decision `VPM0j_Ygp9va`.
+
+Readiness:
+
+- status `blocked`;
+- `readyForManualLaunch=false`;
+- block reasons `no_real_agent_profile_allowed`,
+  `no_ready_real_agent_profile`;
+- recommended action: adicionar pelo menos um real-agent profile permitido e
+  satisfazer seus gates.
+
+Essa condicao bloqueada e intencional: `#142` era cadastro/boundary, nao inicio
+de AgentRun. O target existe e aparece no Company Brain, mas nao libera launch
+real ate uma issue futura aprovar perfil/env.
+
+Boundaries registrados no target:
+
+- allowed actions: readiness review, manual AgentRun preview,
+  human-approved AgentRun e GitHub PR create proposal;
+- blocked actions: auto-dispatch, auto-merge, auto-deploy, production DB
+  write, marketplace mutation, customer data export, billing, permissions,
+  email e notification-read;
+- required connectors: GitHub Issues, GitHub PR/CI e git worktree;
+- secrets nao requeridos: Anthropic/OpenAI keys, ERP production DB,
+  Mercado Livre, Shopee e deploy token;
+- stop conditions: problema no PR `#149`, secret fora do boundary,
+  patch packet com stale drift ou arquivos nao relacionados, qualquer acao de
+  producao/marketplace/deploy/billing/permissao/customer-impacting, ou PR
+  preflight nao-ready.
+
+Estado de producao apos o corte:
+
+- runner default-off;
+- workspace writes default-off;
+- auto-dispatch default-off;
+- PR writeback default-off;
+- nenhuma mutacao externa foi executada por `#142`;
+- nenhum AgentRun real foi iniciado.
+
+Evidencia:
+
+- `docs/action/aios-pilot-06-erp-pilot-target-registration-2026-05-08.md`
+
+Residual:
+
+- PR `#149` segue aberto e `awaiting_human_review`.
+- Proximo milestone deve ser ERP pilot execution, com um WorkItem de baixo
+  risco e janela explicita de perfil/env.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
