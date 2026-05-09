@@ -3671,6 +3671,70 @@ Proximo item esperado:
 
 - `#141` AIOS-PILOT-05: Decide next project target after AIOS pilot.
 
+### AIOS-PILOT-05 next target decision
+
+Issue `#141` consumida como decisao registrada.
+
+Decision record:
+
+- id `VPM0j_Ygp9va`;
+- title `Second internal AIOS pilot target: ERP Desmanches`;
+- status `accepted`;
+- source artifacts `fA-89I2JRcaC`, `-bG8gz07f6ZV`,
+  `Xb2kcaEFlk2p`, `Apby2Blmg6Lr`, `OCxBFtI5IGxs`.
+
+Target escolhido:
+
+- `antonio-mello-ai/erp-desmanches`;
+- repo privado;
+- default branch `main`;
+- checkout local
+  `/Users/antoniomello/felhencloud/projetos/erp-desmanches`;
+- status local na decisao: `main...origin/main`, limpo.
+
+Rationale:
+
+- ERP tem menor blast radius que Pulso;
+- ja existe momentum de refactor e contexto de dogfood AIOS;
+- testa operacao cross-project real sem depender de dados/credenciais de
+  clientes;
+- usa GitHub Issues/PRs como superficie transparente humano-agente.
+
+Candidatos deferidos:
+
+- Pulso: deferido por maior risco de dados/clientes, marketplace connectors e
+  estado de producao.
+- Outro ciclo AIOS-only: deferido porque o self-pilot ja provou supervised
+  AgentRun -> governed PR -> review intake.
+
+Residual do self-pilot:
+
+- PR `#149` segue aberto e `awaiting_human_review`.
+- Isso nao bloqueia registrar o segundo target, mas bloqueia ampliar
+  auto-merge/deploy ou broad auto-dispatch.
+
+Limites para `#142`:
+
+- repo/workspace allowlist exatos para `antonio-mello-ai/erp-desmanches`;
+- area `development`;
+- risk ceiling inicial `A`;
+- allowed profiles sem segredo primeiro;
+- sem deploy;
+- sem DB prod ERP;
+- sem marketplace mutation;
+- sem real-agent secret;
+- sem auto-dispatch;
+- sem auto-merge;
+- PR writeback somente via proposal/preflight/aprovacao.
+
+Evidencia:
+
+- `docs/action/aios-pilot-05-next-target-decision-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#142` AIOS-PILOT-06: Register second pilot target with boundaries.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
