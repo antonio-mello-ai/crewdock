@@ -13099,6 +13099,20 @@ function sanitizeWorkspaceKey(input: string): string {
   return input.replace(/[^A-Za-z0-9._-]/g, "_");
 }
 
+function normalizeGitHubRepoName(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const normalized = input
+    .trim()
+    .replace(/^git@github.com:/, "")
+    .replace(/^https:\/\/(?:[^@/]+@)?github.com\//, "")
+    .replace(/^https:\/\/x-access-token:[^@/]+@github.com\//, "")
+    .replace(/\/issues\/?$/, "")
+    .replace(/\.git$/, "");
+  const [owner, name] = normalized.split("/");
+  if (!owner || !name) return null;
+  return `${owner}/${name}`;
+}
+
 function deriveRunSuffix(runId: string | null | undefined): string {
   if (!runId) return "";
   return runId.slice(0, 8).toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -13166,6 +13180,175 @@ function resolveWorkspaceLocation(args: {
   };
 }
 
+function repoCacheRoot(): string {
+  return expandHome(process.env.AIOS_AGENT_REPO_CACHE_ROOT ?? "~/.aios/repo-cache");
+}
+
+function gitHubGitAuthArgs(token: string | null): { args: string[]; secret: string | null } {
+  if (!token) return { args: [], secret: null };
+  const secret = Buffer.from(`x-access-token:${token}`, "utf8").toString("base64");
+  return {
+    args: [
+      "-c",
+      `http.https://github.com/.extraheader=AUTHORIZATION: basic ${secret}`,
+    ],
+    secret,
+  };
+}
+
+function redactGitSnippet(
+  value: string | null | undefined,
+  token: string | null,
+  authSecret: string | null
+): string | null {
+  if (!value) return null;
+  let redacted = value;
+  if (token) redacted = redacted.split(token).join("[REDACTED]");
+  if (authSecret) redacted = redacted.split(authSecret).join("[REDACTED]");
+  return redacted.trim().slice(0, 500) || null;
+}
+
+function currentRepoMatchesTarget(repo: string): boolean {
+  const result = spawnSync("git", ["config", "--get", "remote.origin.url"], {
+    cwd: process.cwd(),
+    encoding: "utf-8",
+  });
+  if (result.status !== 0) return false;
+  return normalizeGitHubRepoName(result.stdout) === repo;
+}
+
+function ensureWorkspaceSourceRepo(args: {
+  repo: string;
+  baseBranch: string;
+}): {
+  ok: boolean;
+  sourcePath: string | null;
+  blockReason: string | null;
+  rationale: string[];
+} {
+  const repoName = normalizeGitHubRepoName(args.repo);
+  const rationale: string[] = [];
+  if (!repoName) {
+    return {
+      ok: false,
+      sourcePath: null,
+      blockReason: `repo ${args.repo} is not a valid GitHub owner/name repository`,
+      rationale,
+    };
+  }
+
+  const tokenInfo = githubPrWritebackTokenInfo();
+  const auth = gitHubGitAuthArgs(tokenInfo.token);
+  const runGit = (
+    gitArgs: string[],
+    options: { cwd?: string; commandSummary: string }
+  ) => {
+    const result = spawnSync("git", [...auth.args, ...gitArgs], {
+      cwd: options.cwd,
+      encoding: "utf-8",
+    });
+    const output =
+      redactGitSnippet(result.stderr, tokenInfo.token, auth.secret) ??
+      redactGitSnippet(result.stdout, tokenInfo.token, auth.secret) ??
+      null;
+    return { result, output, commandSummary: options.commandSummary };
+  };
+
+  if (currentRepoMatchesTarget(repoName)) {
+    const current = process.cwd();
+    rationale.push(
+      `Workspace source repo uses daemon checkout because remote.origin matches ${repoName}.`
+    );
+    const fetch = runGit(["fetch", "origin", args.baseBranch, "--prune"], {
+      cwd: current,
+      commandSummary: `git fetch origin ${args.baseBranch} --prune`,
+    });
+    if (fetch.result.status !== 0) {
+      return {
+        ok: false,
+        sourcePath: current,
+        blockReason: `${fetch.commandSummary} failed: ${fetch.output ?? "unknown error"}`,
+        rationale,
+      };
+    }
+    rationale.push(`Fetched origin/${args.baseBranch} in daemon checkout.`);
+    return { ok: true, sourcePath: current, blockReason: null, rationale };
+  }
+
+  const cacheRoot = repoCacheRoot();
+  const cachePath = resolve(cacheRoot, sanitizeWorkspaceKey(repoName));
+  const cloneUrl = `https://github.com/${repoName}.git`;
+  mkdirSync(cacheRoot, { recursive: true });
+
+  if (existsSync(cachePath) && !existsSync(resolve(cachePath, ".git"))) {
+    return {
+      ok: false,
+      sourcePath: cachePath,
+      blockReason: `repo cache path ${cachePath} exists but is not a git checkout`,
+      rationale,
+    };
+  }
+
+  if (!existsSync(cachePath)) {
+    const clone = runGit(
+      ["clone", "--no-checkout", "--origin", "origin", cloneUrl, cachePath],
+      {
+        commandSummary: `git clone --no-checkout ${cloneUrl} ${cachePath}`,
+      }
+    );
+    if (clone.result.status !== 0) {
+      return {
+        ok: false,
+        sourcePath: cachePath,
+        blockReason: `${clone.commandSummary} failed: ${clone.output ?? "unknown error"}`,
+        rationale,
+      };
+    }
+    rationale.push(`Cloned ${repoName} into repo cache ${cachePath}.`);
+  } else {
+    rationale.push(`Using cached source repo ${cachePath} for ${repoName}.`);
+    const remote = runGit(["remote", "set-url", "origin", cloneUrl], {
+      cwd: cachePath,
+      commandSummary: `git remote set-url origin ${cloneUrl}`,
+    });
+    if (remote.result.status !== 0) {
+      return {
+        ok: false,
+        sourcePath: cachePath,
+        blockReason: `${remote.commandSummary} failed: ${remote.output ?? "unknown error"}`,
+        rationale,
+      };
+    }
+  }
+
+  const fetch = runGit(["fetch", "origin", args.baseBranch, "--prune"], {
+    cwd: cachePath,
+    commandSummary: `git fetch origin ${args.baseBranch} --prune`,
+  });
+  if (fetch.result.status !== 0) {
+    return {
+      ok: false,
+      sourcePath: cachePath,
+      blockReason: `${fetch.commandSummary} failed: ${fetch.output ?? "unknown error"}`,
+      rationale,
+    };
+  }
+  const verify = runGit(["rev-parse", "--verify", `origin/${args.baseBranch}`], {
+    cwd: cachePath,
+    commandSummary: `git rev-parse --verify origin/${args.baseBranch}`,
+  });
+  if (verify.result.status !== 0) {
+    return {
+      ok: false,
+      sourcePath: cachePath,
+      blockReason: `${verify.commandSummary} failed: ${verify.output ?? "unknown error"}`,
+      rationale,
+    };
+  }
+  rationale.push(`Fetched and verified origin/${args.baseBranch} for ${repoName}.`);
+  return { ok: true, sourcePath: cachePath, blockReason: null, rationale };
+}
+
 function workspaceIsDirty(workspacePath: string): boolean {
   const result = spawnSync(
     "git",
@@ -13178,8 +13361,9 @@ function workspaceIsDirty(workspacePath: string): boolean {
 
 function workspaceListed(workspacePath: string): boolean {
   if (!existsSync(workspacePath)) return false;
+  const cwd = existsSync(resolve(workspacePath, ".git")) ? workspacePath : process.cwd();
   const list = spawnSync("git", ["worktree", "list", "--porcelain"], {
-    cwd: process.cwd(),
+    cwd,
     encoding: "utf-8",
   });
   if (list.status !== 0) return false;
@@ -13850,23 +14034,38 @@ app.post("/agent-runs/:id/workspace/prepare", async (c) => {
       try {
         mkdirSync(location.workspaceRoot, { recursive: true });
         mkdirSync(resolve(location.workspaceRoot, location.repoSlug), { recursive: true });
-        const args = [
-          "worktree",
-          "add",
-          "-b",
-          location.branchName,
-          location.workspacePath,
-          `origin/${location.baseBranch}`,
-        ];
-        const result = spawnSync("git", args, { encoding: "utf-8" });
-        if (result.status !== 0) {
+        const sourceRepo = ensureWorkspaceSourceRepo({
+          repo,
+          baseBranch: location.baseBranch,
+        });
+        rationale.push(...sourceRepo.rationale);
+        if (!sourceRepo.ok || !sourceRepo.sourcePath) {
           status = "failed";
           blockReasons.push(
-            `git worktree add failed: ${result.stderr?.trim() || result.stdout?.trim() || "unknown error"}`
+            sourceRepo.blockReason ?? "could not resolve source repository for workspace"
           );
         } else {
-          status = "created";
-          rationale.push(`git worktree add succeeded; new branch ${location.branchName}.`);
+          rationale.push(`Workspace source repo resolved to ${sourceRepo.sourcePath}.`);
+          const args = [
+            "-C",
+            sourceRepo.sourcePath,
+            "worktree",
+            "add",
+            "-b",
+            location.branchName,
+            location.workspacePath,
+            `origin/${location.baseBranch}`,
+          ];
+          const result = spawnSync("git", args, { encoding: "utf-8" });
+          if (result.status !== 0) {
+            status = "failed";
+            blockReasons.push(
+              `git worktree add failed: ${result.stderr?.trim() || result.stdout?.trim() || "unknown error"}`
+            );
+          } else {
+            status = "created";
+            rationale.push(`git worktree add succeeded; new branch ${location.branchName}.`);
+          }
         }
       } catch (err) {
         status = "failed";

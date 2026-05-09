@@ -135,6 +135,7 @@ Auto-dispatch chains `evaluateRunnerPolicy(intent=real_execution)`, so the manua
 | `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST` | CSV of binaries | `claude,echo,true` | Must include `WORKFLOW.md` `agent.command` (e.g., `claude`). Defaults to `claude,codex,echo,true`. |
 | `AIOS_AGENT_WORKSPACE_ENABLED` | boolean string | `true` | Enables workspace prepare/cleanup endpoints. |
 | `AIOS_AGENT_WORKSPACE_ALLOWLIST` | **CSV of `owner/name`** | `antonio-mello-ai/crewdock` | **Repo identifiers, NOT filesystem paths.** The workspace path itself is derived from `WORKFLOW.md` `workspace.root` (default `~/.aios/agent-workspaces`); this allowlist controls which repos can use that root. |
+| `AIOS_AGENT_REPO_CACHE_ROOT` | filesystem path | `~/.aios/repo-cache` | Optional source-repo cache used when the target repo is not the daemon checkout. The workspace manager clones/fetches the target `owner/name` here, then creates the per-run worktree from that repo. |
 
 The workspace path is computed as `${workspace.root}/${owner_repo}/${workItemKey}-${runId.slice(0,8)}`. The cleanup gate (#78) refuses to remove anything outside `workspace.root`.
 
