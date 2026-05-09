@@ -3681,6 +3681,49 @@ Evidencia:
 
 - `docs/action/aios-erp-hard-02-governed-branch-cleanup-2026-05-08.md`
 
+### AIOS-ERP-HARD-03 Human review loop for ERP PR #111
+
+Issue `#167` foi consumida sem auto-merge e sem deploy.
+
+PR:
+
+- repo: `antonio-mello-ai/erp-desmanches`;
+- PR: `#111`;
+- URL: `https://github.com/antonio-mello-ai/erp-desmanches/pull/111`;
+- state: `OPEN`;
+- draft: `false`;
+- mergeable: `MERGEABLE`;
+- changed files: `1`;
+- additions/deletions: `+9/-0`;
+- commit: `60a9694d8867b287f69554a6db808f6e70ea3c87`;
+- file: `docs/action/aios-erp-dogfood-cRBiAu_EMtgU.md`.
+
+CI:
+
+- `Backend Tests`: passed;
+- `Frontend Build & Lint`: passed.
+
+Company Brain review intake:
+
+- artifact: `fiSgAWeEcRjx`;
+- signal: `HDFwwBOcRuXZ`;
+- reviewStatus: `awaiting_human_review`;
+- approvals: `0`;
+- changesRequested: `0`.
+
+Decision:
+
+- id: `L_0A82_ZT052`;
+- status: `accepted`;
+- decision: PR `#111` e aceitavel como dogfood artifact, nao deve ser
+  substituido, e deve ficar aberto para merge humano;
+- no auto-merge;
+- no deploy.
+
+Evidencia:
+
+- `docs/action/aios-erp-hard-03-human-review-loop-pr-111-2026-05-08.md`
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
