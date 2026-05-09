@@ -187,6 +187,9 @@ but must not call write APIs:
 - GitHub mark-notification-read proposal until its owned-inbox executor exists.
 - GitHub label proposals outside the v0 allowlist, with `mode=remove/set`, or
   with more than one label.
+- GitHub remote branch cleanup candidates may be tracked as evidence artifacts,
+  but branch deletion remains a manual human-approved action until a future
+  policy explicitly introduces a branch-delete executor.
 - Slack top-level announcement draft.
 
 Each preview-only candidate must include:
