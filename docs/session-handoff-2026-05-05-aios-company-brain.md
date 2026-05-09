@@ -3584,6 +3584,54 @@ Evidencia:
 
 - `docs/action/aios-erp-05-pilot-evaluation-promotion-decision-2026-05-08.md`
 
+### AIOS-ERP-HARD-01 PR evidence packet audit mapping
+
+Issue `#165` foi consumida via PR `#170` e commit `919bb32`.
+
+Problema:
+
+- evidence packet da proposal ERP `rBGhT13JpqFZ` reportava falsos gaps
+  criticos `missing_preview_event` e `missing_execution_event`;
+- a proposal tinha preflight ready e execute bem-sucedido, mas o audit review
+  generico nao mapeava eventos de `github_pr_create`.
+
+Fix:
+
+- `github_pr_create` agora usa
+  `github_pr_writeback_preflight_checked` como preview event;
+- eventos de execucao PR reconhecidos:
+  `external_action_proposal_executed`,
+  `external_action_proposal_executed_idempotent`,
+  `external_action_proposal_executed_pr_iteration`;
+- novos preflights PR gravam snapshot `payloadHash`, `destinationRef` e
+  `idempotencyKey`;
+- preflights antigos derivam snapshot do payload aprovado quando existe
+  preflight valido apos approval.
+
+Validacao:
+
+- `git diff --check` passou;
+- `npx turbo build --filter=@aios/daemon --force` passou;
+- CT165 deployado em `919bb32`, daemon ativo;
+- health `200`;
+- smoke em `rBGhT13JpqFZ`:
+  - `previewEvent=github_pr_writeback_preflight_checked`;
+  - `executionEvent=external_action_proposal_executed`;
+  - hashes, destination refs e idempotency keys approved/preview/current
+    batem;
+  - critical gaps `[]`;
+  - remaining non-critical gaps: `missing_guidance_link`,
+    `missing_signal_or_finding_link`.
+
+Residual:
+
+- proposal `rBGhT13JpqFZ` ainda aparece com `executionReview.status=blocked`
+  por `riskClass=unknown`; isso e separado dos falsos gaps de preflight/execute.
+
+Evidencia:
+
+- `docs/action/aios-erp-hard-01-pr-evidence-packet-audit-mapping-2026-05-08.md`
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
