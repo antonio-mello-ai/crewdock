@@ -3976,6 +3976,35 @@ Proximo item esperado:
 
 - `#156` AIOS-ERP-03: First supervised ERP AgentRun dogfood.
 
+### Next Work repo scope fix
+
+Ao sincronizar issues ERP, apareceu um bug operacional do modo multi-projeto:
+
+- `GET /api/company-brain/next-work?repo=antonio-mello-ai/crewdock` ainda
+  podia considerar WorkItems de `antonio-mello-ai/erp-desmanches`;
+- isso fazia a fila de controle AIOS competir com a fila do projeto-alvo;
+- exemplo observado: depois de fechar `#155`, o endpoint scoped para crewdock
+  podia recomendar ERP `#99` em vez de `#156`.
+
+Fix:
+
+- `buildNextWork` agora aceita repo opcional;
+- quando repo existe, filtra WorkItems GitHub por `externalId` prefixado com
+  `<repo>#`;
+- `GET /api/company-brain/next-work?repo=<owner/name>` passa esse repo para o
+  builder;
+- superficies sem repo continuam globais por enquanto.
+
+Evidencia:
+
+- `docs/action/aios-next-work-repo-scope-fix-2026-05-08.md`
+
+Validacao esperada apos deploy:
+
+- `next-work?repo=antonio-mello-ai/crewdock` recomenda `#156`;
+- `next-work?repo=antonio-mello-ai/erp-desmanches` recomenda ERP `#99` ou
+  outro WorkItem ERP conforme ranking, sem misturar crewdock.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
