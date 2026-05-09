@@ -3632,6 +3632,55 @@ Evidencia:
 
 - `docs/action/aios-erp-hard-01-pr-evidence-packet-audit-mapping-2026-05-08.md`
 
+### AIOS-ERP-HARD-02 Governed branch cleanup
+
+Issue `#166` foi consumida sem deletar branch remoto.
+
+Candidate:
+
+- repo: `antonio-mello-ai/erp-desmanches`;
+- branch: `aios-antonio-mello-ai_erp-desmanches_108-bdrnbqzq`;
+- sha: `6d77644f6ff97a564e29be1c9f1bd2127699e3d3`;
+- protected: `false`;
+- attached PRs: `0`;
+- merge-base com ERP `main`: none;
+- ERP `main`: `39a76ce3934cd66afb288450976d140e2a84f1dc`.
+
+Causa:
+
+- branch criado na tentativa pre-fix `KEPV7SIpCJmr` / AgentRun
+  `bDRnbqzQLjdV`;
+- antes de `162d350`, workspace preparation usou o checkout `crewdock` como
+  fonte para o workspace ERP;
+- o branch remoto ficou com historico AIOS-runtime, nao ERP, e GitHub rejeitou
+  o PR com `422` por nao ter historia comum com ERP `main`.
+
+Decisao:
+
+- riskClass `B`;
+- recomendacao `delete_after_human_approval`;
+- sem branch-delete executor nesta milestone;
+- branch delete continua fora de execucao automatica pela writeback policy;
+- rollback ref: `6d77644f6ff97a564e29be1c9f1bd2127699e3d3`.
+
+Comando manual aprovado apenas apos aprovacao humana explicita:
+
+```bash
+git push https://github.com/antonio-mello-ai/erp-desmanches.git --delete aios-antonio-mello-ai_erp-desmanches_108-bdrnbqzq
+```
+
+Validacao read-only:
+
+- `git ls-remote --heads` confirmou o ref;
+- GitHub branch API confirmou `protected=false`;
+- `gh pr list --head ... --state all` retornou `[]`;
+- clone temporario confirmou merge-base inexistente;
+- nenhuma delecao foi executada.
+
+Evidencia:
+
+- `docs/action/aios-erp-hard-02-governed-branch-cleanup-2026-05-08.md`
+
 Fechamento:
 
 - PR `#136` mergeado em `main` no commit `e8a47db`;
