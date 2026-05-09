@@ -4005,6 +4005,105 @@ Validacao esperada apos deploy:
 - `next-work?repo=antonio-mello-ai/erp-desmanches` recomenda ERP `#99` ou
   outro WorkItem ERP conforme ranking, sem misturar crewdock.
 
+### AIOS-ERP-03 first supervised ERP AgentRun
+
+Issue `#156` consumida com exatamente um AgentRun supervisionado contra
+`antonio-mello-ai/erp-desmanches`.
+
+Default-off preflight:
+
+- `canLaunch=false`;
+- command `bash`;
+- policy `blocked_workspace`;
+- workspace preview
+  `/home/claude/.aios/agent-workspaces/antonio-mello-ai_erp-desmanches/antonio-mello-ai_erp-desmanches_108-preview`;
+- blockers:
+  - `profile_not_ready`;
+  - `runner_disabled`;
+  - `workspace_not_allowlisted`;
+  - `runner_repo_not_allowlisted`;
+  - `command_not_allowlisted`.
+
+Controlled CT165 env window:
+
+- backup
+  `/home/claude/.aios/env-backups/.env.prod.before-aios-erp-03-20260509031635`;
+- `AIOS_AGENT_RUNNER_ENABLED=true`;
+- `AIOS_AGENT_WORKSPACE_ENABLED=true`;
+- `AIOS_AGENT_RUNNER_REPO_ALLOWLIST=antonio-mello-ai/erp-desmanches`;
+- `AIOS_AGENT_WORKSPACE_ALLOWLIST=antonio-mello-ai/erp-desmanches`;
+- `AIOS_AGENT_RUNNER_COMMAND_ALLOWLIST=claude,codex,echo,true,git,bash`;
+- `AIOS_AGENT_AUTODISPATCH_ENABLED=false`;
+- `AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED=false`.
+
+Launcher preview during window:
+
+- `canLaunch=true`;
+- command `bash`;
+- policy `allowed_real_execution`;
+- block reasons `[]`.
+
+AgentRun:
+
+- id `bDRnbqzQLjdV`;
+- WorkItem ERP `cRBiAu_EMtgU`;
+- external issue `antonio-mello-ai/erp-desmanches#108`;
+- profile `erp-dogfood-semantic-doc-change`;
+- repo `antonio-mello-ai/erp-desmanches`;
+- outcome `completed`;
+- status `completed`;
+- exitCode `0`;
+- workspace
+  `/home/claude/.aios/agent-workspaces/antonio-mello-ai_erp-desmanches/antonio-mello-ai_erp-desmanches_108-bdrnbqzq`;
+- branch `aios-antonio-mello-ai_erp-desmanches_108-bdrnbqzq`;
+- session result artifact `RBzKJvgipEcl`;
+- session result source `fallback_stdout`.
+
+ERP worktree commit:
+
+- sha `6d77644f6ff97a564e29be1c9f1bd2127699e3d3`;
+- subject `docs: add ERP AIOS dogfood note`;
+- file `docs/action/aios-erp-dogfood-cRBiAu_EMtgU.md`;
+- diff `1 file changed, 9 insertions`.
+
+Patch packet:
+
+- artifact `aobJKGHnCyx0`;
+- status `clean`;
+- changed file `docs/action/aios-erp-dogfood-cRBiAu_EMtgU.md`;
+- validations:
+  - `runner_exit_zero=passed`;
+  - `patch_content=passed`;
+  - `git_commit=passed`.
+
+Restore:
+
+- backup restored immediately after execution;
+- `aios-daemon` active;
+- `/api/health` `ok`;
+- target readiness back to `blocked`, `readyForManualLaunch=false`;
+- block reasons are default-off env gates.
+
+Boundaries held:
+
+- one run only;
+- no auto-dispatch;
+- no PR writeback;
+- no push;
+- no auto-merge;
+- no deploy;
+- no ERP production DB;
+- no marketplace API;
+- no new secret.
+
+Evidencia:
+
+- `docs/action/aios-erp-03-first-supervised-agentrun-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#157` AIOS-ERP-04: ERP PR proposal and review intake loop.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
