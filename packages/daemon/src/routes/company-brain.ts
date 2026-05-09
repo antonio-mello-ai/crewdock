@@ -128,6 +128,7 @@ import type {
   AgentRunLaunchPreview,
   LaunchAgentRunRequest,
   LaunchAgentRunResponse,
+  CreatePilotTargetRequest,
   ListPilotTargetsResponse,
   ListRunnerProfilesResponse,
   OperatingLoopAutoDispatchOutcome,
@@ -18008,6 +18009,124 @@ app.get("/pilot-targets", (c) => {
     : "all";
   const data = listPilotTargets({ repo, status });
   return c.json({ data });
+});
+
+app.post("/pilot-targets", async (c) => {
+  try {
+    const body = (await c.req
+      .json<CreatePilotTargetRequest>()
+      .catch(() => ({}))) as CreatePilotTargetRequest;
+    const projectName = requireText(body.projectName, "projectName");
+    const repo = requireText(body.repo, "repo");
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+      return c.json(
+        { error: "validation", message: "repo must be in owner/name form" },
+        400
+      );
+    }
+    const id =
+      body.id?.trim() ||
+      `pilot-target-${sanitizeWorkspaceKey(repo).toLowerCase()}`;
+    if (!/^[A-Za-z0-9._:-]+$/.test(id)) {
+      return c.json(
+        {
+          error: "validation",
+          message: "id may contain only letters, numbers, dot, underscore, colon or dash",
+        },
+        400
+      );
+    }
+    const status = body.status ?? "active";
+    if (!["active", "paused", "disabled"].includes(status)) {
+      return c.json(
+        { error: "validation", message: "status must be active, paused or disabled" },
+        400
+      );
+    }
+    const riskCeiling = body.riskCeiling ?? "A";
+    if (!["A", "B", "C", "unknown"].includes(riskCeiling)) {
+      return c.json(
+        { error: "validation", message: "riskCeiling must be A, B, C or unknown" },
+        400
+      );
+    }
+    const allowedRunnerProfileIds =
+      body.allowedRunnerProfileIds && body.allowedRunnerProfileIds.length > 0
+        ? body.allowedRunnerProfileIds
+        : ["dogfood-semantic-doc-change"];
+    const unknownProfiles = allowedRunnerProfileIds.filter((profileId) => !getRunnerProfile(profileId));
+    if (unknownProfiles.length) {
+      return c.json(
+        {
+          error: "validation",
+          message: `unknown runner profile(s): ${unknownProfiles.join(", ")}`,
+        },
+        400
+      );
+    }
+    const defaultWorkflowBlueprintId =
+      body.defaultWorkflowBlueprintId?.trim() || "development-blueprint-v0";
+    const db = getDb();
+    const blueprint = db
+      .select()
+      .from(cbWorkflowBlueprints)
+      .where(eq(cbWorkflowBlueprints.id, defaultWorkflowBlueprintId))
+      .get();
+    if (!blueprint) {
+      return c.json(
+        {
+          error: "validation",
+          message: `workflow blueprint ${defaultWorkflowBlueprintId} not found`,
+        },
+        400
+      );
+    }
+    const existing = db
+      .select()
+      .from(cbPilotTargets)
+      .where(eq(cbPilotTargets.id, id))
+      .get() as PilotTarget | undefined;
+    if (existing) {
+      return c.json(
+        {
+          error: "already_exists",
+          message: `pilot target ${id} already exists`,
+          data: { target: existing, readiness: buildPilotTargetReadiness(existing) },
+        },
+        409
+      );
+    }
+    const timestamp = now();
+    const row: PilotTarget = {
+      id,
+      projectName,
+      repo,
+      area: body.area ?? "development",
+      defaultWorkflowBlueprintId,
+      allowedRunnerProfileIds,
+      riskCeiling,
+      owner: body.owner ?? null,
+      ownerType: body.ownerType ?? "human",
+      status,
+      notes: body.notes ?? null,
+      visibility: body.visibility ?? "internal",
+      metadata: {
+        ...(body.metadata ?? {}),
+        registeredFrom: "api:pilot-targets",
+        registeredAt: timestamp,
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.insert(cbPilotTargets).values(row as never).run();
+    return c.json(
+      { data: { target: row, readiness: buildPilotTargetReadiness(row) } },
+      201
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "pilot_target_create_failed", message }, 400);
+  }
 });
 
 app.get("/first-project-readiness", (c) => {
