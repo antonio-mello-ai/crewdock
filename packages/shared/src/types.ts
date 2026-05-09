@@ -1846,6 +1846,22 @@ export interface CreatePilotTargetRequest {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface UpdatePilotTargetRequest {
+  actor: string;
+  rationale: string;
+  projectName?: string;
+  area?: CompanyBrainArea;
+  defaultWorkflowBlueprintId?: string | null;
+  allowedRunnerProfileIds?: string[];
+  riskCeiling?: RiskClass;
+  owner?: string | null;
+  ownerType?: OwnerType;
+  status?: PilotTargetStatus;
+  notes?: string | null;
+  visibility?: Visibility;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface PilotTargetReadiness {
   status: RunnerProfileReadinessStatus;
   readyForManualLaunch: boolean;
