@@ -3593,6 +3593,84 @@ Proximo item esperado:
 
 - `#140` AIOS-PILOT-04: PR proposal, review and session result end-to-end.
 
+### AIOS-PILOT-04 PR proposal and review loop
+
+Issue `#140` consumida operacionalmente.
+
+O primeiro patch packet gerado para o AgentRun `EkBKGo5bw2Uu` mostrou base
+drift depois que `main` avançou:
+
+- proposal stale `ejPNK9QR3SMk` rejeitada/cancelada;
+- motivo: patch packet incluia deletions/modificacoes fora do escopo;
+- workspace rebaseado em `origin/main`;
+- novo head `4c2ba45960064821c940d2d4b8150c1e099bfbbe`;
+- novo patch packet `-bG8gz07f6ZV`: 1 file, +9/-0.
+
+Proposal governada:
+
+- proposal `1KkrgaOa9-C7`;
+- action type `github_pr_create`;
+- approval `approved` por `codex`;
+- preflight artifact `Xb2kcaEFlk2p`;
+- preflight `ready`, tokenSource `GITHUB_TOKEN`, git push auth
+  `x-access-token-url`, workspace ready, base branch visible, pushProbe passed;
+- CT165 habilitado temporariamente apenas para
+  `AIOS_AGENT_GITHUB_PR_WRITEBACK_ENABLED=true` e
+  `AIOS_AGENT_GITHUB_PR_WRITEBACK_REPO_ALLOWLIST=antonio-mello-ai/crewdock`;
+- `AIOS_AGENT_AUTODISPATCH_ENABLED=false`.
+
+Writeback:
+
+- PR `#149`: `https://github.com/antonio-mello-ai/crewdock/pull/149`;
+- state `OPEN`;
+- head `aios-antonio-mello-ai_crewdock_139-ekbkgo5b`;
+- base `main`;
+- marker presente com `proposalId=1KkrgaOa9-C7`,
+  `agentRunId=EkBKGo5bw2Uu`, signature `00723b854b1e`;
+- idempotency check apos restore retornou `alreadyExecuted=true`.
+
+Review intake:
+
+- sync `POST /api/company-brain/adapters/github/aios-pr-reviews/sync`;
+- `pullRequestsSeen=64`;
+- `aiosPullRequestsSeen=6`;
+- `pendingHumanReviewCount=1`;
+- `artifactsCreated=1`;
+- `signalsCreated=1`;
+- PR `#149` ficou `awaiting_human_review`;
+- linkou WorkItem `HHxoEZGAvnYU`;
+- marker AgentRun `EkBKGo5bw2Uu`;
+- marker proposal `1KkrgaOa9-C7`;
+- patch packet artifact `-bG8gz07f6ZV`;
+- review artifact `Apby2Blmg6Lr`;
+- signal `4Wwa0PHg8XlZ`.
+
+Restore:
+
+- `runnerEnabled=false`;
+- `workspaceWritesEnabled=false`;
+- `autoDispatchEnabled=false`;
+- `prWritebackEnabled=false`;
+- allowlists vazias;
+- `aios-daemon` ativo.
+
+Constraints:
+
+- PR `#149` permanece aberto para review humano;
+- sem merge;
+- sem deploy;
+- sem customer repo;
+- sem novo segredo;
+- sem auto-dispatch.
+
+Evidencia:
+
+- `docs/action/aios-pilot-04-pr-proposal-review-loop-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#141` AIOS-PILOT-05: Decide next project target after AIOS pilot.
+
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
 Issue `#130` fecha o loop read-only entre PR aberto pelo AIOS e o Company
