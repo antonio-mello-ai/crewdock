@@ -25913,6 +25913,7 @@ app.post("/adapters/github/issues/sync", async (c) => {
             ownerType: body.owner ? ("human" as const) : existing.ownerType,
             status: refreshedStatus,
             externalUrl: rawRef,
+            blockedReason: refreshedStatus === "blocked" ? existing.blockedReason : null,
             labels: ["github_issue", ...issueLabels],
             sourceId: source.id,
             artifactId: artifact.id,
@@ -25940,6 +25941,7 @@ app.post("/adapters/github/issues/sync", async (c) => {
               owner: refreshedWorkItem.owner,
               ownerType: refreshedWorkItem.ownerType,
               status: refreshedWorkItem.status,
+              blockedReason: refreshedWorkItem.blockedReason,
               externalUrl: refreshedWorkItem.externalUrl,
               labels: refreshedWorkItem.labels,
               sourceId: refreshedWorkItem.sourceId,
@@ -27320,8 +27322,8 @@ app.patch("/work-items/:id/status", async (c) => {
   };
   if (body.status === "blocked") {
     updates.blockedReason = body.blockedReason!.trim();
-  } else if (previousStatus === ("blocked" as WorkItemStatus)) {
-    updates.blockedReason = null;
+  } else {
+    updates.blockedReason = body.blockedReason?.trim() || null;
   }
   db.update(cbWorkItems)
     .set(updates as never)
