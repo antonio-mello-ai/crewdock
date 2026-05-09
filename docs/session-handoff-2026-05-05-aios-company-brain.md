@@ -3521,6 +3521,7 @@ Evidencia:
 Proximo item esperado:
 
 - `#139` AIOS-PILOT-03: First real supervised AgentRun on AIOS repo.
+
 - `npx turbo build` passou.
 
 Fechamento:
@@ -3541,6 +3542,56 @@ Fechamento:
 - sync GitHub Issues `state=open` retornou `issuesSeen=2`;
 - `Next Work` agora recomenda `#130 AIOS-RUN-42` com WorkItem
   `Qmr3m7dFDNss`.
+
+### AIOS-PILOT-03 First supervised AgentRun
+
+Issue `#139` consumida operacionalmente.
+
+O primeiro AgentRun real supervisionado no repo AIOS foi concluido, mas antes
+expos dois bugs reais do runner que foram corrigidos e deployados:
+
+- AgentRun `XWpQylhZyvvQ` ignorou command/args do launcher e caiu em
+  `WORKFLOW.md` default `claude -p`; PR `#145` corrigiu a resolucao de command
+  para usar `AgentRun.metadata.command`/`args` antes do workflow default.
+  Commit: `7d72b80`.
+- AgentRun `17M8Rkqe_Wz6` usou `bash`, mas falhou com exit `128` porque o
+  executor criou um diretorio vazio em vez de preparar um git worktree; PR
+  `#146` fez `execute`/`execute-async` chamarem `/workspace/prepare` e bloquear
+  reuse de path que nao seja worktree registrado. Commit: `377e572`.
+
+Run final bem-sucedido:
+
+- WorkItem `HHxoEZGAvnYU` (`antonio-mello-ai/crewdock#139`);
+- profile `dogfood-semantic-doc-change`;
+- preview `canLaunch=true`, command `bash`, policy `allowed_real_execution`;
+- AgentRun `EkBKGo5bw2Uu`;
+- status `completed`, exit code `0`;
+- branch `aios-antonio-mello-ai_crewdock_139-ekbkgo5b`;
+- workspace
+  `/home/claude/.aios/agent-workspaces/antonio-mello-ai_crewdock/antonio-mello-ai_crewdock_139-ekbkgo5b`;
+- session_result artifact `fA-89I2JRcaC`;
+- patch packet artifact `laKzBb8ZWfgz`;
+- commit local `cb1b19acf0db4eb72671d348c929658934cda738`
+  (`docs: add semantic aios dogfood note`);
+- changed file `docs/action/aios-semantic-dogfood-HHxoEZGAvnYU.md`;
+- validations `runner_exit_zero`, `patch_content` e `git_commit` passadas.
+
+Janela de env no CT165 foi restaurada apos o run:
+
+- `runnerEnabled=false`;
+- `workspaceWritesEnabled=false`;
+- `autoDispatchEnabled=false`;
+- `prWritebackEnabled=false`;
+- runner/workspace allowlists vazias;
+- `aios-daemon` ativo.
+
+Evidencia:
+
+- `docs/action/aios-pilot-03-first-supervised-agentrun-2026-05-08.md`
+
+Proximo item esperado:
+
+- `#140` AIOS-PILOT-04: PR proposal, review and session result end-to-end.
 
 ### AIOS-RUN-42 AIOS-authored PR review intake checkpoint
 
