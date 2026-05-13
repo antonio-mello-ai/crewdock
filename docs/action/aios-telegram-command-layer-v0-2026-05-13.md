@@ -51,6 +51,7 @@ Adicionar um modo incremental:
 | Modo | Como aciona | Comportamento |
 | --- | --- | --- |
 | Legado | mensagem normal | Continua rodando `claude -p` como hoje |
+| AIOS auto-route operacional | mensagem normal com sinais claros de DAG/Airflow/DEG | Chama o mesmo pipeline AIOS do `/aios` e usa `agent-routing/resolve` |
 | AIOS preview | comando `/aios <texto>` | Chama `POST /api/company-brain/command-router` com `dryRun=true` |
 | AIOS operating pack | comando `/aios <texto>` quando houver pack reconhecido | Chama `POST /api/company-brain/operating-packs/run` e devolve `responseText` |
 | AIOS agent fallback | `/aios <texto>` sem pack reconhecido e sem Risk C | Chama `POST /api/company-brain/agent-routing/resolve` e encaminha para o agente/Claude CLI no cwd/prompt retornado pelo AIOS |
@@ -200,6 +201,7 @@ Implementacao:
 - Correcao de cwd aplicada depois: fallback escolhe diretorio por roteamento. DAGs/Pulso usam `/mnt/felhencloud/projetos/marketplace_data_intelligence/pulsoonline-backend`; operations/development/product usam `/mnt/felhencloud/projetos`; marketing usa `/mnt/felhencloud/projetos/marketing`; strategy usa `/mnt/felhencloud/corp`; platform usa `/home/claude/aios-runtime`.
 - Hash apos roteamento de cwd: `da969e142800b2759b067c2f842a8c2d5186bd8dc93e6c04987e20d2fb93897e`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-routed-cwd-f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`.
 - Evolucao atual: roteamento de fallback saiu do bot e entrou no daemon em `POST /api/company-brain/agent-routing/resolve`. A skill `operations.pulso_dags` agora e resolvida no AIOS com cwd, prompt e politica de memoria compartilhados entre Telegram e MCP/Codex.
+- Correcao posterior: mensagens normais que mencionam claramente DAGs/Airflow/DEG agora tambem entram no pipeline AIOS. Isso evita que o bot estrategista rode no cwd `corp` e responda que nao sabe onde procurar.
 
 Teste executado:
 
