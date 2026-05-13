@@ -185,6 +185,8 @@ Implementacao:
 - Novo comando de promocao: `/aios promover briefing [motivo]`, que cria artifact `marketing_briefing` somente quando fizer sentido estrategico.
 - Artifacts de briefing criados nos testes antes da revisao: `P-_bdA_S62wd`, `BXk6avkp9FpT`.
 - Artifact de briefing criado no teste de promocao explicita: `9QCHgD403xfG`.
+- Naming corrigido depois: artifacts promovidos usam nome canonico semantico em `metadata.artifactName`, agrupamento em `metadata.semanticKey` e URI em `rawRef`; o ID curto continua apenas como chave tecnica.
+- Exemplo de nome canonico validado sem criar artifact: `marketing.nr1.briefing.2026-05-13.contabilidades-consultorias-50-500.210415`.
 - Evolucao MKT-02 aplicada depois: `/aios feedback ...` cria artifact `marketing_feedback` somente quando houver artifact promovido ou `artifactId` explicito, e atualiza a guidance `R6adR2HkGBq0` com o ultimo feedback.
 - Artifacts de feedback criados nos testes: `dBjxo7uM3YAb`, `V0moQ9W81eR7`, `5XdLZVSN26Lz`, `2cKrwOLu9g1T`.
 - Hash depois da politica de promocao de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
@@ -196,6 +198,7 @@ Teste executado:
 - `feedback aprovado teste sem promover` foi recusado por nao haver Artifact promovido.
 - `promover briefing vale aprendizado estrategico sobre canal contabilidade` criou artifact `9QCHgD403xfG`.
 - `feedback aprovado briefing promovido para memoria` criou artifact `2cKrwOLu9g1T` e atualizou `R6adR2HkGBq0` para `feedbackStatus=accepted`.
+- Validados os geradores de nome de briefing e feedback sem criar artifact novo; briefing continua efemero por default.
 - `tem algum repo com problema?` continuou no preview tecnico generico do router.
 
 ### TGM-04 - Voz

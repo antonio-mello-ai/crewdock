@@ -60,6 +60,31 @@ O pack deve criar/usar estes objetos no Company Brain:
 
 Regra: nem todo output operacional deve virar memoria do AIOS. Briefings sob demanda sao efemeros por padrao; viram `Artifact` somente quando forem promovidos por valor estrategico, decisao, aprendizado reutilizavel, acao aprovada ou evidencia que precisa sobreviver ao dia.
 
+## Naming de artifacts promovidos
+
+O `id` curto do Company Brain e chave tecnica gerada pelo banco. Ele nao deve ser usado como nome operacional.
+
+Artifacts promovidos pelo pack precisam preencher:
+
+| Campo | Regra |
+| --- | --- |
+| `title` | nome humano com area, produto, tipo, data/hora e assunto |
+| `rawRef` | URI semantica e ordenavel |
+| `metadata.artifactName` | nome canonico completo com timestamp |
+| `metadata.semanticKey` | chave canonica sem timestamp para agrupamento |
+| `metadata.namingScheme` | versao da convencao usada |
+
+Convencoes iniciais:
+
+- Briefing promovido: `marketing.nr1.briefing.YYYY-MM-DD.<segmento>.<HHMMSS>`.
+- Feedback promovido: `marketing.nr1.feedback.YYYY-MM-DD.<targetArtifactId>.<status>.<HHMMSS>`.
+
+Exemplo:
+
+- `artifactName`: `marketing.nr1.briefing.2026-05-13.contabilidades-consultorias-50-500.210415`
+- `semanticKey`: `marketing.nr1.briefing.2026-05-13.contabilidades-consultorias-50-500`
+- `rawRef`: `aios://operating-packs/marketing/nr1/briefings/2026-05-13/contabilidades-consultorias-50-500/210415`
+
 ## Telegram commands v0
 
 Os comandos abaixo devem funcionar como linguagem natural no Telegram depois do `Telegram Command Layer v0`:
@@ -201,6 +226,9 @@ Evolucao posterior em 2026-05-13:
 - Artifact criado no teste de promocao explicita: `9QCHgD403xfG`.
 - Backup do script vivo apos revisar politica de memoria: `/home/claude/telegram-bot.py.bak-20260513-memory-promotion-policy-42cf8c83`.
 - Hash do script apos revisar politica de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
+- Evolucao posterior: artifacts promovidos agora recebem naming canonico em `title`, `rawRef`, `metadata.artifactName` e `metadata.semanticKey`; o bot mostra `Nome`, `ID tecnico` e `Ref` ao promover.
+- Backup do script vivo apos naming canonico: `/home/claude/telegram-bot.py.bak-20260513-artifact-naming-a6a07594`.
+- Hash do script apos naming canonico: `da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
 
 ### MKT-02 - Telegram HITL
 
