@@ -251,6 +251,9 @@ Evolucao posterior em 2026-05-13:
 - Backup do script vivo apos naming canonico: `/home/claude/telegram-bot.py.bak-20260513-artifact-naming-a6a07594`.
 - Hash do script apos naming canonico: `da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
 - Evolucao atual: a logica de briefing/promocao/feedback saiu do bot e entrou no daemon como Operating Pack Runner. O bot deve apenas encaminhar payloads e renderizar `responseText`.
+- Deploy do runner no CT165: repo `/home/claude/aios-runtime` em `main@db53f7c`, `aios-daemon.service` reiniciado e ativo.
+- Patch vivo do Telegram: `/home/claude/telegram-bot.py` agora tem hash `e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`; backup do script anterior em `/home/claude/telegram-bot.py.bak-20260513-operating-pack-runner-da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
+- Smoke test sem envio real: chamada direta a `_route_aios_command("briefing marketing NR-1 para contabilidades")` retornou `Briefing de marketing (AIOS preview)` via `/api/company-brain/operating-packs/run`; chamada de DAGs retornou `AIOS preview (dryRun=true)` como fallback generico.
 
 ### MKT-02 - Telegram HITL
 
