@@ -163,6 +163,25 @@ Aceite:
 - Antonio consegue receber uma resposta util pelo Telegram sem abrir Codex.
 - Todo output persistente vira Artifact/Guidance.
 
+Status em 2026-05-13: primeiro handler concluido live no CT165.
+
+Implementacao:
+
+- O mesmo comando `/aios <texto>` continua chamando o Command Router primeiro.
+- Quando o router classifica `area=marketing` e o texto contem sinais de briefing/hoje/NR-1/marketing, o bot renderiza um briefing operacional em vez da ficha tecnica do router.
+- O briefing le `GET /api/company-brain/guidance-items?status=open`, filtra `area=marketing` e usa a guidance aberta `R6adR2HkGBq0` como prioridade do dia.
+- Demais pedidos continuam recebendo o preview tecnico padrao do router.
+- Backup criado antes da troca: `/home/claude/telegram-bot.py.bak-20260513-marketing-briefing-e145bc8a`.
+- Hash antes: `e145bc8a74d6517cf8b08eb3e168335e565baf707efd0b53dc46fa4940fc051a`.
+- Hash depois: `04bba66f86377fa29f60e02fa057eb86be79dca9194519e3983217e6093cadd3`.
+- Services reiniciados e ativos: `claude-telegram-dev.service`, `claude-telegram-estrategista.service`, `claude-telegram-vendas-k2.service`.
+- Artifact `TG26isZIoJnq`: `Telegram marketing briefing handler added`.
+
+Teste executado:
+
+- `me da o briefing de marketing de hoje` retornou `Briefing de marketing (AIOS preview)`, foco Spa da Vida Empresas/NR-1, guidance `R6adR2HkGBq0` e proximos passos de hoje.
+- `tem algum repo com problema?` continuou no preview tecnico generico do router.
+
 ### TGM-04 - Voz
 
 Adicionar suporte a `voice`/`audio`:

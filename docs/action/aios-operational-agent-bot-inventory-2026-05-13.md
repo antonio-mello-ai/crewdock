@@ -94,7 +94,7 @@ Nota: `agent-team-organization.md` ainda descreve alguns timers como ativos. O C
 
 ## Telegram bots - comportamento real
 
-Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview. `TGM-01` tambem foi implementado live no script compartilhado dos bots em CT165 no mesmo dia, registrado no artifact `zbQze3u9wb4P`; a guidance `oJ_V8tOZzMqo` foi concluida e a proxima guidance aberta e `cYHp2xMoDPNn` para definir `/aios commit` Risk A.
+Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview. `TGM-01` tambem foi implementado live no script compartilhado dos bots em CT165 no mesmo dia, registrado no artifact `zbQze3u9wb4P`; a guidance `oJ_V8tOZzMqo` foi concluida e a proxima guidance aberta e `cYHp2xMoDPNn` para definir `/aios commit` Risk A. A primeira fatia de `TGM-03` tambem foi implementada: pedidos de briefing de marketing agora retornam um briefing operacional baseado na guidance aberta de marketing, registrado no artifact `TG26isZIoJnq`.
 
 O script atual:
 
@@ -106,6 +106,7 @@ O script atual:
 - limita concorrencia por `chat_id`;
 - devolve uma previa editando a mensagem "Processando...";
 - chama o Company Brain Command Router apenas no comando `/aios`, sempre com `dryRun=true`;
+- para pedidos de briefing de marketing/NR-1, renderiza uma resposta operacional a partir das guidance abertas de marketing;
 - nao cria `Artifact`, `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal`;
 - mensagens normais ainda nao aplicam gates de risco do AIOS antes de executar `claude -p`.
 
@@ -275,7 +276,7 @@ Escopo v0:
 2. Criar `Source`/watcher AIOS para `systemd timers CT165`, com snapshot diario de timers ativos, disabled e failed.
 3. Criar `Source`/watcher AIOS para Telegram bots, registrando uptime, script, cwd, modelo, permissao e ultimo erro.
 4. Implementar `Marketing Operating Pack v0` com NR-1 + Spa Ads antes de LinkedIn pessoal.
-5. Parcialmente concluido em 2026-05-13: implementar `Telegram Command Layer v0` com `/aios <texto>` em preview. Ainda falta suporte a voz e commits Risk A controlados.
+5. Parcialmente concluido em 2026-05-13: implementar `Telegram Command Layer v0` com `/aios <texto>` em preview e primeiro handler de briefing de marketing. Ainda falta suporte a voz, status/Pulso handlers e commits Risk A controlados.
 6. Revalidar live CT120/n8n antes de reativar workflow social.
 7. Reativar Pulso Ops Sentinel depois de Marketing Pack, mas ja como watcher AIOS e nao como cron solto.
 
