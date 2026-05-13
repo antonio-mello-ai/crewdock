@@ -174,9 +174,22 @@ Criar endpoint/MCP ou script interno que gera o briefing de NR-1 a partir dos do
 
 Aceite:
 
-- Telegram ou Codex consegue pedir "briefing de NR-1".
-- Output cria `Artifact` + `GuidanceItem`.
-- O briefing traz no maximo 3 prioridades e 10-20 acoes, para ser executavel.
+- Telegram ou Codex consegue pedir "briefing de NR-1". Concluido via `/aios me da o briefing de marketing de hoje` no bot Telegram.
+- Output cria `Artifact` + `GuidanceItem`. Parcialmente concluido: usa guidance existente `R6adR2HkGBq0` e registra artifact `yUH1XkSwX39y`; ainda nao cria nova guidance por briefing.
+- O briefing traz no maximo 3 prioridades e 10-20 acoes, para ser executavel. Concluido com 3 prioridades e 12 acoes.
+
+Status em 2026-05-13: primeira versao manual concluida live no CT165 via Telegram Command Layer.
+
+Implementacao:
+
+- Handler `/aios` para marketing agora retorna um briefing concreto em vez de instruir o usuario a criar um briefing.
+- Segmento escolhido: contabilidades e consultorias que atendem empresas de 50-500 colaboradores.
+- Output inclui 3 prioridades, 12 acoes executaveis, abordagem para contabilidade e draft de post para Thais.
+- O fluxo continua `dryRun=true` e HITL: nao envia mensagem, nao publica post e nao cria WorkItem automaticamente.
+- Artifact `yUH1XkSwX39y`: `Telegram MKT-01 concrete NR-1 briefing enabled`.
+- Backup do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt01-concrete-04bba66f`.
+- Hash do script antes: `04bba66f86377fa29f60e02fa057eb86be79dca9194519e3983217e6093cadd3`.
+- Hash do script depois: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
 
 ### MKT-02 - Telegram HITL
 

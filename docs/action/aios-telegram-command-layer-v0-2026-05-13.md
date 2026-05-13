@@ -176,10 +176,13 @@ Implementacao:
 - Hash depois: `04bba66f86377fa29f60e02fa057eb86be79dca9194519e3983217e6093cadd3`.
 - Services reiniciados e ativos: `claude-telegram-dev.service`, `claude-telegram-estrategista.service`, `claude-telegram-vendas-k2.service`.
 - Artifact `TG26isZIoJnq`: `Telegram marketing briefing handler added`.
+- Evolucao MKT-01 aplicada depois do teste real: o mesmo handler agora entrega briefing concreto com segmento escolhido, 3 prioridades, 12 acoes, abordagem para contabilidade e draft de post para Thais.
+- Artifact `yUH1XkSwX39y`: `Telegram MKT-01 concrete NR-1 briefing enabled`.
+- Hash depois da evolucao MKT-01: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
 
 Teste executado:
 
-- `me da o briefing de marketing de hoje` retornou `Briefing de marketing (AIOS preview)`, foco Spa da Vida Empresas/NR-1, guidance `R6adR2HkGBq0` e proximos passos de hoje.
+- `me da o briefing de marketing de hoje` retornou `Briefing de marketing (AIOS preview)`, foco Spa da Vida Empresas/NR-1, guidance `R6adR2HkGBq0`, 3 prioridades, 12 acoes, abordagem para contabilidade e draft de post para Thais.
 - `tem algum repo com problema?` continuou no preview tecnico generico do router.
 
 ### TGM-04 - Voz
