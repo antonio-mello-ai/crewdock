@@ -52,7 +52,7 @@ Adicionar um modo incremental:
 | Legado | mensagem normal | Continua rodando `claude -p` como hoje |
 | AIOS preview | comando `/aios <texto>` | Chama `POST /api/company-brain/command-router` com `dryRun=true` |
 | AIOS operating pack | comando `/aios <texto>` quando houver pack reconhecido | Chama `POST /api/company-brain/operating-packs/run` e devolve `responseText` |
-| AIOS agent fallback | `/aios <texto>` sem pack reconhecido e sem Risk C | Encaminha para o agente/Claude CLI no `CLAUDE_CWD` do service, com prompt operacional e investigacao read-only primeiro |
+| AIOS agent fallback | `/aios <texto>` sem pack reconhecido e sem Risk C | Encaminha para o agente/Claude CLI no cwd escolhido pelo roteamento; DAGs/Pulso vao para `pulsoonline-backend` |
 | AIOS commit Risk A | prefixo `/aios commit` | Chama command router com `dryRun=false` apenas para intents Risk A |
 | Risk C / blocked | router classifica Risk C | Bot responde com preview/bloqueio e nao executa mutacao |
 
@@ -68,7 +68,7 @@ Estas sao as interacoes que devem funcionar primeiro, sem automacao externa:
 | "o que a gente faz hoje para NR-1?" | estrategista | marketing | foco diario + 10-20 proximas acoes + draft |
 | "cria um post para a Thais sobre NR-1" | estrategista | marketing | artifact/draft + guidance para revisao |
 | "tem algum repo ou PR com problema?" | dev | development | resumo de GitHub PR/CI watcher + guidance |
-| "olha as DAGs do Pulso" | dev | operations | cai no agente executor no cwd do bot; pack/watchers de DAGs vem depois |
+| "olha as DAGs do Pulso" | dev | operations | cai no agente executor em `pulsoonline-backend`; pack/watchers de DAGs vem depois |
 | "o servidor caiu?" | dev | platform/operations | cai no agente executor com investigacao read-only; pack de infra vem depois |
 | "quais proximos passos do PulsoOnline?" | dev ou estrategista | product/operations | responde a partir de Company Brain/QMD e cria guidance se necessario |
 
@@ -196,6 +196,8 @@ Implementacao:
 - Deploy vivo: daemon em `main@db53f7c`; `/home/claude/telegram-bot.py` em hash `e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-operating-pack-runner-da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
 - Correcao de contrato aplicada depois: pack/skill e acelerador, nao barreira. Quando `/api/company-brain/operating-packs/run` retorna `handled=false` e o router nao classifica Risk C, o bot encaminha o pedido para o agente/Claude CLI do service atual. Exemplo validado sem executar Claude real: DAGs acionou fallback; marketing continuou no pack; `delete` Risk C ficou no preview.
 - Hash apos fallback para agente: `f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-agent-fallback-e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`.
+- Correcao de cwd aplicada depois: fallback escolhe diretorio por roteamento. DAGs/Pulso usam `/mnt/felhencloud/projetos/marketplace_data_intelligence/pulsoonline-backend`; operations/development/product usam `/mnt/felhencloud/projetos`; marketing usa `/mnt/felhencloud/projetos/marketing`; strategy usa `/mnt/felhencloud/corp`; platform usa `/home/claude/aios-runtime`.
+- Hash apos roteamento de cwd: `da969e142800b2759b067c2f842a8c2d5186bd8dc93e6c04987e20d2fb93897e`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-routed-cwd-f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`.
 
 Teste executado:
 

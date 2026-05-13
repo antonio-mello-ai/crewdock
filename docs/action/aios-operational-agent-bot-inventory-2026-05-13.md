@@ -133,6 +133,15 @@ Correcao posterior em 2026-05-13:
 - backup anterior: `/home/claude/telegram-bot.py.bak-20260513-agent-fallback-e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`;
 - teste sem executar Claude real: marketing retornou pelo pack, DAGs chamou fallback, `delete` Risk C retornou preview.
 
+Correcao de cwd posterior em 2026-05-13:
+
+- fallback nao depende mais apenas do `CLAUDE_CWD` do bot que recebeu a mensagem;
+- DAGs/Pulso usam `/mnt/felhencloud/projetos/marketplace_data_intelligence/pulsoonline-backend`;
+- operations/development/product usam `/mnt/felhencloud/projetos`; marketing usa `/mnt/felhencloud/projetos/marketing`; strategy usa `/mnt/felhencloud/corp`; platform usa `/home/claude/aios-runtime`;
+- hash do script vivo: `da969e142800b2759b067c2f842a8c2d5186bd8dc93e6c04987e20d2fb93897e`;
+- backup anterior: `/home/claude/telegram-bot.py.bak-20260513-routed-cwd-f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`;
+- teste sem executar Claude real: DAGs/Pulso resolveu o fallback para `pulsoonline-backend`, marketing continuou no pack e Risk C continuou preview-only.
+
 ## AIOS Company Brain - estado vivo
 
 Resumo live do daemon local:
