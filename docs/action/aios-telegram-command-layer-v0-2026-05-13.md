@@ -52,8 +52,9 @@ Adicionar um modo incremental:
 | Legado | mensagem normal | Continua rodando `claude -p` como hoje |
 | AIOS preview | comando `/aios <texto>` | Chama `POST /api/company-brain/command-router` com `dryRun=true` |
 | AIOS operating pack | comando `/aios <texto>` quando houver pack reconhecido | Chama `POST /api/company-brain/operating-packs/run` e devolve `responseText` |
+| AIOS agent fallback | `/aios <texto>` sem pack reconhecido e sem Risk C | Encaminha para o agente/Claude CLI no `CLAUDE_CWD` do service, com prompt operacional e investigacao read-only primeiro |
 | AIOS commit Risk A | prefixo `/aios commit` | Chama command router com `dryRun=false` apenas para intents Risk A |
-| Fallback | router retorna `needs_clarification` ou `preview_only` sem executor | Bot responde com proxima acao e nao executa mutacao |
+| Risk C / blocked | router classifica Risk C | Bot responde com preview/bloqueio e nao executa mutacao |
 
 Essa transicao evita quebrar o que ja e util e permite testar por comando antes de mudar o default dos bots.
 
@@ -67,8 +68,8 @@ Estas sao as interacoes que devem funcionar primeiro, sem automacao externa:
 | "o que a gente faz hoje para NR-1?" | estrategista | marketing | foco diario + 10-20 proximas acoes + draft |
 | "cria um post para a Thais sobre NR-1" | estrategista | marketing | artifact/draft + guidance para revisao |
 | "tem algum repo ou PR com problema?" | dev | development | resumo de GitHub PR/CI watcher + guidance |
-| "olha as DAGs do Pulso" | dev | operations | no v0 cria guidance/work item; watcher Pulso vem depois |
-| "o servidor caiu?" | dev | platform/operations | checa health read-only ou cria guidance se ainda nao houver watcher |
+| "olha as DAGs do Pulso" | dev | operations | cai no agente executor no cwd do bot; pack/watchers de DAGs vem depois |
+| "o servidor caiu?" | dev | platform/operations | cai no agente executor com investigacao read-only; pack de infra vem depois |
 | "quais proximos passos do PulsoOnline?" | dev ou estrategista | product/operations | responde a partir de Company Brain/QMD e cria guidance se necessario |
 
 ## Encaixe com areas estilo Cofounder
@@ -193,6 +194,8 @@ Implementacao:
 - Hash depois da politica de promocao de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
 - Evolucao atual: `marketing.nr1` foi movido para o daemon em `POST /api/company-brain/operating-packs/run`. O Telegram passa a ser gateway e cache de contexto do chat; briefing, naming semantico, promocao e feedback ficam no AIOS.
 - Deploy vivo: daemon em `main@db53f7c`; `/home/claude/telegram-bot.py` em hash `e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-operating-pack-runner-da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
+- Correcao de contrato aplicada depois: pack/skill e acelerador, nao barreira. Quando `/api/company-brain/operating-packs/run` retorna `handled=false` e o router nao classifica Risk C, o bot encaminha o pedido para o agente/Claude CLI do service atual. Exemplo validado sem executar Claude real: DAGs acionou fallback; marketing continuou no pack; `delete` Risk C ficou no preview.
+- Hash apos fallback para agente: `f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-agent-fallback-e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`.
 
 Teste executado:
 
@@ -202,7 +205,7 @@ Teste executado:
 - `promover briefing vale aprendizado estrategico sobre canal contabilidade` criou artifact `9QCHgD403xfG`.
 - `feedback aprovado briefing promovido para memoria` criou artifact `2cKrwOLu9g1T` e atualizou `R6adR2HkGBq0` para `feedbackStatus=accepted`.
 - Validados os geradores de nome de briefing e feedback sem criar artifact novo; briefing continua efemero por default.
-- `tem algum repo com problema?` continuou no preview tecnico generico do router.
+- `tem algum repo com problema?` inicialmente continuou no preview tecnico generico do router; apos a correcao de fallback, pedidos sem pack devem acionar o agente executor, salvo Risk C.
 
 ### TGM-04 - Voz
 

@@ -109,9 +109,10 @@ O script atual:
 - devolve uma previa editando a mensagem "Processando...";
 - chama o Company Brain Command Router ou o Operating Pack Runner apenas no comando `/aios`;
 - para pedidos de briefing de marketing/NR-1, deve chamar o pack `marketing.nr1` no daemon e renderizar `responseText`;
+- quando nao ha pack reconhecido e o router nao marca Risk C, encaminha o pedido para o agente/Claude CLI no `CLAUDE_CWD` do service atual;
 - nao registra briefing sob demanda como artifact por default; usa `/aios promover briefing [motivo]` para promover memoria estrategica;
 - aceita feedback HITL para briefing de marketing via `/aios feedback ...` somente quando houver artifact promovido ou `artifactId` explicito, registrando artifact `marketing_feedback` e atualizando a guidance de marketing;
-- fora do briefing de marketing, ainda nao cria `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal`;
+- fora do briefing de marketing, ainda nao cria `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal` automaticamente;
 - mensagens normais ainda nao aplicam gates de risco do AIOS antes de executar `claude -p`.
 
 Risco: os bots sao uteis como canal rapido, mas hoje estao mais proximos de um terminal remoto com Claude do que de um agente governado. Isso explica por que a experiencia existia, mas nao se organizou como produto AIOS.
@@ -123,6 +124,14 @@ Deploy em 2026-05-13:
 - backup do script anterior: `/home/claude/telegram-bot.py.bak-20260513-operating-pack-runner-da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`;
 - services `claude-telegram-dev.service`, `claude-telegram-estrategista.service` e `claude-telegram-vendas-k2.service` reiniciados e ativos;
 - smoke test direto da funcao do bot confirmou briefing via Operating Pack Runner e fallback generico para DAGs.
+
+Correcao posterior em 2026-05-13:
+
+- `/aios` sem pack reconhecido agora cai no agente executor, nao fica parado no preview generico;
+- Risk C continua bloqueado pelo router antes de chamar o agente;
+- hash do script vivo: `f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`;
+- backup anterior: `/home/claude/telegram-bot.py.bak-20260513-agent-fallback-e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`;
+- teste sem executar Claude real: marketing retornou pelo pack, DAGs chamou fallback, `delete` Risk C retornou preview.
 
 ## AIOS Company Brain - estado vivo
 
