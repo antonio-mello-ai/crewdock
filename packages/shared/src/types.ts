@@ -4227,6 +4227,58 @@ export interface CompanyBrainCommandRouterResult {
   routing: CommandRouterRouting;
 }
 
+export type CompanyBrainOperatingPackSlug = "marketing.nr1";
+export type CompanyBrainOperatingPackAction = "run" | "promote" | "feedback";
+export type CompanyBrainOperatingPackMemoryPolicy =
+  | "ephemeral"
+  | "promote_recommended"
+  | "promote_required"
+  | "promoted";
+
+export interface RunCompanyBrainOperatingPackRequest {
+  text: string;
+  packSlug?: CompanyBrainOperatingPackSlug;
+  action?: CompanyBrainOperatingPackAction;
+  actor?: string | null;
+  channel?: string | null;
+  sourceId?: string | null;
+  area?: CompanyBrainArea;
+  dryRun?: boolean;
+  promoteReason?: string | null;
+  targetArtifactId?: string | null;
+  feedbackStatus?: string | null;
+  feedbackNote?: string | null;
+  visibility?: Visibility;
+}
+
+export interface CompanyBrainOperatingPackArtifactRef {
+  id?: string | null;
+  artifactType: string;
+  title: string;
+  rawRef: string;
+  artifactName: string;
+  semanticKey: string;
+}
+
+export interface CompanyBrainOperatingPackRunResponse {
+  generatedAt: number;
+  handled: boolean;
+  packSlug?: CompanyBrainOperatingPackSlug;
+  action: CompanyBrainOperatingPackAction;
+  request: RunCompanyBrainOperatingPackRequest;
+  router: CompanyBrainCommandRouterResult;
+  responseText: string;
+  memoryPolicy: CompanyBrainOperatingPackMemoryPolicy;
+  noExternalAction: boolean;
+  promotedArtifact?: CompanyBrainOperatingPackArtifactRef | null;
+  feedbackArtifact?: CompanyBrainOperatingPackArtifactRef | null;
+  guidanceUpdated?: {
+    id: string;
+    feedbackStatus: GuidanceFeedbackStatus;
+  } | null;
+  suggestedCommands?: string[];
+}
+
 export type CompanyOperatingMapAreaSlug =
   | "strategy"
   | "development"

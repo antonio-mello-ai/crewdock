@@ -51,6 +51,7 @@ Adicionar um modo incremental:
 | --- | --- | --- |
 | Legado | mensagem normal | Continua rodando `claude -p` como hoje |
 | AIOS preview | comando `/aios <texto>` | Chama `POST /api/company-brain/command-router` com `dryRun=true` |
+| AIOS operating pack | comando `/aios <texto>` quando houver pack reconhecido | Chama `POST /api/company-brain/operating-packs/run` e devolve `responseText` |
 | AIOS commit Risk A | prefixo `/aios commit` | Chama command router com `dryRun=false` apenas para intents Risk A |
 | Fallback | router retorna `needs_clarification` ou `preview_only` sem executor | Bot responde com proxima acao e nao executa mutacao |
 
@@ -190,6 +191,7 @@ Implementacao:
 - Evolucao MKT-02 aplicada depois: `/aios feedback ...` cria artifact `marketing_feedback` somente quando houver artifact promovido ou `artifactId` explicito, e atualiza a guidance `R6adR2HkGBq0` com o ultimo feedback.
 - Artifacts de feedback criados nos testes: `dBjxo7uM3YAb`, `V0moQ9W81eR7`, `5XdLZVSN26Lz`, `2cKrwOLu9g1T`.
 - Hash depois da politica de promocao de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
+- Evolucao atual: `marketing.nr1` foi movido para o daemon em `POST /api/company-brain/operating-packs/run`. O Telegram passa a ser gateway e cache de contexto do chat; briefing, naming semantico, promocao e feedback ficam no AIOS.
 
 Teste executado:
 

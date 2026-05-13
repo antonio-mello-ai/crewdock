@@ -60,6 +60,27 @@ O pack deve criar/usar estes objetos no Company Brain:
 
 Regra: nem todo output operacional deve virar memoria do AIOS. Briefings sob demanda sao efemeros por padrao; viram `Artifact` somente quando forem promovidos por valor estrategico, decisao, aprendizado reutilizavel, acao aprovada ou evidencia que precisa sobreviver ao dia.
 
+## Operating Pack Runner no daemon
+
+O pack agora tem contrato nativo no daemon:
+
+- Endpoint: `POST /api/company-brain/operating-packs/run`.
+- Pack inicial: `marketing.nr1`.
+- Acoes: `run`, `promote`, `feedback`.
+- `run` retorna briefing operacional e `memoryPolicy=ephemeral`; nao cria `Artifact`.
+- `promote` cria `Artifact` `marketing_briefing` somente por comando explicito.
+- `feedback` cria `Artifact` `marketing_feedback` somente quando existe `targetArtifactId`.
+- Todas as respostas trazem `noExternalAction=true`; envio, publicacao e mudanca em Ads continuam fora do runner.
+- Telegram deve chamar esse endpoint como gateway. O bot nao deve conter a logica do briefing, naming, promocao ou feedback.
+
+Contrato de memoria:
+
+| Acao | Persistencia | Uso |
+| --- | --- | --- |
+| `run` | nenhuma | briefing do dia, valor temporario |
+| `promote` | `marketing_briefing` | aprendizado/decisao/evidencia que precisa sobreviver |
+| `feedback` | `marketing_feedback` + update opcional da guidance | HITL sobre artifact promovido |
+
 ## Naming de artifacts promovidos
 
 O `id` curto do Company Brain e chave tecnica gerada pelo banco. Ele nao deve ser usado como nome operacional.
@@ -222,13 +243,14 @@ Evolucao posterior em 2026-05-13:
 - A persistencia automatica por briefing foi testada e depois revertida como politica padrao, para evitar acumulo de artifacts operacionais temporarios.
 - Briefings sob demanda agora ficam apenas no Telegram/memoria efemera do processo.
 - Para promover um briefing ao Company Brain, usar `/aios promover briefing [motivo]`.
-- Promocao cria `POST /api/company-brain/artifacts` com `sourceId=S0m6x7yd29Kj`, `artifactType=marketing_briefing`, `area=marketing`, `humanReviewStatus=pending` e metadata com `requestText`, `segment`, `guidanceId`, `responseLength`, `hitlStatus=pending` e `routerDryRun=true`.
+- Promocao agora passa pelo `POST /api/company-brain/operating-packs/run` com `action=promote`; o daemon cria `Artifact` `marketing_briefing` com `sourceId=S0m6x7yd29Kj`, `area=marketing`, `humanReviewStatus=approved`, `metadata.artifactName`, `metadata.semanticKey`, `metadata.namingScheme=operating-pack-semantic-v1`, `segment`, `guidanceId` e `memoryPolicy=promoted_by_human`.
 - Artifact criado no teste de promocao explicita: `9QCHgD403xfG`.
 - Backup do script vivo apos revisar politica de memoria: `/home/claude/telegram-bot.py.bak-20260513-memory-promotion-policy-42cf8c83`.
 - Hash do script apos revisar politica de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
 - Evolucao posterior: artifacts promovidos agora recebem naming canonico em `title`, `rawRef`, `metadata.artifactName` e `metadata.semanticKey`; o bot mostra `Nome`, `ID tecnico` e `Ref` ao promover.
 - Backup do script vivo apos naming canonico: `/home/claude/telegram-bot.py.bak-20260513-artifact-naming-a6a07594`.
 - Hash do script apos naming canonico: `da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
+- Evolucao atual: a logica de briefing/promocao/feedback saiu do bot e entrou no daemon como Operating Pack Runner. O bot deve apenas encaminhar payloads e renderizar `responseText`.
 
 ### MKT-02 - Telegram HITL
 
