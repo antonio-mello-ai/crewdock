@@ -140,6 +140,8 @@ Leitura: o AIOS esta vivo, mas ainda nao e o operador diario da Felhen. Ele obse
 
 ## Marketing e go-to-market - ativos documentados
 
+Remediacao/ativacao executada apos o inventario inicial: `MKT-00` do Marketing Operating Pack foi seedado live no Company Brain em 2026-05-13. Isso elevou o total de sources de 11 para 16 e adicionou as sources `Marketing Lead Generation`, `Spa da Vida Ads`, `Spa da Vida NR-1 Playbook`, `n8n Social Media Workflows` e `LinkedIn Content Antonio`, alem do artifact `etx1CCODZw09` e da guidance aberta `R6adR2HkGBq0` para rodar o primeiro briefing NR-1 manual.
+
 ### Spa da Vida Ads
 
 `corp/docs/estrategia/ads-strategy.md` documenta Spa da Vida como campanha de aquisicao ativa, com conta Google Ads `189-660-7697`, budget aproximado de R$85/dia e baseline recente registrado como R$1.770/mes, 455 conversoes e CPA medio de R$3,89. Tambem existem scripts em `corp/scripts/` para snapshot, investigacao, criacao/reativacao e avaliacao de campanhas.

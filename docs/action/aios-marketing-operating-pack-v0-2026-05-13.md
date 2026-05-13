@@ -145,10 +145,27 @@ Gate:
 
 Criar sources canonicos para marketing, sem scheduler ainda.
 
+Status em 2026-05-13: concluido live no Company Brain via API local do daemon em CT165.
+
+Sources criados:
+
+| Source | ID | Status | Observacao |
+| --- | --- | --- | --- |
+| Marketing Lead Generation | `eOAmaoPqP1y-` | active/unknown | Repo de lead generation, scripts, templates e SQLite |
+| Spa da Vida Ads | `wB2vi5ogLNcQ` | active/unknown | Fonte read-only para Google Ads Spa; snapshot live ainda nao rodado |
+| Spa da Vida NR-1 Playbook | `d28rIJkb4rHA` | active/healthy | Playbook NR-1 com ICP, objecoes e sequencia |
+| n8n Social Media Workflows | `0KCMalzwPKoV` | paused/unknown | Requer revalidacao live do CT120 antes de reativar |
+| LinkedIn Content Antonio | `E8BDj-jLFCid` | active/unknown | Estrategia pessoal, abaixo de NR-1 no curto prazo |
+
+Seed:
+
+- Artifact `etx1CCODZw09`: `Marketing Operating Pack v0 seed`.
+- Guidance `R6adR2HkGBq0`: `Run the first manual NR-1 daily briefing`.
+
 Aceite:
 
-- Sources aparecem no Company Brain.
-- Uma importacao manual cria Artifact de briefing marketing.
+- Sources aparecem no Company Brain. Concluido.
+- Uma importacao manual cria Artifact de briefing marketing. Concluido como artifact de seed do pack.
 - Nenhuma acao externa e executada.
 
 ### MKT-01 - Daily NR-1 briefing manual
