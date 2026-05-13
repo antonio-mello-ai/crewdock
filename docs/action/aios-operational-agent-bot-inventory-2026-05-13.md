@@ -116,6 +116,14 @@ O script atual:
 
 Risco: os bots sao uteis como canal rapido, mas hoje estao mais proximos de um terminal remoto com Claude do que de um agente governado. Isso explica por que a experiencia existia, mas nao se organizou como produto AIOS.
 
+Deploy em 2026-05-13:
+
+- daemon CT165 atualizado para `main@db53f7c` e `aios-daemon.service` ativo;
+- script vivo `/home/claude/telegram-bot.py` atualizado para hash `e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`;
+- backup do script anterior: `/home/claude/telegram-bot.py.bak-20260513-operating-pack-runner-da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`;
+- services `claude-telegram-dev.service`, `claude-telegram-estrategista.service` e `claude-telegram-vendas-k2.service` reiniciados e ativos;
+- smoke test direto da funcao do bot confirmou briefing via Operating Pack Runner e fallback generico para DAGs.
+
 ## AIOS Company Brain - estado vivo
 
 Resumo live do daemon local:

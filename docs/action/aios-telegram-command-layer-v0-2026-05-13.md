@@ -192,6 +192,7 @@ Implementacao:
 - Artifacts de feedback criados nos testes: `dBjxo7uM3YAb`, `V0moQ9W81eR7`, `5XdLZVSN26Lz`, `2cKrwOLu9g1T`.
 - Hash depois da politica de promocao de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
 - Evolucao atual: `marketing.nr1` foi movido para o daemon em `POST /api/company-brain/operating-packs/run`. O Telegram passa a ser gateway e cache de contexto do chat; briefing, naming semantico, promocao e feedback ficam no AIOS.
+- Deploy vivo: daemon em `main@db53f7c`; `/home/claude/telegram-bot.py` em hash `e2ac156065e995c9a9ec04e66acc35b8056eb17547e74b39c171f9aa9c30bf5b`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-operating-pack-runner-da033bda64e4e7468e61891c4a041b3d332fde008b36c48da1aac1ddb3319c6e`.
 
 Teste executado:
 
