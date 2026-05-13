@@ -64,9 +64,11 @@ Estado documentado, nao revalidado live nesta passada:
 
 ## CT165 - timers
 
+Estado inicial observado: `import-trading-scoring.timer` era o unico timer de negocio ativo. Remediacao executada em 2026-05-13: `systemctl disable --now import-trading-scoring.timer`. Verificacao posterior: timer `inactive/dead`, `UnitFileState=disabled`, sem proxima execucao. O servico `import-trading-scoring.service` permanece `failed` como evidencia historica da ultima execucao.
+
 | Timer | Estado verificado | Proxima execucao | Servico | Diagnostico |
 | --- | --- | --- | --- | --- |
-| `import-trading-scoring.timer` | `active/waiting`, enabled | 2026-05-13 13:00 BRT | `import-trading-scoring.service` | Deve ser desativado ou quarentenado: unico timer ativo e pertence a projeto pausado |
+| `import-trading-scoring.timer` | Remediado: disabled/inactive | nenhuma | `import-trading-scoring.service` | Quarentenado: era o unico timer ativo e pertence a projeto pausado |
 | `data-quality-check.timer` | disabled/inactive | nenhuma | `run-orchestrator.sh "verificar saude de dados e pipelines K2Digital"` | Candidato a reativar como Pulso Ops Sentinel, mas migrando para AIOS watcher/source |
 | `opensource-ops-patrol.timer` | disabled/inactive | nenhuma | `run-orchestrator.sh "patrulhar PRs open source..."` | Candidato a reativar depois de marketing/Pulso, se ainda houver valor |
 | `opensource-ops-scout.timer` | disabled/inactive | nenhuma | `run-orchestrator.sh "buscar novas oportunidades..."` | Baixa urgencia frente a marketing e Pulso |
@@ -265,7 +267,7 @@ Escopo v0:
 
 ## Acoes imediatas recomendadas
 
-1. Desativar ou quarentenar `import-trading-scoring.timer`, pois e o unico timer de negocio ativo, esta falhando e pertence a projeto pausado.
+1. Concluido em 2026-05-13: desativar/quarentenar `import-trading-scoring.timer`, pois era o unico timer de negocio ativo, estava falhando e pertence a projeto pausado.
 2. Criar `Source`/watcher AIOS para `systemd timers CT165`, com snapshot diario de timers ativos, disabled e failed.
 3. Criar `Source`/watcher AIOS para Telegram bots, registrando uptime, script, cwd, modelo, permissao e ultimo erro.
 4. Implementar `Marketing Operating Pack v0` com NR-1 + Spa Ads antes de LinkedIn pessoal.
