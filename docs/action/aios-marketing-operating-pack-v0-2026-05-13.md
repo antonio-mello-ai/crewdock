@@ -52,13 +52,13 @@ O pack deve criar/usar estes objetos no Company Brain:
 | Objeto | Uso |
 | --- | --- |
 | `Source` | `marketing_lead_generation`, `spa_ads`, `spa_nr1_playbook`, `n8n_social`, `linkedin_content` |
-| `Artifact` | briefing diario, snapshot Ads, draft de post, lista de leads sugeridos, feedback humano |
+| `Artifact` | briefing promovido, snapshot Ads, draft aprovado/promovido, lista de leads estrategica, feedback humano relevante |
 | `Signal` | urgencia NR-1, anomalia Ads, oportunidade de segmento, conteudo com potencial, bloqueio de credencial |
 | `GuidanceItem` | "aprovar estes 10 contatos", "publicar post X", "investigar CPA Y", "reativar OAuth Z" |
 | `WorkItem` | tarefas com dono e prazo quando a acao nao cabe em um briefing |
 | `ExternalActionProposal` | qualquer envio/publicacao/mudanca externa real |
 
-Regra: se o output do pack nao vira pelo menos `Artifact` + `GuidanceItem`, ele ainda e script solto, nao AIOS.
+Regra: nem todo output operacional deve virar memoria do AIOS. Briefings sob demanda sao efemeros por padrao; viram `Artifact` somente quando forem promovidos por valor estrategico, decisao, aprendizado reutilizavel, acao aprovada ou evidencia que precisa sobreviver ao dia.
 
 ## Telegram commands v0
 
@@ -90,9 +90,9 @@ Processo:
 1. Selecionar um foco diario: contabilidades, RH local, empresas 50-500, parceiros, ou conteudo.
 2. Gerar 10-20 proximas acoes com contexto e prioridade.
 3. Gerar mensagem de abordagem ou pauta de conteudo.
-4. Registrar `Artifact` com briefing.
-5. Criar `GuidanceItem` para aprovacao/execucao humana.
-6. Enviar resumo no Telegram.
+4. Enviar resumo no Telegram.
+5. Registrar `Artifact` somente se o briefing for promovido explicitamente ou gerar decisao/acao relevante.
+6. Criar/atualizar `GuidanceItem` somente quando houver decisao, aprendizado ou acao aprovada.
 
 Gate:
 
@@ -175,7 +175,7 @@ Criar endpoint/MCP ou script interno que gera o briefing de NR-1 a partir dos do
 Aceite:
 
 - Telegram ou Codex consegue pedir "briefing de NR-1". Concluido via `/aios me da o briefing de marketing de hoje` no bot Telegram.
-- Output cria `Artifact` + `GuidanceItem`. Parcialmente concluido: usa guidance existente `R6adR2HkGBq0` e agora registra um artifact `marketing_briefing` a cada briefing gerado; ainda nao cria nova guidance por briefing.
+- Output cria `Artifact` + `GuidanceItem`. Revisado: briefing sob demanda nao cria Artifact por padrao; usa guidance existente `R6adR2HkGBq0` e cria Artifact apenas via promocao explicita.
 - O briefing traz no maximo 3 prioridades e 10-20 acoes, para ser executavel. Concluido com 3 prioridades e 12 acoes.
 
 Status em 2026-05-13: primeira versao manual concluida live no CT165 via Telegram Command Layer.
@@ -187,18 +187,20 @@ Implementacao:
 - Output inclui 3 prioridades, 12 acoes executaveis, abordagem para contabilidade e draft de post para Thais.
 - O fluxo continua `dryRun=true` e HITL: nao envia mensagem, nao publica post e nao cria WorkItem automaticamente.
 - Artifact `yUH1XkSwX39y`: `Telegram MKT-01 concrete NR-1 briefing enabled`.
-- Artifact de briefing gerado no teste live: `P-_bdA_S62wd` (`artifactType=marketing_briefing`).
+- Artifacts de briefing criados nos testes live antes da revisao de politica: `P-_bdA_S62wd` e `BXk6avkp9FpT`.
 - Backup do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt01-concrete-04bba66f`.
 - Hash do script antes: `04bba66f86377fa29f60e02fa057eb86be79dca9194519e3983217e6093cadd3`.
 - Hash do script depois: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
 
 Evolucao posterior em 2026-05-13:
 
-- Cada briefing gerado pelo Telegram agora cria `POST /api/company-brain/artifacts` com `sourceId=S0m6x7yd29Kj`, `artifactType=marketing_briefing`, `area=marketing`, `humanReviewStatus=pending` e metadata com `requestText`, `segment`, `guidanceId`, `responseLength`, `hitlStatus=pending` e `routerDryRun=true`.
-- O bot inclui `Artifact Company Brain: <id>` na resposta para permitir feedback e rastreabilidade.
-- Backup do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt01-artifact-87f2913d`.
-- Hash do script antes: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
-- Hash do script depois: `71e5b83272f54608dc3983e79c02c1a8a1808069188586225560841ddb39cbfb`.
+- A persistencia automatica por briefing foi testada e depois revertida como politica padrao, para evitar acumulo de artifacts operacionais temporarios.
+- Briefings sob demanda agora ficam apenas no Telegram/memoria efemera do processo.
+- Para promover um briefing ao Company Brain, usar `/aios promover briefing [motivo]`.
+- Promocao cria `POST /api/company-brain/artifacts` com `sourceId=S0m6x7yd29Kj`, `artifactType=marketing_briefing`, `area=marketing`, `humanReviewStatus=pending` e metadata com `requestText`, `segment`, `guidanceId`, `responseLength`, `hitlStatus=pending` e `routerDryRun=true`.
+- Artifact criado no teste de promocao explicita: `9QCHgD403xfG`.
+- Backup do script vivo apos revisar politica de memoria: `/home/claude/telegram-bot.py.bak-20260513-memory-promotion-policy-42cf8c83`.
+- Hash do script apos revisar politica de memoria: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
 
 ### MKT-02 - Telegram HITL
 
@@ -214,7 +216,7 @@ Status em 2026-05-13: primeira versao HITL concluida live no CT165.
 
 Comandos:
 
-- `/aios feedback aprovado [nota]` usa o ultimo briefing gerado naquele chat.
+- `/aios feedback aprovado [nota]` usa o ultimo briefing promovido naquele chat.
 - `/aios feedback feito [nota]` registra feedback `completed`.
 - `/aios feedback rejeitado [nota]` registra feedback `rejected`.
 - `/aios feedback ajustar [nota]` registra feedback `needs_adjustment`.
@@ -225,8 +227,10 @@ Evidencia live:
 - Artifact feedback `dBjxo7uM3YAb`: feedback `aprovado` para briefing `BXk6avkp9FpT`.
 - Artifact feedback `V0moQ9W81eR7`: feedback `ajustar` para briefing `P-_bdA_S62wd`.
 - Artifact feedback `5XdLZVSN26Lz`: feedback `aprovado` para briefing `P-_bdA_S62wd` e guidance `R6adR2HkGBq0` atualizada para `feedbackStatus=accepted`.
-- Backup final do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt02-guidance-feedback-d09103b1`.
-- Hash final apos MKT-02: `42cf8c833be77f9d72400e29d297415cb7c15fd57dfc5b44672a2eb2359c6deb`.
+- Apos revisao de politica, feedback sem artifact promovido e recusado; feedback com artifact explicito ou ultimo artifact promovido continua permitido.
+- Artifact de promocao explicita `9QCHgD403xfG` e feedback `2cKrwOLu9g1T`: teste da nova politica.
+- Backup final do script vivo: `/home/claude/telegram-bot.py.bak-20260513-memory-promotion-policy-42cf8c83`.
+- Hash final apos MKT-02 e politica de promocao: `a6a07594e72baf830e440adc1308105ac194140975796b664894ccecd81bc7fa`.
 
 ### MKT-03 - Spa Ads snapshot
 

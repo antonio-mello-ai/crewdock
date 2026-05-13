@@ -94,7 +94,7 @@ Nota: `agent-team-organization.md` ainda descreve alguns timers como ativos. O C
 
 ## Telegram bots - comportamento real
 
-Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview. `TGM-01` tambem foi implementado live no script compartilhado dos bots em CT165 no mesmo dia, registrado no artifact `zbQze3u9wb4P`; a guidance `oJ_V8tOZzMqo` foi concluida e a proxima guidance aberta e `cYHp2xMoDPNn` para definir `/aios commit` Risk A. A primeira fatia de `TGM-03` tambem foi implementada: pedidos de briefing de marketing agora retornam um briefing operacional baseado na guidance aberta de marketing, registrado no artifact `TG26isZIoJnq`. A evolucao MKT-01 transformou esse briefing em output concreto com 3 prioridades, 12 acoes, abordagem para contabilidade e draft para Thais, registrada no artifact `yUH1XkSwX39y`. A persistencia por execucao tambem foi ativada: cada briefing gera um artifact `marketing_briefing`; o teste live criou `P-_bdA_S62wd`. A primeira fatia de MKT-02 tambem esta ativa: `/aios feedback ...` cria artifact `marketing_feedback` e atualiza a guidance `R6adR2HkGBq0`; o teste live criou `5XdLZVSN26Lz`.
+Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview. `TGM-01` tambem foi implementado live no script compartilhado dos bots em CT165 no mesmo dia, registrado no artifact `zbQze3u9wb4P`; a guidance `oJ_V8tOZzMqo` foi concluida e a proxima guidance aberta e `cYHp2xMoDPNn` para definir `/aios commit` Risk A. A primeira fatia de `TGM-03` tambem foi implementada: pedidos de briefing de marketing agora retornam um briefing operacional baseado na guidance aberta de marketing, registrado no artifact `TG26isZIoJnq`. A evolucao MKT-01 transformou esse briefing em output concreto com 3 prioridades, 12 acoes, abordagem para contabilidade e draft para Thais, registrada no artifact `yUH1XkSwX39y`. A persistencia automatica por briefing foi testada, mas a politica final foi corrigida: briefings sob demanda sao efemeros por padrao e so viram `marketing_briefing` via `/aios promover briefing [motivo]`. A primeira fatia de MKT-02 tambem esta ativa: `/aios feedback ...` cria artifact `marketing_feedback` e atualiza a guidance `R6adR2HkGBq0` apenas quando ha artifact promovido ou `artifactId` explicito.
 
 O script atual:
 
@@ -107,8 +107,8 @@ O script atual:
 - devolve uma previa editando a mensagem "Processando...";
 - chama o Company Brain Command Router apenas no comando `/aios`, sempre com `dryRun=true`;
 - para pedidos de briefing de marketing/NR-1, renderiza uma resposta operacional a partir das guidance abertas de marketing;
-- registra cada briefing de marketing como artifact `marketing_briefing` e retorna o ID no Telegram;
-- aceita feedback HITL para briefing de marketing via `/aios feedback ...`, registrando artifact `marketing_feedback` e atualizando a guidance de marketing;
+- nao registra briefing sob demanda como artifact por default; usa `/aios promover briefing [motivo]` para promover memoria estrategica;
+- aceita feedback HITL para briefing de marketing via `/aios feedback ...` somente quando houver artifact promovido ou `artifactId` explicito, registrando artifact `marketing_feedback` e atualizando a guidance de marketing;
 - fora do briefing de marketing, ainda nao cria `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal`;
 - mensagens normais ainda nao aplicam gates de risco do AIOS antes de executar `claude -p`.
 
