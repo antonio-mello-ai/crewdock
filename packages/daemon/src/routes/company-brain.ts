@@ -161,6 +161,12 @@ import type {
   CommandRouterRouting,
   CommandRouterTargetKind,
   RouteCompanyBrainCommandRequest,
+  CompanyBrainOperatingPackAction,
+  CompanyBrainOperatingPackArtifactRef,
+  CompanyBrainOperatingPackMemoryPolicy,
+  CompanyBrainOperatingPackRunResponse,
+  CompanyBrainOperatingPackSlug,
+  RunCompanyBrainOperatingPackRequest,
   GuidanceItem,
   Signal,
   CompanyBrainOperatingCadence,
@@ -223,6 +229,7 @@ import type {
   FirstProjectReadinessChecklistItem,
   FirstProjectReadinessStatus,
   GuidanceAudience,
+  GuidanceFeedbackStatus,
   GenerateAgentContextRequest,
   GenerateDailyAgentHandoffRequest,
   GenerateDailyAgentHandoffResponse,
@@ -248,6 +255,7 @@ import type {
   SyncGitHubPrCiResponse,
   SyncSlackChannelRequest,
   RiskClass,
+  ReviewStatus,
   UpdateDecisionRequest,
   UpdateExternalActionProposalRequest,
   UpdateGuidanceItemRequest,
@@ -328,6 +336,8 @@ const AIOS_BRIEFING_SOURCE_ID = "source-aios-briefing-v0";
 const AIOS_BRIEFING_WATCHER_ID = "watcher-aios-briefing-v0";
 const GITHUB_PR_CI_WATCHER_ID = "watcher-github-pr-ci-v0";
 const GITHUB_NOTIFICATIONS_WATCHER_ID = "watcher-github-notifications-v0";
+const TELEGRAM_BOT_GATEWAY_SOURCE_ID = "S0m6x7yd29Kj";
+const MARKETING_NR1_GUIDANCE_ID = "R6adR2HkGBq0";
 const WRITEBACK_PREVIEW_STALE_MS = 24 * 60 * 60 * 1000;
 const OPERATING_CADENCE_DEFAULT_REPO =
   process.env.AIOS_OPERATING_CADENCE_GITHUB_REPO ?? "antonio-mello-ai/crewdock";
@@ -22928,6 +22938,664 @@ app.post("/command-router", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "command_router_failed", message }, 400);
+  }
+});
+
+const MARKETING_NR1_DEFAULT_SEGMENT =
+  "contabilidades e consultorias que atendem empresas de 50-500 colaboradores";
+
+function normalizeOperatingPackMatchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function slugifyOperatingPackPart(value: string, fallback = "item", maxLength = 80): string {
+  const slug = normalizeOperatingPackMatchText(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLength)
+    .replace(/-+$/g, "");
+  return slug || fallback;
+}
+
+function getSaoPauloDateParts(timestamp: number): {
+  date: string;
+  time: string;
+  compactTime: string;
+} {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(timestamp));
+  const part = (type: string) => parts.find((entry) => entry.type === type)?.value ?? "00";
+  const hour = part("hour") === "24" ? "00" : part("hour");
+  const date = `${part("year")}-${part("month")}-${part("day")}`;
+  const time = `${hour}:${part("minute")}:${part("second")}`;
+  return { date, time, compactTime: `${hour}${part("minute")}${part("second")}` };
+}
+
+function inferMarketingNr1Segment(text: string): string {
+  const normalized = normalizeOperatingPackMatchText(text);
+  if (/\b(?:contabil|contabilidade|contabilidades|contador|consultoria|consultorias)\b/.test(normalized)) {
+    return MARKETING_NR1_DEFAULT_SEGMENT;
+  }
+  if (/\b(?:rh|recursos humanos|dp|departamento pessoal)\b/.test(normalized)) {
+    return "RHs e departamentos pessoais de empresas de 50-500 colaboradores";
+  }
+  if (/\b(?:clinica|clinicas|saude|medicina ocupacional|sst)\b/.test(normalized)) {
+    return "clinicas de medicina ocupacional e parceiros de SST";
+  }
+  return MARKETING_NR1_DEFAULT_SEGMENT;
+}
+
+function marketingNr1SegmentSlug(segment: string): string {
+  if (segment === MARKETING_NR1_DEFAULT_SEGMENT) return "contabilidades-consultorias-50-500";
+  if (/RHs e departamentos pessoais/i.test(segment)) return "rhs-dps-50-500";
+  if (/medicina ocupacional|SST/i.test(segment)) return "clinicas-ocupacionais-sst";
+  return slugifyOperatingPackPart(segment, "segmento", 72);
+}
+
+function buildMarketingNr1BriefingIdentity(segment: string, timestamp: number) {
+  const parts = getSaoPauloDateParts(timestamp);
+  const segmentSlug = marketingNr1SegmentSlug(segment);
+  const semanticKey = `marketing.nr1.briefing.${parts.date}.${segmentSlug}`;
+  const artifactName = `${semanticKey}.${parts.compactTime}`;
+  const rawRef = `aios://operating-packs/marketing/nr1/briefings/${parts.date}/${segmentSlug}/${parts.compactTime}`;
+  return {
+    ...parts,
+    segmentSlug,
+    semanticKey,
+    artifactName,
+    rawRef,
+  };
+}
+
+function buildMarketingNr1FeedbackIdentity(
+  targetArtifactId: string,
+  feedbackStatus: GuidanceFeedbackStatus,
+  timestamp: number
+) {
+  const parts = getSaoPauloDateParts(timestamp);
+  const targetSlug = slugifyOperatingPackPart(targetArtifactId, "artifact", 32);
+  const semanticKey = `marketing.nr1.feedback.${parts.date}.${targetSlug}`;
+  const artifactName = `${semanticKey}.${feedbackStatus}.${parts.compactTime}`;
+  const rawRef = `aios://operating-packs/marketing/nr1/feedback/${parts.date}/${targetSlug}/${parts.compactTime}`;
+  return {
+    ...parts,
+    targetSlug,
+    semanticKey,
+    artifactName,
+    rawRef,
+  };
+}
+
+function shouldRouteToMarketingNr1Pack(text: string): boolean {
+  const normalized = normalizeOperatingPackMatchText(text);
+  const hasNr1 = /\bnr\s*-?\s*1\b|\bnr1\b/.test(normalized);
+  const hasSpaEmpresas = /spa da vida|spa empresas|saude mental corporativa/.test(normalized);
+  const hasBriefingIntent = /briefing|marketing|conteudo|linkedin|outreach|campanha|divulgacao/.test(normalized);
+  const hasTargetSegment = /contabil|consultor|empresa|rh|sst|psicossocial/.test(normalized);
+  return hasNr1 || hasSpaEmpresas || (hasBriefingIntent && hasTargetSegment);
+}
+
+function inferOperatingPackAction(
+  request: RunCompanyBrainOperatingPackRequest
+): CompanyBrainOperatingPackAction {
+  if (request.action) return request.action;
+  const normalized = normalizeOperatingPackMatchText(request.text ?? "");
+  if (/\b(?:feedback|aprovado|aprovei|aceito|rejeitado|corrigir|ajustar|executado|concluido|concluido)\b/.test(normalized)) {
+    return "feedback";
+  }
+  if (/\b(?:promover|salvar|registrar|persistir)\b/.test(normalized)) {
+    return "promote";
+  }
+  return "run";
+}
+
+function inferOperatingPackSlug(
+  request: RunCompanyBrainOperatingPackRequest,
+  router: CompanyBrainCommandRouterResult
+): CompanyBrainOperatingPackSlug | null {
+  if (request.packSlug) return request.packSlug;
+  if (shouldRouteToMarketingNr1Pack(request.text ?? "")) return "marketing.nr1";
+  if (
+    router.classification.area === "marketing" &&
+    /briefing|nr\s*-?\s*1|spa da vida|psicossocial/i.test(request.text ?? "")
+  ) {
+    return "marketing.nr1";
+  }
+  return null;
+}
+
+function buildOperatingPackRouterResult(
+  request: RunCompanyBrainOperatingPackRequest,
+  timestamp: number,
+  preliminaryPackSlug: CompanyBrainOperatingPackSlug | null
+): CompanyBrainCommandRouterResult {
+  const routerRequest: RouteCompanyBrainCommandRequest = {
+    text: request.text,
+    area: request.area ?? (preliminaryPackSlug === "marketing.nr1" ? "marketing" : undefined),
+    actor: request.actor ?? null,
+    visibility: request.visibility ?? "internal",
+    dryRun: true,
+  };
+  const classification = buildCommandRouterClassification(routerRequest);
+  const routing = executeCommandRouterClassification(routerRequest, classification, timestamp);
+  return {
+    generatedAt: timestamp,
+    request: routerRequest,
+    classification,
+    routing,
+  };
+}
+
+function formatCommandRouterPreview(router: CompanyBrainCommandRouterResult): string {
+  const hint = router.request.actor ? `\nHint usado: actor=${router.request.actor}` : "";
+  return [
+    "AIOS preview (dryRun=true)",
+    `Decisao: ${router.routing.decision}`,
+    `Area: ${router.classification.primaryAreaSlug} / ${router.classification.area}`,
+    `Intencao: ${router.classification.intentKind} -> ${router.classification.targetKind}`,
+    `Risco: ${router.classification.riskClass} | confianca: ${router.classification.confidence.toFixed(2)}${hint}`,
+    "",
+    `Proximo: ${router.routing.nextActionLabel}`,
+    router.routing.nextActionDetail,
+    "",
+    "Racional:",
+    ...router.routing.rationale.map((line) => `- ${line}`),
+  ].join("\n");
+}
+
+function getMarketingNr1Guidance(): GuidanceItem | null {
+  const db = getDb();
+  const explicit = db
+    .select()
+    .from(cbGuidanceItems)
+    .where(eq(cbGuidanceItems.id, MARKETING_NR1_GUIDANCE_ID))
+    .get();
+  if (explicit) return explicit as unknown as GuidanceItem;
+
+  const guidanceItems = db
+    .select()
+    .from(cbGuidanceItems)
+    .orderBy(desc(cbGuidanceItems.updatedAt))
+    .limit(50)
+    .all() as unknown as GuidanceItem[];
+  return (
+    guidanceItems.find((item) => {
+      const text = normalizeOperatingPackMatchText(`${item.title}\n${item.action}`);
+      return item.area === "marketing" && /nr\s*-?\s*1|nr1|spa da vida empresas/.test(text);
+    }) ?? null
+  );
+}
+
+function buildMarketingNr1BriefingText(
+  request: RunCompanyBrainOperatingPackRequest,
+  guidance: GuidanceItem | null
+): {
+  responseText: string;
+  briefingContent: string;
+  segment: string;
+  guidanceId: string | null;
+} {
+  const segment = inferMarketingNr1Segment(request.text);
+  const guidanceLine = guidance
+    ? `- ${guidance.title} (${guidance.id})`
+    : "- Nenhuma guidance NR-1 ativa encontrada; usando o pack v0 padrao.";
+  const guidanceDirection = guidance?.action
+    ? [
+        "",
+        "Direcao registrada:",
+        guidance.action,
+      ]
+    : [];
+  const briefingLines = [
+    "Briefing de marketing (AIOS preview)",
+    "Foco de hoje: Spa da Vida Empresas / NR-1.",
+    `Segmento escolhido: ${segment}.`,
+    "",
+    "Guidance Company Brain:",
+    guidanceLine,
+    ...guidanceDirection,
+    "",
+    "3 prioridades",
+    "1. Abrir canal com contabilidades parceiras antes da janela de demanda esfriar.",
+    "2. Transformar NR-1 em conversa de risco psicossocial, nao em checklist juridico.",
+    "3. Gerar uma peca simples para Thais usar hoje no LinkedIn/WhatsApp.",
+    "",
+    "12 acoes executaveis hoje",
+    "1. Selecionar 10 contabilidades locais ou ja conhecidas.",
+    "2. Separar nome, responsavel, WhatsApp/email e ultimo contato de cada uma.",
+    "3. Priorizar 3 que atendem empresas com RH pequeno ou sem RH interno.",
+    "4. Enviar abordagem manual para essas 3 primeiras.",
+    "5. Oferecer diagnostico inicial de riscos psicossociais para clientes delas.",
+    "6. Anotar objecoes reais: preco, urgencia, desconhecimento, medo juridico.",
+    "7. Pedir indicacao de 2 empresas que ainda nao se organizaram para NR-1.",
+    "8. Preparar uma mensagem curta para os outros 7 contatos.",
+    "9. Publicar ou revisar o draft abaixo no perfil da Thais.",
+    "10. Separar uma landing/apresentacao unica para enviar quando pedirem detalhes.",
+    "11. Registrar respostas apenas se houver aprendizado estrategico reutilizavel.",
+    "12. No fim do dia, transformar aprendizados relevantes em guidance para amanha.",
+    "",
+    "Abordagem para contabilidade",
+    "Oi, [nome]. A NR-1 colocou os riscos psicossociais no radar das empresas, mas muita gente ainda esta tratando isso como checklist. O Spa da Vida Empresas pode ajudar seus clientes com um diagnostico inicial e um plano pratico de adequacao, sem transformar isso em burocracia. Faz sentido conversarmos sobre como apoiar 2 ou 3 clientes seus que ainda nao se organizaram?",
+    "",
+    "Draft de post para Thais",
+    "A NR-1 nao deveria ser vista apenas como uma nova obrigacao. Ela e uma oportunidade para olhar com seriedade para os riscos psicossociais dentro das empresas: sobrecarga, conflitos, ansiedade, afastamentos e sofrimento emocional. No Spa da Vida Empresas, nosso trabalho e ajudar liderancas a transformar esse tema em cuidado pratico, diagnostico claro e plano de acao possivel. Se a sua empresa ainda nao sabe por onde comecar, o primeiro passo e mapear os riscos reais, antes de correr para preencher checklist.",
+    "",
+    "HITL: nada foi enviado ou publicado.",
+    "Memoria AIOS: nao registrado como Artifact por padrao.",
+    "Para promover: /aios promover briefing [motivo].",
+  ];
+  const briefingContent = briefingLines.join("\n");
+  return {
+    responseText: briefingContent,
+    briefingContent,
+    segment,
+    guidanceId: guidance?.id ?? null,
+  };
+}
+
+function normalizeMarketingFeedbackStatus(text: string | null | undefined): {
+  feedbackStatus: GuidanceFeedbackStatus;
+  humanReviewStatus: ReviewStatus;
+  label: string;
+} {
+  const normalized = normalizeOperatingPackMatchText(text ?? "");
+  if (/\b(?:rejeitado|rejeitar|recusado|nao aprovado|nao usar|ruim)\b/.test(normalized)) {
+    return { feedbackStatus: "rejected", humanReviewStatus: "rejected", label: "rejected" };
+  }
+  if (/\b(?:feito|executado|concluido|concluida|usei|publicado|enviado)\b/.test(normalized)) {
+    return { feedbackStatus: "completed", humanReviewStatus: "approved", label: "completed" };
+  }
+  if (/\b(?:ajustar|ajuste|corrigir|melhorar|revisar)\b/.test(normalized)) {
+    return { feedbackStatus: "pending", humanReviewStatus: "needs_review", label: "needs-review" };
+  }
+  if (/\b(?:aprovado|aprovei|aceito|ok|bom|vou usar|valido)\b/.test(normalized)) {
+    return { feedbackStatus: "accepted", humanReviewStatus: "approved", label: "accepted" };
+  }
+  return { feedbackStatus: "pending", humanReviewStatus: "pending", label: "pending" };
+}
+
+function ensureOperatingPackSource(
+  sourceId: string | null | undefined,
+  timestamp: number,
+  visibility: Visibility
+): string {
+  const db = getDb();
+  const preferredSourceId = sourceId?.trim() || TELEGRAM_BOT_GATEWAY_SOURCE_ID;
+  const existing = db.select().from(cbSources).where(eq(cbSources.id, preferredSourceId)).get();
+  if (existing) return existing.id;
+
+  db.insert(cbSources)
+    .values({
+      id: preferredSourceId,
+      name: preferredSourceId === TELEGRAM_BOT_GATEWAY_SOURCE_ID
+        ? "Telegram Bot Gateway"
+        : `Operating Pack Source ${preferredSourceId}`,
+      sourceType: "runtime",
+      area: "marketing",
+      externalRef: preferredSourceId === TELEGRAM_BOT_GATEWAY_SOURCE_ID
+        ? "telegram://aios-bots"
+        : `aios://operating-pack-sources/${preferredSourceId}`,
+      status: "active",
+      healthStatus: "healthy",
+      owner: "Felhen",
+      ownerType: "team",
+      visibility,
+      lastSyncAt: timestamp,
+      syncError: null,
+      metadata: {
+        createdBy: "company_brain:operating_pack_runner",
+        sourceRole: "gateway",
+      },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    .run();
+  return preferredSourceId;
+}
+
+function createOperatingPackArtifact(args: {
+  sourceId: string;
+  artifactType: string;
+  area: CompanyBrainArea;
+  title: string;
+  summary: string;
+  rawRef: string;
+  author: string | null;
+  visibility: Visibility;
+  humanReviewStatus: ReviewStatus;
+  confidence: number;
+  metadata: Record<string, unknown>;
+  timestamp: number;
+}): CompanyBrainOperatingPackArtifactRef {
+  const db = getDb();
+  const source = db.select().from(cbSources).where(eq(cbSources.id, args.sourceId)).get();
+  if (!source) throw new Error("sourceId not found");
+
+  const artifactName = String(args.metadata.artifactName ?? args.title);
+  const semanticKey = String(args.metadata.semanticKey ?? artifactName);
+  const row = {
+    id: nanoid(12),
+    sourceId: args.sourceId,
+    artifactType: args.artifactType,
+    area: args.area,
+    title: args.title,
+    summary: args.summary,
+    contentRef: null,
+    rawRef: args.rawRef,
+    author: args.author,
+    occurredAt: args.timestamp,
+    ingestedAt: args.timestamp,
+    hash: stableHash(`${args.sourceId}:${args.rawRef}:${args.title}:${args.summary}`),
+    visibility: args.visibility,
+    provenance: {
+      sourceId: args.sourceId,
+      rawRef: args.rawRef,
+      createdFrom: "company_brain:operating_pack_runner",
+      confidence: args.confidence,
+      extractedAt: args.timestamp,
+      humanReviewStatus: args.humanReviewStatus,
+      visibility: args.visibility,
+      retentionPolicy: "ephemeral_by_default_promoted_by_human",
+      notes: `artifactName=${artifactName}; semanticKey=${semanticKey}`,
+    },
+    humanReviewStatus: args.humanReviewStatus,
+    confidence: args.confidence,
+    metadata: args.metadata,
+  };
+  db.insert(cbArtifacts).values(row as never).run();
+  return {
+    id: row.id,
+    artifactType: row.artifactType,
+    title: row.title,
+    rawRef: row.rawRef,
+    artifactName,
+    semanticKey,
+  };
+}
+
+function buildOperatingPackResponse(args: {
+  timestamp: number;
+  request: RunCompanyBrainOperatingPackRequest;
+  router: CompanyBrainCommandRouterResult;
+  handled: boolean;
+  packSlug: CompanyBrainOperatingPackSlug | null;
+  action: CompanyBrainOperatingPackAction;
+  responseText: string;
+  memoryPolicy: CompanyBrainOperatingPackMemoryPolicy;
+  promotedArtifact?: CompanyBrainOperatingPackArtifactRef | null;
+  feedbackArtifact?: CompanyBrainOperatingPackArtifactRef | null;
+  guidanceUpdated?: { id: string; feedbackStatus: GuidanceFeedbackStatus } | null;
+  suggestedCommands?: string[];
+}): CompanyBrainOperatingPackRunResponse {
+  return {
+    generatedAt: args.timestamp,
+    handled: args.handled,
+    packSlug: args.packSlug ?? undefined,
+    action: args.action,
+    request: args.request,
+    router: args.router,
+    responseText: args.responseText,
+    memoryPolicy: args.memoryPolicy,
+    noExternalAction: true,
+    promotedArtifact: args.promotedArtifact ?? null,
+    feedbackArtifact: args.feedbackArtifact ?? null,
+    guidanceUpdated: args.guidanceUpdated ?? null,
+    suggestedCommands: args.suggestedCommands ?? [],
+  };
+}
+
+function runMarketingNr1OperatingPack(args: {
+  request: RunCompanyBrainOperatingPackRequest;
+  router: CompanyBrainCommandRouterResult;
+  action: CompanyBrainOperatingPackAction;
+  timestamp: number;
+}): CompanyBrainOperatingPackRunResponse {
+  const { request, router, action, timestamp } = args;
+  const visibility = request.visibility ?? "internal";
+  const actor = request.actor ?? "telegram";
+  const guidance = getMarketingNr1Guidance();
+  const briefing = buildMarketingNr1BriefingText(request, guidance);
+  const sourceId = ensureOperatingPackSource(request.sourceId ?? null, timestamp, visibility);
+
+  if (action === "feedback") {
+    const note = request.feedbackNote ?? request.text;
+    const targetArtifactId = request.targetArtifactId?.trim();
+    const feedback = normalizeMarketingFeedbackStatus(request.feedbackStatus ?? note);
+    if (!targetArtifactId) {
+      return buildOperatingPackResponse({
+        timestamp,
+        request,
+        router,
+        handled: true,
+        packSlug: "marketing.nr1",
+        action,
+        responseText: [
+          "Feedback HITL nao registrado.",
+          "Falta o artifact tecnico do briefing promovido.",
+          "Use /aios feedback <artifactId> aprovado|rejeitado|executado [nota].",
+          "Nenhum envio externo foi executado.",
+        ].join("\n"),
+        memoryPolicy: "promote_required",
+        suggestedCommands: ["/aios feedback <artifactId> aprovado [nota]"],
+      });
+    }
+
+    const identity = buildMarketingNr1FeedbackIdentity(
+      targetArtifactId,
+      feedback.feedbackStatus,
+      timestamp
+    );
+    let feedbackArtifact: CompanyBrainOperatingPackArtifactRef | null = null;
+    let guidanceUpdated: { id: string; feedbackStatus: GuidanceFeedbackStatus } | null = null;
+    if (request.dryRun !== true) {
+      feedbackArtifact = createOperatingPackArtifact({
+        sourceId,
+        artifactType: "marketing_feedback",
+        area: "marketing",
+        title: `Marketing NR-1 feedback - ${feedback.label}`,
+        summary: `Feedback HITL para briefing ${targetArtifactId}: ${note}`,
+        rawRef: identity.rawRef,
+        author: actor,
+        visibility,
+        humanReviewStatus: feedback.humanReviewStatus,
+        confidence: 1,
+        metadata: {
+          packSlug: "marketing.nr1",
+          action: "feedback",
+          artifactName: identity.artifactName,
+          semanticKey: identity.semanticKey,
+          namingScheme: "operating-pack-semantic-v1",
+          targetArtifactId,
+          feedbackStatus: feedback.feedbackStatus,
+          feedbackNote: note,
+          sourceChannel: request.channel ?? null,
+        },
+        timestamp,
+      });
+
+      if (guidance) {
+        const nextStatus =
+          feedback.feedbackStatus === "completed"
+            ? "done"
+            : feedback.feedbackStatus === "accepted"
+              ? "accepted"
+              : guidance.status;
+        getDb()
+          .update(cbGuidanceItems)
+          .set({
+            status: nextStatus,
+            feedbackStatus: feedback.feedbackStatus,
+            feedbackNote: note,
+            feedbackAt: timestamp,
+            updatedAt: timestamp,
+          })
+          .where(eq(cbGuidanceItems.id, guidance.id))
+          .run();
+        guidanceUpdated = {
+          id: guidance.id,
+          feedbackStatus: feedback.feedbackStatus,
+        };
+      }
+    }
+
+    return buildOperatingPackResponse({
+      timestamp,
+      request,
+      router,
+      handled: true,
+      packSlug: "marketing.nr1",
+      action,
+      responseText: [
+        request.dryRun === true ? "Feedback HITL preview" : "Feedback HITL registrado",
+        `Briefing: ${targetArtifactId}`,
+        `Status: ${feedback.feedbackStatus}`,
+        `Nota: ${note}`,
+        feedbackArtifact ? `Artifact feedback: ${feedbackArtifact.id}` : null,
+        feedbackArtifact ? `Nome: ${feedbackArtifact.artifactName}` : null,
+        guidanceUpdated ? `Guidance atualizada: ${guidanceUpdated.id} (${guidanceUpdated.feedbackStatus})` : null,
+        "Nenhum envio externo foi executado.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      memoryPolicy: request.dryRun === true ? "promote_required" : "promoted",
+      feedbackArtifact,
+      guidanceUpdated,
+      suggestedCommands: ["/aios briefing marketing nr-1"],
+    });
+  }
+
+  if (action === "promote") {
+    const identity = buildMarketingNr1BriefingIdentity(briefing.segment, timestamp);
+    let promotedArtifact: CompanyBrainOperatingPackArtifactRef | null = null;
+    if (request.dryRun !== true) {
+      promotedArtifact = createOperatingPackArtifact({
+        sourceId,
+        artifactType: "marketing_briefing",
+        area: "marketing",
+        title: `Marketing NR-1 briefing - ${briefing.segment}`,
+        summary: briefing.briefingContent,
+        rawRef: identity.rawRef,
+        author: actor,
+        visibility,
+        humanReviewStatus: "approved",
+        confidence: router.classification.confidence,
+        metadata: {
+          packSlug: "marketing.nr1",
+          action: "promote",
+          artifactName: identity.artifactName,
+          semanticKey: identity.semanticKey,
+          namingScheme: "operating-pack-semantic-v1",
+          segment: briefing.segment,
+          guidanceId: briefing.guidanceId,
+          promoteReason: request.promoteReason ?? null,
+          sourceChannel: request.channel ?? null,
+          memoryPolicy: "promoted_by_human",
+        },
+        timestamp,
+      });
+    }
+
+    return buildOperatingPackResponse({
+      timestamp,
+      request,
+      router,
+      handled: true,
+      packSlug: "marketing.nr1",
+      action,
+      responseText: [
+        request.dryRun === true
+          ? "Promocao AIOS preview"
+          : "Briefing promovido para memoria AIOS",
+        promotedArtifact ? `Nome: ${promotedArtifact.artifactName}` : `Nome: ${identity.artifactName}`,
+        promotedArtifact ? `ID tecnico: ${promotedArtifact.id}` : "ID tecnico: preview",
+        `Ref: ${identity.rawRef}`,
+        request.promoteReason ? `Motivo: ${request.promoteReason}` : null,
+        "Politica: este briefing foi persistido somente por comando explicito.",
+        "Nenhum envio externo foi executado.",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      memoryPolicy: request.dryRun === true ? "promote_required" : "promoted",
+      promotedArtifact,
+      suggestedCommands: promotedArtifact
+        ? [`/aios feedback ${promotedArtifact.id} aprovado [nota]`]
+        : ["/aios promover briefing [motivo]"],
+    });
+  }
+
+  return buildOperatingPackResponse({
+    timestamp,
+    request,
+    router,
+    handled: true,
+    packSlug: "marketing.nr1",
+    action,
+    responseText: briefing.responseText,
+    memoryPolicy: "ephemeral",
+    suggestedCommands: ["/aios promover briefing [motivo]"],
+  });
+}
+
+app.post("/operating-packs/run", async (c) => {
+  try {
+    const body = (await c.req
+      .json<RunCompanyBrainOperatingPackRequest>()
+      .catch(() => ({ text: "" } as RunCompanyBrainOperatingPackRequest))) as RunCompanyBrainOperatingPackRequest;
+    if (!body.text || !body.text.trim()) {
+      return c.json({ error: "validation", message: "text is required" }, 400);
+    }
+
+    const timestamp = now();
+    const action = inferOperatingPackAction(body);
+    const preliminaryPackSlug =
+      body.packSlug ??
+      (shouldRouteToMarketingNr1Pack(body.text) || action !== "run" ? "marketing.nr1" : null);
+    const router = buildOperatingPackRouterResult(body, timestamp, preliminaryPackSlug);
+    const request: RunCompanyBrainOperatingPackRequest = {
+      ...body,
+      action,
+      packSlug: preliminaryPackSlug ?? body.packSlug,
+      text: body.text.trim(),
+      visibility: body.visibility ?? "internal",
+    };
+    const packSlug = inferOperatingPackSlug(request, router) ?? preliminaryPackSlug;
+
+    if (packSlug === "marketing.nr1") {
+      const result = runMarketingNr1OperatingPack({
+        request,
+        router,
+        action,
+        timestamp,
+      });
+      return c.json({ data: result });
+    }
+
+    const result = buildOperatingPackResponse({
+      timestamp,
+      request,
+      router,
+      handled: false,
+      packSlug: null,
+      action,
+      responseText: formatCommandRouterPreview(router),
+      memoryPolicy: "ephemeral",
+      suggestedCommands: [],
+    });
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "operating_pack_run_failed", message }, 400);
   }
 });
 
