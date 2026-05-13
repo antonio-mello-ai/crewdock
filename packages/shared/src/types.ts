@@ -4279,6 +4279,44 @@ export interface CompanyBrainOperatingPackRunResponse {
   suggestedCommands?: string[];
 }
 
+export type CompanyBrainOperationalSkillSlug = "operations.pulso_dags";
+export type CompanyBrainAgentRouteExecutionMode =
+  | "agent_fallback"
+  | "blocked"
+  | "preview_only";
+
+export interface ResolveCompanyBrainAgentRouteRequest {
+  text: string;
+  actor?: string | null;
+  channel?: string | null;
+  sourceId?: string | null;
+  area?: CompanyBrainArea;
+  visibility?: Visibility;
+}
+
+export interface CompanyBrainOperationalSkillRef {
+  slug: CompanyBrainOperationalSkillSlug;
+  title: string;
+  area: CompanyBrainArea;
+  docsPath: string;
+  summary: string;
+  memoryPolicy: CompanyBrainOperatingPackMemoryPolicy;
+}
+
+export interface CompanyBrainAgentRouteResponse {
+  generatedAt: number;
+  request: ResolveCompanyBrainAgentRouteRequest;
+  router: CompanyBrainCommandRouterResult;
+  executionMode: CompanyBrainAgentRouteExecutionMode;
+  decision: "route_to_agent" | "blocked" | "preview_only";
+  executionCwd?: string | null;
+  skill?: CompanyBrainOperationalSkillRef | null;
+  prompt?: string | null;
+  responseText: string;
+  noExternalAction: boolean;
+  rationale: string[];
+}
+
 export type CompanyOperatingMapAreaSlug =
   | "strategy"
   | "development"

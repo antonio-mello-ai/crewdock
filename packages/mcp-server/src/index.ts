@@ -2606,6 +2606,47 @@ server.registerTool(
 );
 
 server.registerTool(
+  "resolve_company_brain_agent_route",
+  {
+    title: "Resolve Company Brain agent route",
+    description:
+      "Resolve a natural-language request into an AIOS-governed agent fallback route shared by Telegram and MCP clients. Returns the command-router classification, matched operational skill when available, execution cwd, generated prompt, no-external-action policy and rationale. Risk C requests are blocked before any agent fallback.",
+    inputSchema: {
+      text: z.string().min(1),
+      actor: z.string().optional(),
+      channel: z.string().optional(),
+      sourceId: z.string().optional(),
+      area: z
+        .enum([
+          "strategy",
+          "development",
+          "operations",
+          "product",
+          "marketing",
+          "sales",
+          "finance",
+          "people",
+          "customer",
+          "platform",
+          "unknown",
+        ])
+        .optional(),
+      visibility: z.enum(["public", "internal", "restricted"]).optional(),
+    },
+  },
+  async (params) => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/agent-routing/resolve",
+      {
+        method: "POST",
+        body: JSON.stringify(params),
+      }
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "get_company_brain_workflow_definition",
   {
     title: "Get Company Brain workflow definition",

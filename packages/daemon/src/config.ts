@@ -96,6 +96,17 @@ export const config = {
       "production:company-brain-operating-loop"
     ),
   },
+
+  companyBrainAgentRouting: {
+    pulsoBackendCwd: env(
+      "AIOS_AGENT_ROUTE_PULSO_BACKEND_CWD",
+      "/mnt/felhencloud/projetos/marketplace_data_intelligence/pulsoonline-backend"
+    ),
+    projectsCwd: env("AIOS_AGENT_ROUTE_PROJECTS_CWD", "/mnt/felhencloud/projetos"),
+    marketingCwd: env("AIOS_AGENT_ROUTE_MARKETING_CWD", "/mnt/felhencloud/projetos/marketing"),
+    corpCwd: env("AIOS_AGENT_ROUTE_CORP_CWD", "/mnt/felhencloud/corp"),
+    runtimeCwd: env("AIOS_AGENT_ROUTE_RUNTIME_CWD", "/home/claude/aios-runtime"),
+  },
 } as const;
 
 // Fail-fast validation: refuse to boot with unsafe config in production.
