@@ -10,7 +10,7 @@ O estado atual confirma uma inversao operacional:
 - Tres bots Telegram legados estao ativos no CT165.
 - O unico timer de negocio ativo no CT165 e `import-trading-scoring.timer`, ligado a um projeto pausado, e o servico correspondente esta falhando.
 - Os timers que ja tiveram valor operacional direto - Pulso data quality/DAGs, open source patrol/scout, self-evolve report, infra healthcheck, comment sentinel - estao desabilitados.
-- Os bots Telegram ativos ainda sao wrappers diretos de `claude -p`, nao uma camada AIOS: nao ha voice/transcription, command router, registro de artifact/signal/guidance, gates de writeback ou provenance no Company Brain.
+- Os bots Telegram ativos ainda usam `claude -p` como executor, mas o comando `/aios` ja esta migrando para Company Brain: Command Router, Operating Pack Runner e, no proximo corte, Agent Routing Resolver compartilhado.
 - Marketing e go-to-market sao hoje a frente com maior valor de curto prazo: Spa da Vida Ads esta documentado como ativo, Spa da Vida NR-1 tem playbook de outreach pronto e janela operacional curta, mas esses fluxos ainda nao estao integrados a timers, watchers, Telegram ou Company Brain.
 
 Conclusao pratica: o AIOS robusto deve continuar sendo a fonte de verdade, mas o proximo valor vem de transformar as automacoes existentes em "Operating Packs" pequenos, com Telegram como canal e Company Brain como registro/auditoria. O primeiro pack recomendado e Marketing/Spa da Vida NR-1, antes de reativar automacoes menos urgentes.
@@ -109,7 +109,7 @@ O script atual:
 - devolve uma previa editando a mensagem "Processando...";
 - chama o Company Brain Command Router ou o Operating Pack Runner apenas no comando `/aios`;
 - para pedidos de briefing de marketing/NR-1, deve chamar o pack `marketing.nr1` no daemon e renderizar `responseText`;
-- quando nao ha pack reconhecido e o router nao marca Risk C, encaminha o pedido para o agente/Claude CLI no `CLAUDE_CWD` do service atual;
+- quando nao ha pack reconhecido e o router nao marca Risk C, deve chamar `POST /api/company-brain/agent-routing/resolve` e encaminhar para o agente/Claude CLI usando o cwd e prompt resolvidos pelo AIOS;
 - nao registra briefing sob demanda como artifact por default; usa `/aios promover briefing [motivo]` para promover memoria estrategica;
 - aceita feedback HITL para briefing de marketing via `/aios feedback ...` somente quando houver artifact promovido ou `artifactId` explicito, registrando artifact `marketing_feedback` e atualizando a guidance de marketing;
 - fora do briefing de marketing, ainda nao cria `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal` automaticamente;
@@ -141,6 +141,13 @@ Correcao de cwd posterior em 2026-05-13:
 - hash do script vivo: `da969e142800b2759b067c2f842a8c2d5186bd8dc93e6c04987e20d2fb93897e`;
 - backup anterior: `/home/claude/telegram-bot.py.bak-20260513-routed-cwd-f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`;
 - teste sem executar Claude real: DAGs/Pulso resolveu o fallback para `pulsoonline-backend`, marketing continuou no pack e Risk C continuou preview-only.
+
+Evolucao atual deste corte:
+
+- a skill AIOS `operations.pulso_dags` foi documentada em `docs/action/aios-operations-pulso-dags-pack-v0-2026-05-13.md`;
+- o daemon passa a resolver skill, cwd e prompt em `POST /api/company-brain/agent-routing/resolve`;
+- o MCP tambem expoe `resolve_company_brain_agent_route`, para que Codex/outros agentes usem a mesma decisao do Telegram;
+- o bot deve parar de manter roteamento hardcoded por keywords locais e consumir o resolver do AIOS.
 
 ## AIOS Company Brain - estado vivo
 

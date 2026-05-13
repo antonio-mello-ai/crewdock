@@ -161,12 +161,15 @@ import type {
   CommandRouterRouting,
   CommandRouterTargetKind,
   RouteCompanyBrainCommandRequest,
+  CompanyBrainAgentRouteResponse,
   CompanyBrainOperatingPackAction,
   CompanyBrainOperatingPackArtifactRef,
   CompanyBrainOperatingPackMemoryPolicy,
   CompanyBrainOperatingPackRunResponse,
   CompanyBrainOperatingPackSlug,
+  CompanyBrainOperationalSkillRef,
   RunCompanyBrainOperatingPackRequest,
+  ResolveCompanyBrainAgentRouteRequest,
   GuidanceItem,
   Signal,
   CompanyBrainOperatingCadence,
@@ -23596,6 +23599,245 @@ app.post("/operating-packs/run", async (c) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "operating_pack_run_failed", message }, 400);
+  }
+});
+
+const PULSO_DAGS_SKILL_DOCS_PATH =
+  "docs/action/aios-operations-pulso-dags-pack-v0-2026-05-13.md";
+
+const PULSO_DAGS_SKILL: CompanyBrainOperationalSkillRef = {
+  slug: "operations.pulso_dags",
+  title: "PulsoOnline DAG health check",
+  area: "operations",
+  docsPath: PULSO_DAGS_SKILL_DOCS_PATH,
+  summary:
+    "Read-only Airflow DAG health triage for PulsoOnline: classify scheduled runs, structural failures, output freshness and next HITL actions.",
+  memoryPolicy: "ephemeral",
+};
+
+function shouldRouteToPulsoDagsSkill(text: string): boolean {
+  const normalized = normalizeOperatingPackMatchText(text);
+  return (
+    /\b(?:dag|dags|deg|degs|airflow|etl|pipeline|pipelines|job|jobs)\b/.test(normalized) ||
+    /dag_run|data quality|qualidade de dados|raw to silver|raw\/silver|mysql raw|clickhouse/.test(normalized)
+  );
+}
+
+function buildAgentRouteRouterResult(
+  request: ResolveCompanyBrainAgentRouteRequest,
+  timestamp: number,
+  preliminarySkill: CompanyBrainOperationalSkillRef | null
+): CompanyBrainCommandRouterResult {
+  const routerRequest: RouteCompanyBrainCommandRequest = {
+    text: request.text,
+    area: request.area ?? preliminarySkill?.area,
+    actor: request.actor ?? null,
+    visibility: request.visibility ?? "internal",
+    dryRun: true,
+  };
+  const classification = buildCommandRouterClassification(routerRequest);
+  const routing = executeCommandRouterClassification(routerRequest, classification, timestamp);
+  return {
+    generatedAt: timestamp,
+    request: routerRequest,
+    classification,
+    routing,
+  };
+}
+
+function resolveAgentRouteSkill(
+  request: ResolveCompanyBrainAgentRouteRequest,
+  router: CompanyBrainCommandRouterResult
+): CompanyBrainOperationalSkillRef | null {
+  if (shouldRouteToPulsoDagsSkill(request.text)) return PULSO_DAGS_SKILL;
+  if (
+    router.classification.area === "operations" &&
+    /pulso|airflow|dag|pipeline|data quality/i.test(request.text)
+  ) {
+    return PULSO_DAGS_SKILL;
+  }
+  return null;
+}
+
+function resolveAgentRouteCwd(
+  router: CompanyBrainCommandRouterResult,
+  skill: CompanyBrainOperationalSkillRef | null
+): string {
+  if (skill?.slug === "operations.pulso_dags") {
+    return config.companyBrainAgentRouting.pulsoBackendCwd;
+  }
+
+  switch (router.classification.area) {
+    case "marketing":
+      return config.companyBrainAgentRouting.marketingCwd;
+    case "strategy":
+    case "sales":
+    case "finance":
+    case "people":
+      return config.companyBrainAgentRouting.corpCwd;
+    case "platform":
+      return config.companyBrainAgentRouting.runtimeCwd;
+    case "development":
+    case "operations":
+    case "product":
+    case "customer":
+    case "unknown":
+    default:
+      return config.companyBrainAgentRouting.projectsCwd;
+  }
+}
+
+function buildAgentRoutePrompt(args: {
+  request: ResolveCompanyBrainAgentRouteRequest;
+  router: CompanyBrainCommandRouterResult;
+  skill: CompanyBrainOperationalSkillRef | null;
+  executionCwd: string;
+}): string {
+  const { request, router, skill, executionCwd } = args;
+  const header = [
+    "AIOS routed agent request",
+    `Channel: ${request.channel ?? "unknown"}`,
+    `Actor: ${request.actor ?? "unknown"}`,
+    `Area: ${router.classification.area}`,
+    `Intent: ${router.classification.intentKind}`,
+    `Risk: ${router.classification.riskClass}`,
+    `Execution cwd: ${executionCwd}`,
+  ];
+
+  const commonRules = [
+    "AIOS rules:",
+    "1. Treat this as an AIOS-governed request regardless of the channel that delivered it.",
+    "2. Read local AGENTS.md and relevant docs/skills before acting when the checkout has them.",
+    "3. Start read-only. Do not perform external sends, destructive actions, deploys, restarts, reruns, retries, unpauses or writes unless the user explicitly asked for that action and HITL is clear.",
+    "4. Keep temporary operational output ephemeral. Persist to Company Brain only for strategic learning, incident evidence, repeated failure, accepted guidance or explicit user promotion.",
+    "5. Return a concise operational answer with evidence, impact, recommended next action and any HITL needed.",
+  ];
+
+  const skillRules =
+    skill?.slug === "operations.pulso_dags"
+      ? [
+          "",
+          "Operational skill: operations.pulso_dags",
+          `Skill docs: ${skill.docsPath}`,
+          "Pulso local skill to reuse when present: .claude/skills/dag-check.md",
+          "Pulso DAG rules:",
+          "1. Verify scheduled DAG health using the Pulso checkout context, Airflow metadata/API and docs/architecture/etl-flow.md.",
+          "2. Separate execution status, structural timeout/error, output freshness/volume and customer impact.",
+          "3. Classify active DAGs into mutually exclusive categories: ran ok, failed, outside schedule, anomaly. Do not report generic success ratios that include DAGs outside today's schedule.",
+          "4. If failures have later successful reruns, report them as historical noise unless there is remaining business impact.",
+          "5. List corrective actions only. Do not rerun, restart, unpause or backfill unless the user explicitly asks.",
+          "6. Keep the Telegram answer under 4000 characters when possible.",
+        ]
+      : [];
+
+  return [
+    ...header,
+    "",
+    ...commonRules,
+    ...skillRules,
+    "",
+    "Original request:",
+    request.text.trim(),
+  ].join("\n");
+}
+
+function buildAgentRouteResponse(args: {
+  timestamp: number;
+  request: ResolveCompanyBrainAgentRouteRequest;
+  router: CompanyBrainCommandRouterResult;
+  skill: CompanyBrainOperationalSkillRef | null;
+  executionCwd: string;
+}): CompanyBrainAgentRouteResponse {
+  const { timestamp, request, router, skill, executionCwd } = args;
+  const cwdExists = existsSync(executionCwd);
+  const rationale = [
+    `Router classified area=${router.classification.area}, intent=${router.classification.intentKind}, target=${router.classification.targetKind}, risk=${router.classification.riskClass}.`,
+    skill
+      ? `Matched operational skill ${skill.slug}; channel is only transport.`
+      : "No operational skill matched; routing to area default executor.",
+    cwdExists
+      ? `Execution cwd exists: ${executionCwd}.`
+      : `Execution cwd configured but not present from daemon host view: ${executionCwd}.`,
+  ];
+
+  if (router.classification.riskClass === "C") {
+    return {
+      generatedAt: timestamp,
+      request,
+      router,
+      executionMode: "blocked",
+      decision: "blocked",
+      executionCwd: null,
+      skill,
+      prompt: null,
+      responseText: formatCommandRouterPreview(router),
+      noExternalAction: true,
+      rationale: [
+        ...rationale,
+        "Risk C is blocked before any agent fallback.",
+      ],
+    };
+  }
+
+  const prompt = buildAgentRoutePrompt({
+    request,
+    router,
+    skill,
+    executionCwd,
+  });
+
+  return {
+    generatedAt: timestamp,
+    request,
+    router,
+    executionMode: "agent_fallback",
+    decision: "route_to_agent",
+    executionCwd,
+    skill,
+    prompt,
+    responseText: [
+      "AIOS agent route",
+      skill ? `Skill: ${skill.slug}` : `Area: ${router.classification.area}`,
+      `Executor cwd: ${executionCwd}`,
+      `Risk: ${router.classification.riskClass} | confianca: ${router.classification.confidence.toFixed(2)}`,
+      "Politica: canal e transporte; skill e regras vivem no AIOS.",
+      "HITL: nenhuma acao externa foi executada pelo router.",
+    ].join("\n"),
+    noExternalAction: true,
+    rationale,
+  };
+}
+
+app.post("/agent-routing/resolve", async (c) => {
+  try {
+    const body = (await c.req
+      .json<ResolveCompanyBrainAgentRouteRequest>()
+      .catch(() => ({ text: "" } as ResolveCompanyBrainAgentRouteRequest))) as ResolveCompanyBrainAgentRouteRequest;
+    if (!body.text || !body.text.trim()) {
+      return c.json({ error: "validation", message: "text is required" }, 400);
+    }
+
+    const timestamp = now();
+    const request: ResolveCompanyBrainAgentRouteRequest = {
+      ...body,
+      text: body.text.trim(),
+      visibility: body.visibility ?? "internal",
+    };
+    const preliminarySkill = shouldRouteToPulsoDagsSkill(request.text) ? PULSO_DAGS_SKILL : null;
+    const router = buildAgentRouteRouterResult(request, timestamp, preliminarySkill);
+    const skill = resolveAgentRouteSkill(request, router);
+    const executionCwd = resolveAgentRouteCwd(router, skill);
+    const result = buildAgentRouteResponse({
+      timestamp,
+      request,
+      router,
+      skill,
+      executionCwd,
+    });
+    return c.json({ data: result });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return c.json({ error: "agent_route_resolve_failed", message }, 400);
   }
 });
 
