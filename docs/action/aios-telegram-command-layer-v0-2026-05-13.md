@@ -149,6 +149,8 @@ Aceite:
 - responde no Telegram com ID criado;
 - Risk B continua preview/proposal, Risk C bloqueado.
 
+Nota: MKT-02 nao habilita `/aios commit`. Ele habilita somente feedback HITL interno sobre artifacts de briefing. Mutacao externa e criacao generica de WorkItem/Guidance continuam fora do Telegram.
+
 ### TGM-03 - Primeiros handlers de pack
 
 Adicionar handlers pequenos que nao reinventam agente:
@@ -179,10 +181,18 @@ Implementacao:
 - Evolucao MKT-01 aplicada depois do teste real: o mesmo handler agora entrega briefing concreto com segmento escolhido, 3 prioridades, 12 acoes, abordagem para contabilidade e draft de post para Thais.
 - Artifact `yUH1XkSwX39y`: `Telegram MKT-01 concrete NR-1 briefing enabled`.
 - Hash depois da evolucao MKT-01: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
+- Evolucao de persistencia aplicada depois: cada briefing gerado pelo Telegram cria artifact `marketing_briefing` no Company Brain e o bot retorna `Artifact Company Brain: <id>`.
+- Artifact de briefing criado no teste: `P-_bdA_S62wd`.
+- Hash depois da persistencia por briefing: `71e5b83272f54608dc3983e79c02c1a8a1808069188586225560841ddb39cbfb`.
+- Evolucao MKT-02 aplicada depois: `/aios feedback ...` cria artifact `marketing_feedback`, vincula ao ultimo briefing do chat ou a um `artifactId` explicito, e atualiza a guidance `R6adR2HkGBq0` com o ultimo feedback.
+- Artifacts de feedback criados nos testes: `dBjxo7uM3YAb`, `V0moQ9W81eR7`, `5XdLZVSN26Lz`.
+- Hash depois do feedback HITL: `42cf8c833be77f9d72400e29d297415cb7c15fd57dfc5b44672a2eb2359c6deb`.
 
 Teste executado:
 
 - `me da o briefing de marketing de hoje` retornou `Briefing de marketing (AIOS preview)`, foco Spa da Vida Empresas/NR-1, guidance `R6adR2HkGBq0`, 3 prioridades, 12 acoes, abordagem para contabilidade e draft de post para Thais.
+- O teste seguinte retornou `Briefing de marketing (AIOS HITL)` e registrou artifact `P-_bdA_S62wd`.
+- `feedback P-_bdA_S62wd aprovado usei o briefing como base` criou artifact `5XdLZVSN26Lz` e atualizou `R6adR2HkGBq0` para `feedbackStatus=accepted`.
 - `tem algum repo com problema?` continuou no preview tecnico generico do router.
 
 ### TGM-04 - Voz

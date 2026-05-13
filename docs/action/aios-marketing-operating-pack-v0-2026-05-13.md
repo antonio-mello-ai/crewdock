@@ -175,7 +175,7 @@ Criar endpoint/MCP ou script interno que gera o briefing de NR-1 a partir dos do
 Aceite:
 
 - Telegram ou Codex consegue pedir "briefing de NR-1". Concluido via `/aios me da o briefing de marketing de hoje` no bot Telegram.
-- Output cria `Artifact` + `GuidanceItem`. Parcialmente concluido: usa guidance existente `R6adR2HkGBq0` e registra artifact `yUH1XkSwX39y`; ainda nao cria nova guidance por briefing.
+- Output cria `Artifact` + `GuidanceItem`. Parcialmente concluido: usa guidance existente `R6adR2HkGBq0` e agora registra um artifact `marketing_briefing` a cada briefing gerado; ainda nao cria nova guidance por briefing.
 - O briefing traz no maximo 3 prioridades e 10-20 acoes, para ser executavel. Concluido com 3 prioridades e 12 acoes.
 
 Status em 2026-05-13: primeira versao manual concluida live no CT165 via Telegram Command Layer.
@@ -187,9 +187,18 @@ Implementacao:
 - Output inclui 3 prioridades, 12 acoes executaveis, abordagem para contabilidade e draft de post para Thais.
 - O fluxo continua `dryRun=true` e HITL: nao envia mensagem, nao publica post e nao cria WorkItem automaticamente.
 - Artifact `yUH1XkSwX39y`: `Telegram MKT-01 concrete NR-1 briefing enabled`.
+- Artifact de briefing gerado no teste live: `P-_bdA_S62wd` (`artifactType=marketing_briefing`).
 - Backup do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt01-concrete-04bba66f`.
 - Hash do script antes: `04bba66f86377fa29f60e02fa057eb86be79dca9194519e3983217e6093cadd3`.
 - Hash do script depois: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
+
+Evolucao posterior em 2026-05-13:
+
+- Cada briefing gerado pelo Telegram agora cria `POST /api/company-brain/artifacts` com `sourceId=S0m6x7yd29Kj`, `artifactType=marketing_briefing`, `area=marketing`, `humanReviewStatus=pending` e metadata com `requestText`, `segment`, `guidanceId`, `responseLength`, `hitlStatus=pending` e `routerDryRun=true`.
+- O bot inclui `Artifact Company Brain: <id>` na resposta para permitir feedback e rastreabilidade.
+- Backup do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt01-artifact-87f2913d`.
+- Hash do script antes: `87f2913d6125a8a9d6ad097eea332462a865496f18f2fe4ab2eee804eaaf652e`.
+- Hash do script depois: `71e5b83272f54608dc3983e79c02c1a8a1808069188586225560841ddb39cbfb`.
 
 ### MKT-02 - Telegram HITL
 
@@ -197,9 +206,27 @@ Conectar output do briefing ao Telegram.
 
 Aceite:
 
-- Antonio recebe resumo no Telegram.
-- Aprovacao/rejeicao gera feedback no `GuidanceItem`.
-- Nenhum envio externo automatico acontece.
+- Antonio recebe resumo no Telegram. Concluido no MKT-01 via `/aios me da o briefing de marketing de hoje`.
+- Aprovacao/rejeicao gera feedback no `GuidanceItem`. Concluido via `/aios feedback ...`: cria artifact `marketing_feedback` e atualiza a guidance `R6adR2HkGBq0` com `feedbackStatus`/`feedbackNote`.
+- Nenhum envio externo automatico acontece. Concluido.
+
+Status em 2026-05-13: primeira versao HITL concluida live no CT165.
+
+Comandos:
+
+- `/aios feedback aprovado [nota]` usa o ultimo briefing gerado naquele chat.
+- `/aios feedback feito [nota]` registra feedback `completed`.
+- `/aios feedback rejeitado [nota]` registra feedback `rejected`.
+- `/aios feedback ajustar [nota]` registra feedback `needs_adjustment`.
+- `/aios feedback <artifactId> <status> [nota]` registra feedback em um briefing explicito, util apos restart do bot.
+
+Evidencia live:
+
+- Artifact feedback `dBjxo7uM3YAb`: feedback `aprovado` para briefing `BXk6avkp9FpT`.
+- Artifact feedback `V0moQ9W81eR7`: feedback `ajustar` para briefing `P-_bdA_S62wd`.
+- Artifact feedback `5XdLZVSN26Lz`: feedback `aprovado` para briefing `P-_bdA_S62wd` e guidance `R6adR2HkGBq0` atualizada para `feedbackStatus=accepted`.
+- Backup final do script vivo: `/home/claude/telegram-bot.py.bak-20260513-mkt02-guidance-feedback-d09103b1`.
+- Hash final apos MKT-02: `42cf8c833be77f9d72400e29d297415cb7c15fd57dfc5b44672a2eb2359c6deb`.
 
 ### MKT-03 - Spa Ads snapshot
 
