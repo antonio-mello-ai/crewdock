@@ -94,6 +94,8 @@ Nota: `agent-team-organization.md` ainda descreve alguns timers como ativos. O C
 
 ## Telegram bots - comportamento real
 
+Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance aberta `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview.
+
 O script atual:
 
 - aceita apenas mensagens de texto (`filters.TEXT & ~filters.COMMAND`);
