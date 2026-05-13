@@ -113,7 +113,7 @@ O script atual:
 - nao registra briefing sob demanda como artifact por default; usa `/aios promover briefing [motivo]` para promover memoria estrategica;
 - aceita feedback HITL para briefing de marketing via `/aios feedback ...` somente quando houver artifact promovido ou `artifactId` explicito, registrando artifact `marketing_feedback` e atualizando a guidance de marketing;
 - fora do briefing de marketing, ainda nao cria `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal` automaticamente;
-- mensagens normais ainda nao aplicam gates de risco do AIOS antes de executar `claude -p`.
+- mensagens normais continuam no legado por padrao, mas pedidos claramente operacionais de DAG/Airflow/DEG ja sao auto-roteados para o pipeline AIOS antes de executar `claude -p`.
 
 Risco: os bots sao uteis como canal rapido, mas hoje estao mais proximos de um terminal remoto com Claude do que de um agente governado. Isso explica por que a experiencia existia, mas nao se organizou como produto AIOS.
 
@@ -148,6 +148,12 @@ Evolucao atual deste corte:
 - o daemon passa a resolver skill, cwd e prompt em `POST /api/company-brain/agent-routing/resolve`;
 - o MCP tambem expoe `resolve_company_brain_agent_route`, para que Codex/outros agentes usem a mesma decisao do Telegram;
 - o bot deve parar de manter roteamento hardcoded por keywords locais e consumir o resolver do AIOS.
+
+Correcao posterior deste corte:
+
+- uma mensagem normal como `As DAGs de hoje rodaram ok?` no bot estrategista nao deve mais cair no contexto legado `corp`;
+- o gateway detecta sinais claros de DAG/Airflow/DEG, chama o pipeline AIOS e recebe `operations.pulso_dags` + `pulsoonline-backend` do daemon;
+- a deteccao local e apenas um gatilho de entrada; skill, cwd, prompt e bloqueio de risco continuam resolvidos pelo AIOS.
 
 ## AIOS Company Brain - estado vivo
 
