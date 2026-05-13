@@ -94,20 +94,20 @@ Nota: `agent-team-organization.md` ainda descreve alguns timers como ativos. O C
 
 ## Telegram bots - comportamento real
 
-Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance aberta `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview.
+Remediacao/ativacao executada apos o inventario inicial: `TGM-00` do Telegram Command Layer foi seedado live no Company Brain em 2026-05-13. Isso adicionou a source `Telegram Bot Gateway CT165` (`S0m6x7yd29Kj`), o artifact `28qggBUysYk5` e a guidance `oJ_V8tOZzMqo` para implementar o primeiro caminho `/aios` com Command Router preview. `TGM-01` tambem foi implementado live no script compartilhado dos bots em CT165 no mesmo dia, registrado no artifact `zbQze3u9wb4P`; a guidance `oJ_V8tOZzMqo` foi concluida e a proxima guidance aberta e `cYHp2xMoDPNn` para definir `/aios commit` Risk A.
 
 O script atual:
 
 - aceita apenas mensagens de texto (`filters.TEXT & ~filters.COMMAND`);
 - nao trata `voice`, `audio`, arquivos ou transcricao;
-- usa comandos `/new`, `/model` e `/status`;
+- usa comandos `/new`, `/model`, `/status` e `/aios <texto>`;
 - executa `claude -p <mensagem> --output-format stream-json --include-partial-messages --verbose --dangerously-skip-permissions`;
 - usa `--continue` por padrao, retomando a ultima sessao do diretorio;
 - limita concorrencia por `chat_id`;
 - devolve uma previa editando a mensagem "Processando...";
-- nao chama o `route_company_brain_command`;
+- chama o Company Brain Command Router apenas no comando `/aios`, sempre com `dryRun=true`;
 - nao cria `Artifact`, `Signal`, `GuidanceItem`, `WorkItem`, `AgentRun` ou `ExternalActionProposal`;
-- nao aplica gates de risco do AIOS antes de executar comandos.
+- mensagens normais ainda nao aplicam gates de risco do AIOS antes de executar `claude -p`.
 
 Risco: os bots sao uteis como canal rapido, mas hoje estao mais proximos de um terminal remoto com Claude do que de um agente governado. Isso explica por que a experiencia existia, mas nao se organizou como produto AIOS.
 
@@ -275,7 +275,7 @@ Escopo v0:
 2. Criar `Source`/watcher AIOS para `systemd timers CT165`, com snapshot diario de timers ativos, disabled e failed.
 3. Criar `Source`/watcher AIOS para Telegram bots, registrando uptime, script, cwd, modelo, permissao e ultimo erro.
 4. Implementar `Marketing Operating Pack v0` com NR-1 + Spa Ads antes de LinkedIn pessoal.
-5. Implementar `Telegram Command Layer v0` com suporte a voz e roteamento para Company Brain.
+5. Parcialmente concluido em 2026-05-13: implementar `Telegram Command Layer v0` com `/aios <texto>` em preview. Ainda falta suporte a voz e commits Risk A controlados.
 6. Revalidar live CT120/n8n antes de reativar workflow social.
 7. Reativar Pulso Ops Sentinel depois de Marketing Pack, mas ja como watcher AIOS e nao como cron solto.
 

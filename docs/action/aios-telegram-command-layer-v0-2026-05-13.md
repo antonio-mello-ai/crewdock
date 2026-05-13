@@ -50,7 +50,7 @@ Adicionar um modo incremental:
 | Modo | Como aciona | Comportamento |
 | --- | --- | --- |
 | Legado | mensagem normal | Continua rodando `claude -p` como hoje |
-| AIOS preview | prefixo `/aios` ou env por service | Chama `POST /api/company-brain/command-router` com `dryRun=true` |
+| AIOS preview | comando `/aios <texto>` | Chama `POST /api/company-brain/command-router` com `dryRun=true` |
 | AIOS commit Risk A | prefixo `/aios commit` | Chama command router com `dryRun=false` apenas para intents Risk A |
 | Fallback | router retorna `needs_clarification` ou `preview_only` sem executor | Bot responde com proxima acao e nao executa mutacao |
 
@@ -117,11 +117,27 @@ Adicionar ao `/home/claude/telegram-bot.py` um caminho opcional:
 - devolve `decision`, `area`, `intent`, `risk`, `nextActionDetail`;
 - nao chama Claude CLI nesse modo, exceto fallback explicito.
 
+Status em 2026-05-13: concluido live no CT165.
+
+Implementacao:
+
+- O script compartilhado `/home/claude/telegram-bot.py` ganhou `CommandHandler("aios", cmd_aios)`.
+- Mensagens normais continuam no fluxo legado `claude -p`; apenas `/aios <texto>` usa o AIOS Command Router.
+- O payload enviado ao daemon inclui `text`, `dryRun=true`, `actor=telegram:<service>:<chat_id>`, `visibility=internal` e `area` sugerida por keywords + `CLAUDE_SESSION_PREFIX`.
+- A resposta do Telegram resume `decision`, `area`, `intent`, `risk`, `confidence`, `nextActionDetail`, policy e racional.
+- Backup criado antes da troca: `/home/claude/telegram-bot.py.bak-20260513-tgm01-baa70409`.
+- Hash antes: `baa70409482755813a5e71808b75ded8ed38d136c61ab49c6778629a425cbbee`.
+- Hash depois: `e145bc8a74d6517cf8b08eb3e168335e565baf707efd0b53dc46fa4940fc051a`.
+- Services reiniciados e ativos: `claude-telegram-dev.service`, `claude-telegram-estrategista.service`, `claude-telegram-vendas-k2.service`.
+- Artifact `zbQze3u9wb4P`: `Telegram /aios command router preview implemented`.
+- Guidance `oJ_V8tOZzMqo` marcada como `done/completed`.
+- Guidance `cYHp2xMoDPNn`: proximo corte `Define Telegram /aios commit Risk A gate`.
+
 Aceite:
 
-- `/aios me da o briefing de marketing de hoje` retorna classificacao marketing sem criar nada.
-- `/aios tem algum repo com problema?` retorna development/platform sem mutacao externa.
-- Risk C retorna bloqueado.
+- `/aios me da o briefing de marketing de hoje` retorna classificacao marketing sem criar nada. Concluido via teste importando o script em CT165 e chamando o router local.
+- `/aios tem algum repo com problema?` retorna development/platform sem mutacao externa. Concluido via teste do helper: `development/development`, Risk A, `preview_only`.
+- Risk C retorna bloqueado. Concluido via teste do helper: `delete o repo antigo agora` -> Risk C, `blocked`.
 
 ### TGM-02 - Commit Risk A controlado
 
