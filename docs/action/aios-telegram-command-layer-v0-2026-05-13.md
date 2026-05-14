@@ -202,6 +202,7 @@ Implementacao:
 - Hash apos roteamento de cwd: `da969e142800b2759b067c2f842a8c2d5186bd8dc93e6c04987e20d2fb93897e`; backup anterior em `/home/claude/telegram-bot.py.bak-20260513-routed-cwd-f817fa33d822bdd4c0f53bb0770f1d9bb889bb9cfade5e050563ed6c2ae1cbfb`.
 - Evolucao atual: roteamento de fallback saiu do bot e entrou no daemon em `POST /api/company-brain/agent-routing/resolve`. A skill `operations.pulso_dags` agora e resolvida no AIOS com cwd, prompt e politica de memoria compartilhados entre Telegram e MCP/Codex.
 - Correcao posterior: mensagens normais que mencionam claramente DAGs/Airflow/DEG agora tambem entram no pipeline AIOS. Isso evita que o bot estrategista rode no cwd `corp` e responda que nao sabe onde procurar.
+- Correcao posterior: fallback AIOS passa a iniciar uma sessao Claude nova em vez de usar `--continue`, para nao carregar conclusoes stale de uma investigacao operacional anterior no mesmo workspace.
 
 Teste executado:
 
