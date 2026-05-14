@@ -23719,14 +23719,17 @@ function buildAgentRoutePrompt(args: {
           "",
           "Operational skill: operations.pulso_dags",
           `Skill docs: ${skill.docsPath}`,
-          "Pulso local skill to reuse when present: .claude/skills/dag-check.md",
+          "Pulso local skill to reuse when current: .claude/skills/dag-check.md",
           "Pulso DAG rules:",
+          "0. Live Pulso Airflow is on GCP: pulso-live-airflow in project felhen-pulso-live-prod, zone southamerica-east1-b. VM200/airflow-200 is legacy cold rollback and must not be used to determine current production DAG status.",
           "1. Verify scheduled DAG health using the Pulso checkout context, Airflow metadata/API and docs/architecture/etl-flow.md.",
           "2. Separate execution status, structural timeout/error, output freshness/volume and customer impact.",
           "3. Classify active DAGs into mutually exclusive categories: ran ok, failed, outside schedule, anomaly. Do not report generic success ratios that include DAGs outside today's schedule.",
           "4. If failures have later successful reruns, report them as historical noise unless there is remaining business impact.",
           "5. List corrective actions only. Do not rerun, restart, unpause or backfill unless the user explicitly asks.",
-          "6. Keep the Telegram answer under 4000 characters when possible.",
+          "6. Prefer gcloud compute ssh pulso-live-airflow --project=felhen-pulso-live-prod --zone=southamerica-east1-b --tunnel-through-iap for live Airflow checks; use pulso-live-clickhouse for destination-table freshness.",
+          "7. If local docs or skills mention VM200, postgres-201 metastore or airflow-200 as production, treat that as stale context and say so.",
+          "8. Keep the Telegram answer under 4000 characters when possible.",
         ]
       : [];
 
