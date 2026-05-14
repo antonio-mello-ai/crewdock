@@ -154,6 +154,9 @@ Correcao posterior deste corte:
 - uma mensagem normal como `As DAGs de hoje rodaram ok?` no bot estrategista nao deve mais cair no contexto legado `corp`;
 - o gateway detecta sinais claros de DAG/Airflow/DEG, chama o pipeline AIOS e recebe `operations.pulso_dags` + `pulsoonline-backend` do daemon;
 - a deteccao local e apenas um gatilho de entrada; skill, cwd, prompt e bloqueio de risco continuam resolvidos pelo AIOS.
+- fallback AIOS operacional passa a forcar sessao Claude nova. Isso evita que
+  `--continue` reutilize um diagnostico stale, por exemplo a conclusao antiga
+  de que VM200/`airflow-200` era o Airflow produtivo.
 
 ## AIOS Company Brain - estado vivo
 
