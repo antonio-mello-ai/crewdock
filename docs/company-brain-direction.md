@@ -69,6 +69,21 @@ O core deste repo precisa sustentar operacao multi-area com estado e provenance:
 
 Regra: se um trabalho nao tem prioridade/meta, prazo, owner ou workflow, o AIOS deve mostrar a lacuna em vez de forcar alinhamento artificial.
 
+## Benchmark externo e anti-patterns
+
+O Cofounder continua sendo o benchmark principal para a visao de orquestracao
+por areas, solicitacoes ad hoc e agentes coordenados por objetivos.
+
+Benchmarks como Polsia devem ser usados principalmente para identificar
+anti-patterns de autonomia prematura: solucao generalista demais, propriedade
+ambigua dos assets, autopromocao embutida, publicacao externa sem HITL,
+provenance fraca e claims fortes sem auditoria clara.
+
+Diretriz: o AIOS pode copiar a ergonomia de transformar um pedido aberto em
+plano, tarefas, artifacts e drafts, mas nao deve copiar o default de executar ou
+promover ativos externos sem consentimento explicito. Ver
+`docs/action/aios-polsia-benchmark-principles-2026-05-14.md`.
+
 ## Separacao de responsabilidades
 
 | Camada | Dono | O que vive aqui |
