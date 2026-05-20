@@ -24,6 +24,8 @@ antes da governanca estar pronta.
 - API read-only: `GET /api/company-brain/operating-packs`.
 - MCP read-only: `get_company_brain_operating_pack_registry`.
 - UI: card `Operating Pack Registry` em `/company-brain/operating`.
+- Command Router e Agent Routing Resolver consomem `routingHints` do registry para
+  matches de packs/skills aprovados.
 - Nenhum novo writeback externo.
 - Nenhum novo segredo.
 - Nenhuma tabela nova.
@@ -33,11 +35,9 @@ antes da governanca estar pronta.
 
 ## Proximo corte natural
 
-1. Ligar Command Router e Agent Routing Resolver ao registry em vez de manter
-   matches hardcoded por pack.
-2. Adicionar health por pack: ultimo uso, ultimo artifact, ultimo erro e guidance
+1. Adicionar health por pack: ultimo uso, ultimo artifact, ultimo erro e guidance
    aberta.
-3. Promover o registry para schema persistente apenas quando houver necessidade
+2. Promover o registry para schema persistente apenas quando houver necessidade
    real de criar/pausar/versionar packs pela UI.
-4. Definir review flow para pack novo: docs -> preview -> policy -> dogfood ->
+3. Definir review flow para pack novo: docs -> preview -> policy -> dogfood ->
    active.

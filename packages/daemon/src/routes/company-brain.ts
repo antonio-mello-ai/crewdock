@@ -164,6 +164,7 @@ import type {
   CompanyBrainAgentRouteResponse,
   CompanyBrainOperatingPackAction,
   CompanyBrainOperatingPackArtifactRef,
+  CompanyBrainOperatingPackExecutionMode,
   CompanyBrainOperatingPackRegistry,
   CompanyBrainOperatingPackRegistryEntry,
   CompanyBrainOperatingPackMemoryPolicy,
@@ -22568,6 +22569,14 @@ const RISK_C_PATTERNS: RegExp[] = [
 function inferAreaFromText(
   text: string
 ): { slug: CompanyOperatingMapAreaSlug; area: CompanyBrainArea } | null {
+  const operatingPackMatch = findOperatingPackRegistryEntryForText(text);
+  if (operatingPackMatch) {
+    return {
+      slug: getOperatingMapAreaSlugForArea(operatingPackMatch.area),
+      area: operatingPackMatch.area,
+    };
+  }
+
   for (const entry of AREA_KEYWORDS) {
     if (entry.patterns.some((re) => re.test(text))) {
       return { slug: entry.slug, area: entry.area };
@@ -22973,6 +22982,32 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
     sourceRefs: ["telegram://aios-bots", "aios://operating-packs/marketing/nr1"],
     workflowBlueprintIds: ["marketing-operating-pack-v0"],
     watcherIds: [],
+    routingHints: {
+      directTerms: [
+        "nr 1",
+        "nr1",
+        "spa da vida",
+        "spa empresas",
+        "saude mental corporativa",
+      ],
+      intentTerms: [
+        "briefing",
+        "marketing",
+        "conteudo",
+        "linkedin",
+        "outreach",
+        "campanha",
+        "divulgacao",
+      ],
+      targetTerms: [
+        "contabil",
+        "consultor",
+        "empresa",
+        "rh",
+        "sst",
+        "psicossocial",
+      ],
+    },
     maxRiskClass: "B",
     actionPolicy: "create_artifacts",
     memoryPolicy: "ephemeral",
@@ -23015,6 +23050,30 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
     sourceRefs: ["gcp://felhen-pulso-live-prod/pulso-live-airflow"],
     workflowBlueprintIds: ["operations-read-only-triage-v0"],
     watcherIds: [],
+    routingHints: {
+      directTerms: [
+        "dag",
+        "dags",
+        "deg",
+        "degs",
+        "airflow",
+        "etl",
+        "pipeline",
+        "pipelines",
+        "job",
+        "jobs",
+        "dag run",
+        "dag_run",
+        "data quality",
+        "qualidade de dados",
+        "raw to silver",
+        "raw silver",
+        "mysql raw",
+        "clickhouse",
+      ],
+      intentTerms: [],
+      targetTerms: [],
+    },
     maxRiskClass: "B",
     actionPolicy: "observe_only",
     memoryPolicy: "ephemeral",
@@ -23062,6 +23121,19 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
     sourceRefs: ["github://antonio-mello-ai/crewdock"],
     workflowBlueprintIds: ["development-blueprint-v0"],
     watcherIds: ["watcher-github-pr-ci-v0", "watcher-github-notifications-v0"],
+    routingHints: {
+      directTerms: [
+        "pull request",
+        "pr",
+        "ci",
+        "status check",
+        "github review",
+        "aios authored",
+        "merge queue",
+      ],
+      intentTerms: ["review", "checks", "status", "failing", "watcher"],
+      targetTerms: ["github", "pr", "pull request", "ci"],
+    },
     maxRiskClass: "B",
     actionPolicy: "observe_only",
     memoryPolicy: "promote_recommended",
@@ -23119,6 +23191,80 @@ function buildOperatingPackRegistry(timestamp = now()): CompanyBrainOperatingPac
     entries: OPERATING_PACK_REGISTRY_ENTRIES,
     totals,
   };
+}
+
+function getOperatingMapAreaSlugForArea(area: CompanyBrainArea): CompanyOperatingMapAreaSlug {
+  const matched = AREA_BLUEPRINT_REGISTRY_BASE.find(
+    (spec) => spec.primaryArea === area || spec.alternateAreas.includes(area)
+  );
+  return matched?.slug ?? "development";
+}
+
+function normalizeOperatingPackRouteText(value: string): string {
+  return normalizeOperatingPackMatchText(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function operatingPackRouteTextIncludes(text: string, term: string): boolean {
+  const normalizedText = normalizeOperatingPackRouteText(text);
+  const normalizedTerm = normalizeOperatingPackRouteText(term);
+  if (!normalizedTerm) return false;
+  if (normalizedTerm.length <= 2) {
+    return normalizedText.split(" ").includes(normalizedTerm);
+  }
+  const compactText = normalizedText.replace(/\s+/g, "");
+  const compactTerm = normalizedTerm.replace(/\s+/g, "");
+  return normalizedText.includes(normalizedTerm) || compactText.includes(compactTerm);
+}
+
+function operatingPackRouteTextIncludesAny(text: string, terms: string[]): boolean {
+  return terms.some((term) => operatingPackRouteTextIncludes(text, term));
+}
+
+function operatingPackRegistryEntryMatchesText(
+  entry: CompanyBrainOperatingPackRegistryEntry,
+  text: string
+): boolean {
+  const hints = entry.routingHints;
+  if (operatingPackRouteTextIncludesAny(text, hints.directTerms)) return true;
+  if (hints.intentTerms.length === 0 || hints.targetTerms.length === 0) return false;
+  return (
+    operatingPackRouteTextIncludesAny(text, hints.intentTerms) &&
+    operatingPackRouteTextIncludesAny(text, hints.targetTerms)
+  );
+}
+
+function getOperatingPackRegistryEntry(
+  slug: CompanyBrainOperatingPackSlug | null | undefined
+): CompanyBrainOperatingPackRegistryEntry | null {
+  if (!slug) return null;
+  return OPERATING_PACK_REGISTRY_ENTRIES.find((entry) => entry.slug === slug) ?? null;
+}
+
+function findOperatingPackRegistryEntryForText(
+  text: string,
+  options: {
+    executionModes?: CompanyBrainOperatingPackExecutionMode[];
+    slugs?: CompanyBrainOperatingPackSlug[];
+  } = {}
+): CompanyBrainOperatingPackRegistryEntry | null {
+  const entries = OPERATING_PACK_REGISTRY_ENTRIES.filter((entry) => {
+    if (entry.status !== "active") return false;
+    if (options.executionModes && !options.executionModes.includes(entry.executionMode)) return false;
+    if (options.slugs && !options.slugs.includes(entry.slug)) return false;
+    return true;
+  });
+  return entries.find((entry) => operatingPackRegistryEntryMatchesText(entry, text)) ?? null;
+}
+
+function getDefaultOperatingPackRunnerEntry(): CompanyBrainOperatingPackRegistryEntry | null {
+  return (
+    OPERATING_PACK_REGISTRY_ENTRIES.find(
+      (entry) => entry.status === "active" && entry.executionMode === "operating_pack_runner"
+    ) ?? null
+  );
 }
 
 function normalizeOperatingPackMatchText(value: string): string {
@@ -23214,15 +23360,6 @@ function buildMarketingNr1FeedbackIdentity(
   };
 }
 
-function shouldRouteToMarketingNr1Pack(text: string): boolean {
-  const normalized = normalizeOperatingPackMatchText(text);
-  const hasNr1 = /\bnr\s*-?\s*1\b|\bnr1\b/.test(normalized);
-  const hasSpaEmpresas = /spa da vida|spa empresas|saude mental corporativa/.test(normalized);
-  const hasBriefingIntent = /briefing|marketing|conteudo|linkedin|outreach|campanha|divulgacao/.test(normalized);
-  const hasTargetSegment = /contabil|consultor|empresa|rh|sst|psicossocial/.test(normalized);
-  return hasNr1 || hasSpaEmpresas || (hasBriefingIntent && hasTargetSegment);
-}
-
 function inferOperatingPackAction(
   request: RunCompanyBrainOperatingPackRequest
 ): CompanyBrainOperatingPackAction {
@@ -23242,13 +23379,18 @@ function inferOperatingPackSlug(
   router: CompanyBrainCommandRouterResult
 ): CompanyBrainOperatingPackSlug | null {
   if (request.packSlug) return request.packSlug;
-  if (shouldRouteToMarketingNr1Pack(request.text ?? "")) return "marketing.nr1";
-  if (
-    router.classification.area === "marketing" &&
-    /briefing|nr\s*-?\s*1|spa da vida|psicossocial/i.test(request.text ?? "")
-  ) {
-    return "marketing.nr1";
-  }
+  const matchedEntry = findOperatingPackRegistryEntryForText(request.text ?? "", {
+    executionModes: ["operating_pack_runner"],
+  });
+  if (matchedEntry) return matchedEntry.slug;
+  const areaEntry = OPERATING_PACK_REGISTRY_ENTRIES.find(
+    (entry) =>
+      entry.status === "active" &&
+      entry.executionMode === "operating_pack_runner" &&
+      entry.area === router.classification.area &&
+      operatingPackRegistryEntryMatchesText(entry, request.text ?? "")
+  );
+  if (areaEntry) return areaEntry.slug;
   return null;
 }
 
@@ -23257,9 +23399,10 @@ function buildOperatingPackRouterResult(
   timestamp: number,
   preliminaryPackSlug: CompanyBrainOperatingPackSlug | null
 ): CompanyBrainCommandRouterResult {
+  const preliminaryPackEntry = getOperatingPackRegistryEntry(preliminaryPackSlug);
   const routerRequest: RouteCompanyBrainCommandRequest = {
     text: request.text,
-    area: request.area ?? (preliminaryPackSlug === "marketing.nr1" ? "marketing" : undefined),
+    area: request.area ?? preliminaryPackEntry?.area,
     actor: request.actor ?? null,
     visibility: request.visibility ?? "internal",
     dryRun: true,
@@ -23735,9 +23878,14 @@ app.post("/operating-packs/run", async (c) => {
 
     const timestamp = now();
     const action = inferOperatingPackAction(body);
-    const preliminaryPackSlug =
-      body.packSlug ??
-      (shouldRouteToMarketingNr1Pack(body.text) || action !== "run" ? "marketing.nr1" : null);
+    const explicitEntry = getOperatingPackRegistryEntry(body.packSlug);
+    const matchedEntry =
+      explicitEntry ??
+      findOperatingPackRegistryEntryForText(body.text, {
+        executionModes: ["operating_pack_runner"],
+      }) ??
+      (action !== "run" ? getDefaultOperatingPackRunnerEntry() : null);
+    const preliminaryPackSlug = matchedEntry?.slug ?? null;
     const router = buildOperatingPackRouterResult(body, timestamp, preliminaryPackSlug);
     const request: RunCompanyBrainOperatingPackRequest = {
       ...body,
@@ -23780,25 +23928,27 @@ app.get("/operating-packs", (c) => {
   return c.json({ data: buildOperatingPackRegistry() });
 });
 
-const PULSO_DAGS_SKILL_DOCS_PATH =
-  "docs/action/aios-operations-pulso-dags-pack-v0-2026-05-13.md";
+function buildOperationalSkillRefFromRegistryEntry(
+  entry: CompanyBrainOperatingPackRegistryEntry | null
+): CompanyBrainOperationalSkillRef | null {
+  if (!entry || entry.executionMode !== "agent_route_skill") return null;
+  if (entry.slug !== "operations.pulso_dags") return null;
+  return {
+    slug: entry.slug,
+    title: entry.title,
+    area: entry.area,
+    docsPath: entry.docsPath,
+    summary: entry.summary,
+    memoryPolicy: entry.memoryPolicy,
+  };
+}
 
-const PULSO_DAGS_SKILL: CompanyBrainOperationalSkillRef = {
-  slug: "operations.pulso_dags",
-  title: "PulsoOnline DAG health check",
-  area: "operations",
-  docsPath: PULSO_DAGS_SKILL_DOCS_PATH,
-  summary:
-    "Read-only Airflow DAG health triage for PulsoOnline: classify scheduled runs, structural failures, output freshness and next HITL actions.",
-  memoryPolicy: "ephemeral",
-};
-
-function shouldRouteToPulsoDagsSkill(text: string): boolean {
-  const normalized = normalizeOperatingPackMatchText(text);
-  return (
-    /\b(?:dag|dags|deg|degs|airflow|etl|pipeline|pipelines|job|jobs)\b/.test(normalized) ||
-    /dag_run|data quality|qualidade de dados|raw to silver|raw\/silver|mysql raw|clickhouse/.test(normalized)
-  );
+function findAgentRouteSkillRegistryEntry(
+  text: string
+): CompanyBrainOperatingPackRegistryEntry | null {
+  return findOperatingPackRegistryEntryForText(text, {
+    executionModes: ["agent_route_skill"],
+  });
 }
 
 function buildAgentRouteRouterResult(
@@ -23827,14 +23977,17 @@ function resolveAgentRouteSkill(
   request: ResolveCompanyBrainAgentRouteRequest,
   router: CompanyBrainCommandRouterResult
 ): CompanyBrainOperationalSkillRef | null {
-  if (shouldRouteToPulsoDagsSkill(request.text)) return PULSO_DAGS_SKILL;
-  if (
-    router.classification.area === "operations" &&
-    /pulso|airflow|dag|pipeline|data quality/i.test(request.text)
-  ) {
-    return PULSO_DAGS_SKILL;
-  }
-  return null;
+  const matchedEntry = findAgentRouteSkillRegistryEntry(request.text);
+  if (matchedEntry) return buildOperationalSkillRefFromRegistryEntry(matchedEntry);
+
+  const areaEntry = OPERATING_PACK_REGISTRY_ENTRIES.find(
+    (entry) =>
+      entry.status === "active" &&
+      entry.executionMode === "agent_route_skill" &&
+      entry.area === router.classification.area &&
+      operatingPackRegistryEntryMatchesText(entry, request.text)
+  );
+  return buildOperationalSkillRefFromRegistryEntry(areaEntry ?? null);
 }
 
 function resolveAgentRouteCwd(
@@ -24004,7 +24157,9 @@ app.post("/agent-routing/resolve", async (c) => {
       text: body.text.trim(),
       visibility: body.visibility ?? "internal",
     };
-    const preliminarySkill = shouldRouteToPulsoDagsSkill(request.text) ? PULSO_DAGS_SKILL : null;
+    const preliminarySkill = buildOperationalSkillRefFromRegistryEntry(
+      findAgentRouteSkillRegistryEntry(request.text)
+    );
     const router = buildAgentRouteRouterResult(request, timestamp, preliminarySkill);
     const skill = resolveAgentRouteSkill(request, router);
     const executionCwd = resolveAgentRouteCwd(router, skill);

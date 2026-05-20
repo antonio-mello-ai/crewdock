@@ -4260,6 +4260,12 @@ export interface CompanyBrainOperatingPackEntrypoint {
   watcherId?: string | null;
 }
 
+export interface CompanyBrainOperatingPackRoutingHints {
+  directTerms: string[];
+  intentTerms: string[];
+  targetTerms: string[];
+}
+
 export interface CompanyBrainOperatingPackRegistryEntry {
   slug: CompanyBrainOperatingPackSlug;
   title: string;
@@ -4276,6 +4282,7 @@ export interface CompanyBrainOperatingPackRegistryEntry {
   sourceRefs: string[];
   workflowBlueprintIds: string[];
   watcherIds: string[];
+  routingHints: CompanyBrainOperatingPackRoutingHints;
   maxRiskClass: RiskClass;
   actionPolicy: ActionPolicy;
   memoryPolicy: CompanyBrainOperatingPackMemoryPolicy;

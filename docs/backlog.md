@@ -59,6 +59,8 @@ Status Design Partner Operating Pack v0 em 2026-05-06: pacote documental reprodu
 
 Status Operating Pack Registry v0 em 2026-05-20: registry canonico/read-only criado para expor packs aprovados por area, canal, entrypoint, policy, risk ceiling e memoria. Seeds iniciais: `marketing.nr1`, `operations.pulso_dags` e `development.pr_ci`. API `GET /api/company-brain/operating-packs`, MCP `get_company_brain_operating_pack_registry` e bloco na UI `/company-brain/operating`. Sem tabela nova, sem editor de packs e sem nova mutacao externa.
 
+Status Operating Pack Registry routing em 2026-05-20: Command Router e Agent Routing Resolver passaram a consumir `routingHints` do registry para matches de packs/skills aprovados. Isso remove a duplicacao de regex solta para `marketing.nr1` e `operations.pulso_dags` e mantem canais como transporte.
+
 Status Review Cohesion v0 em 2026-05-06: fila unificada derivada para Decision/Signal/AlignmentFinding/Guidance candidates implementada em summary/API/UI/MCP. O corte mostra decisions propostas, signals sem finding, findings sem guidance e guidance aberta com feedback pendente, com next action, severity, provenance e acoes internas de review/extracao/feedback. Sem writeback externo.
 
 Status Writeback Governance v0 em 2026-05-06: politica A/B/C de `risk_class` + `action_policy` implementada com fila interna `ExternalActionProposal`, geracao a partir de `GuidanceItem` aceito, approve/reject por HITL, execution status e audit trail completo em API/UI/MCP. Slack/GitHub writeback real permanece bloqueado; aprovar proposta nao executa mutacao externa.

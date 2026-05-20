@@ -131,7 +131,7 @@ Se uma feature so ingere informacao e nao ajuda a fechar o loop, ela e suporte, 
 | UI | `packages/web/src/app/` | Criar telas de Strategy Map, Evidence Inbox, Drift Inbox, Workflow Runs e Guidance. |
 | MCP | `packages/mcp-server/src/index.ts` | Expor ferramentas para agentes criarem/lerem artifacts, work items, workflow runs e guidance. |
 | Auth/tenancy | `packages/daemon/src/middleware/` e `docs/auth-rollout.md` | Preservar CF Access e preparar separacao de fonte/tenant antes de qualquer piloto externo. |
-| Operating Packs | `packages/daemon/src/routes/company-brain.ts` | Expor registry read-only de packs aprovados antes de permitir criacao/edicao em UI. |
+| Operating Packs | `packages/daemon/src/routes/company-brain.ts` | Expor registry read-only de packs aprovados e usar seus `routingHints` no Command Router/Agent Routing antes de permitir criacao/edicao em UI. |
 
 ## Primeiro slice recomendado
 
