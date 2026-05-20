@@ -60,6 +60,8 @@ import type {
   ImportSlackMessagesResponse,
   RunFelhenDemoRequest,
   RunFelhenDemoResponse,
+  RunCompanyBrainOperatingPackRequest,
+  CompanyBrainOperatingPackRunResponse,
   RunOperatingCadenceRequest,
   RunOperatingCadenceResponse,
   RunWatcherRequest,
@@ -265,6 +267,7 @@ export interface JobFilters {
   agentId?: string;
   limit?: number;
   offset?: number;
+  enabled?: boolean;
 }
 
 export function useJobs(filters: JobFilters = {}) {
@@ -279,6 +282,7 @@ export function useJobs(filters: JobFilters = {}) {
   return useQuery<ApiListResponse<Job>>({
     queryKey: ["jobs", filters],
     queryFn: () => api(`/api/jobs${qs ? `?${qs}` : ""}`),
+    enabled: filters.enabled ?? true,
     refetchInterval: 5_000,
   });
 }
@@ -522,7 +526,7 @@ export function useCostHealth() {
 // HITL
 // ---------------------------------------------------------------------------
 
-export function useHitlRequests(status?: string) {
+export function useHitlRequests(status?: string, enabled = true) {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   const qs = params.toString();
@@ -530,6 +534,7 @@ export function useHitlRequests(status?: string) {
   return useQuery<ApiListResponse<HitlRequest>>({
     queryKey: ["hitl", { status }],
     queryFn: () => api(`/api/hitl${qs ? `?${qs}` : ""}`),
+    enabled,
     refetchInterval: 5_000,
   });
 }
@@ -585,6 +590,24 @@ export function useCompanyBrainOperatingPackRegistry() {
     queryKey: ["company-brain", "operating-pack-registry"],
     queryFn: () => api("/api/company-brain/operating-packs"),
     refetchInterval: 30_000,
+  });
+}
+
+export function useRunCompanyBrainOperatingPack() {
+  const qc = useQueryClient();
+  return useMutation<
+    ApiResponse<CompanyBrainOperatingPackRunResponse>,
+    Error,
+    RunCompanyBrainOperatingPackRequest
+  >({
+    mutationFn: (body) =>
+      api("/api/company-brain/operating-packs/run", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["company-brain"] });
+    },
   });
 }
 

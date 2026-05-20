@@ -51,6 +51,7 @@ import type {
   AreaBlueprintReadinessStatus,
   AreaBlueprintRegistry,
   AgentRun,
+  AgentContext,
   AgentRunClaimState,
   AgentRunDryRunExecutionResult,
   AgentRunDryRunPhase,
@@ -162,9 +163,11 @@ import type {
   CommandRouterTargetKind,
   RouteCompanyBrainCommandRequest,
   CompanyBrainAgentRouteResponse,
+  CompanyBrainDailyCommandBriefing,
   CompanyBrainOperatingPackAction,
   CompanyBrainOperatingPackArtifactRef,
   CompanyBrainOperatingPackExecutionMode,
+  CompanyBrainOperatingPackHealth,
   CompanyBrainOperatingPackRegistry,
   CompanyBrainOperatingPackRegistryEntry,
   CompanyBrainOperatingPackMemoryPolicy,
@@ -6451,6 +6454,7 @@ function buildOperatingSnapshot(
   const sourceHealthReport = buildSourceHealthReport(data);
   const nextWork = buildNextWork(data);
   const timeline = buildCompanyBrainTimeline({ data, limit: 12 });
+  const operatingPackRegistry = buildOperatingPackRegistry(data, generatedAt);
   const latestAgentContext =
     data.agentContexts
       .filter(
@@ -6553,6 +6557,14 @@ function buildOperatingSnapshot(
       primaryActionKind: "generate_daily_handoff",
     },
   ];
+  const dailyCommandBriefing = buildDailyCommandBriefing({
+    generatedAt,
+    nextWork,
+    cards,
+    operatingPackRegistry,
+    latestAgentContext,
+    lastBriefing,
+  });
   const totals = {
     cardCount: cards.length,
     readyCount: cards.filter((card) =>
@@ -6608,6 +6620,7 @@ function buildOperatingSnapshot(
     summary,
     totals,
     cards,
+    dailyCommandBriefing,
     nextWork,
     lastBriefing,
     latestAgentContext,
@@ -6618,6 +6631,184 @@ function buildOperatingSnapshot(
     recentEvents: timeline.events.slice(0, 8),
     agentRunSuggestions,
     autoDispatchPolicy,
+  };
+}
+
+function buildDailyCommandBriefing(args: {
+  generatedAt: number;
+  nextWork: CompanyBrainNextWork;
+  cards: CompanyBrainOperatingSnapshot["cards"];
+  operatingPackRegistry: CompanyBrainOperatingPackRegistry;
+  latestAgentContext: AgentContext | null;
+  lastBriefing: CompanyBrainBriefingSnapshot | null;
+}): CompanyBrainDailyCommandBriefing {
+  const priorities: CompanyBrainDailyCommandBriefing["priorities"] = [];
+  const risks: CompanyBrainDailyCommandBriefing["risks"] = [];
+  const actions: CompanyBrainDailyCommandBriefing["actions"] = [];
+
+  if (args.nextWork.recommended) {
+    priorities.push({
+      id: "next-work",
+      kind: "priority",
+      title: args.nextWork.recommended.workItem.title,
+      detail: args.nextWork.recommended.rationale[0] ?? "Top-ranked active WorkItem.",
+      severity: args.nextWork.recommended.workItem.riskClass === "C" ? "critical" : "info",
+      actionLabel: "Open next work",
+      href: "/company-brain/operating#next-work",
+      actionKind: "open_route",
+    });
+  }
+
+  for (const pack of args.operatingPackRegistry.entries.filter((entry) => entry.dogfood.enabled)) {
+    if (priorities.length >= 3) break;
+    priorities.push({
+      id: `pack-${pack.slug}`,
+      kind: "priority",
+      title: pack.title,
+      detail: `${pack.dogfood.cadence ?? "dogfood"}; ${pack.health.nextAction}`,
+      severity: pack.health.state === "error" ? "critical" : pack.health.state === "healthy" ? "info" : "attention",
+      actionLabel: pack.executionMode === "operating_pack_runner" ? "Run pack" : "Open pack",
+      href: "/company-brain/operating#operating-pack-registry",
+      actionKind:
+        pack.executionMode === "operating_pack_runner"
+          ? "run_operating_pack"
+          : "open_route",
+      packSlug: pack.slug,
+    });
+  }
+
+  if (priorities.length < 3 && args.lastBriefing) {
+    priorities.push({
+      id: "latest-briefing",
+      kind: "priority",
+      title: args.lastBriefing.title,
+      detail: args.lastBriefing.nextSteps[0] ?? "Review the latest AIOS briefing.",
+      severity: "info",
+      actionLabel: "Review briefing",
+      href: "/company-brain/operating#daily-agent-handoff",
+      actionKind: "open_route",
+    });
+  }
+
+  for (const card of args.cards) {
+    if (risks.length >= 3) break;
+    if (["healthy", "ready", "clear"].includes(card.state)) continue;
+    risks.push({
+      id: `risk-${card.key}`,
+      kind: "risk",
+      title: card.title,
+      detail: card.mainAlert,
+      severity:
+        card.state === "critical" || card.state === "error"
+          ? "critical"
+          : "attention",
+      actionLabel: card.primaryActionLabel,
+      href: "/company-brain/operating",
+      actionKind: card.primaryActionKind === "run_briefing"
+        ? "run_briefing"
+        : card.primaryActionKind === "run_operating_cadence"
+          ? "run_operating_cadence"
+          : card.primaryActionKind === "generate_daily_handoff"
+            ? "generate_daily_handoff"
+            : "open_route",
+    });
+  }
+
+  const briefingCard = args.cards.find((card) => card.key === "aios_briefing");
+  if (briefingCard && briefingCard.state !== "ready") {
+    actions.push({
+      id: "run-briefing",
+      kind: "action",
+      title: "Run today's AIOS briefing",
+      detail: briefingCard.mainAlert,
+      severity: "attention",
+      actionLabel: "Run briefing",
+      href: "/company-brain/operating",
+      actionKind: "run_briefing",
+    });
+  }
+
+  const cadenceCard = args.cards.find((card) => card.key === "operating_cadence");
+  if (actions.length < 3 && cadenceCard && cadenceCard.state !== "healthy") {
+    actions.push({
+      id: "run-cadence",
+      kind: "action",
+      title: "Run Operating Cadence",
+      detail: cadenceCard.mainAlert,
+      severity: cadenceCard.state === "error" ? "critical" : "attention",
+      actionLabel: "Run cadence",
+      href: "/company-brain/operating",
+      actionKind: "run_operating_cadence",
+    });
+  }
+
+  const primaryPack = args.operatingPackRegistry.entries.find(
+    (entry) => entry.dogfood.enabled && entry.executionMode === "operating_pack_runner"
+  );
+  if (actions.length < 3 && primaryPack) {
+    actions.push({
+      id: `run-pack-${primaryPack.slug}`,
+      kind: "action",
+      title: `Use ${primaryPack.slug}`,
+      detail: primaryPack.health.nextAction,
+      severity: primaryPack.health.state === "error" ? "critical" : "info",
+      actionLabel: "Run pack",
+      href: "/company-brain/operating#operating-pack-registry",
+      actionKind: "run_operating_pack",
+      packSlug: primaryPack.slug,
+    });
+  }
+
+  const feedbackPack = args.operatingPackRegistry.entries.find(
+    (entry) => entry.dogfood.enabled && Boolean(entry.health.latestArtifactId)
+  );
+  if (actions.length < 3 && feedbackPack) {
+    actions.push({
+      id: `feedback-${feedbackPack.slug}`,
+      kind: "action",
+      title: `Capture feedback for ${feedbackPack.slug}`,
+      detail: feedbackPack.health.latestArtifactTitle ?? "Latest promoted artifact has no feedback yet.",
+      severity: feedbackPack.health.openGuidanceCount > 0 ? "attention" : "info",
+      actionLabel: "Capture feedback",
+      href: "/company-brain/operating#operating-pack-registry",
+      actionKind: "capture_feedback",
+      packSlug: feedbackPack.slug,
+    });
+  }
+
+  if (actions.length < 3 && !args.latestAgentContext) {
+    actions.push({
+      id: "generate-handoff",
+      kind: "action",
+      title: "Generate Daily Agent Handoff",
+      detail: "Create the reusable context before starting a new agent session.",
+      severity: "attention",
+      actionLabel: "Generate handoff",
+      href: "/company-brain/operating#daily-agent-handoff",
+      actionKind: "generate_daily_handoff",
+    });
+  }
+
+  if (!actions.length) {
+    actions.push({
+      id: "review-operating",
+      kind: "action",
+      title: "Review the operating surface",
+      detail: "No urgent action detected; review next work and close feedback loops.",
+      severity: "info",
+      actionLabel: "Review",
+      href: "/company-brain/operating",
+      actionKind: "open_route",
+    });
+  }
+
+  return {
+    generatedAt: args.generatedAt,
+    title: "Daily Command Briefing",
+    summary: `${priorities.length} priorities, ${risks.length} risks and ${actions.length} recommended actions for today's AIOS pass.`,
+    priorities: priorities.slice(0, 3),
+    risks: risks.slice(0, 3),
+    actions: actions.slice(0, 3),
   };
 }
 
@@ -22958,7 +23149,9 @@ app.post("/command-router", async (c) => {
 const MARKETING_NR1_DEFAULT_SEGMENT =
   "contabilidades e consultorias que atendem empresas de 50-500 colaboradores";
 
-const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] = [
+const OPERATING_PACK_REGISTRY_BASE_ENTRIES: Array<
+  Omit<CompanyBrainOperatingPackRegistryEntry, "health">
+> = [
   {
     slug: "marketing.nr1",
     title: "Spa da Vida NR-1 marketing pack",
@@ -23007,6 +23200,12 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
         "sst",
         "psicossocial",
       ],
+    },
+    dogfood: {
+      enabled: true,
+      cadence: "daily commercial briefing before outbound work",
+      successMetric: "briefing used or explicitly ignored without opening a separate chat",
+      reviewCadence: "weekly",
     },
     maxRiskClass: "B",
     actionPolicy: "create_artifacts",
@@ -23074,6 +23273,12 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
       intentTerms: [],
       targetTerms: [],
     },
+    dogfood: {
+      enabled: true,
+      cadence: "daily or incident-triggered Airflow triage",
+      successMetric: "DAG status answer separates run state, freshness and impact in one pass",
+      reviewCadence: "weekly",
+    },
     maxRiskClass: "B",
     actionPolicy: "observe_only",
     memoryPolicy: "ephemeral",
@@ -23134,6 +23339,12 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
       intentTerms: ["review", "checks", "status", "failing", "watcher"],
       targetTerms: ["github", "pr", "pull request", "ci"],
     },
+    dogfood: {
+      enabled: false,
+      cadence: null,
+      successMetric: null,
+      reviewCadence: null,
+    },
     maxRiskClass: "B",
     actionPolicy: "observe_only",
     memoryPolicy: "promote_recommended",
@@ -23150,9 +23361,149 @@ const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] 
   },
 ];
 
-function buildOperatingPackRegistry(timestamp = now()): CompanyBrainOperatingPackRegistry {
+type OperatingPackRegistryBaseEntry = Omit<
+  CompanyBrainOperatingPackRegistryEntry,
+  "health"
+>;
+
+function formatOperatingPackFreshness(
+  timestamp: number | null,
+  generatedAt: number
+): string {
+  if (!timestamp) return "never used";
+  const diffMs = Math.max(0, generatedAt - timestamp);
+  const minutes = Math.floor(diffMs / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (minutes < 60) return `${Math.max(1, minutes)}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  return `${days}d ago`;
+}
+
+function buildMissingOperatingPackHealth(
+  entry: OperatingPackRegistryBaseEntry
+): CompanyBrainOperatingPackHealth {
+  return {
+    state: "missing",
+    lastUsedAt: null,
+    lastArtifactAt: null,
+    lastErrorAt: null,
+    latestArtifactId: null,
+    latestArtifactTitle: null,
+    latestErrorSummary: null,
+    openGuidanceCount: 0,
+    freshnessLabel: "never used",
+    nextAction:
+      entry.executionMode === "operating_pack_runner"
+        ? "Run the pack once from the operating surface, then promote only useful output."
+        : "Route one real request through this pack and review the generated evidence.",
+  };
+}
+
+function operatingPackArtifactMatchesEntry(
+  artifact: { id: string; rawRef: string; metadata: Record<string, unknown> | null },
+  entry: OperatingPackRegistryBaseEntry,
+  artifactIdsFromWatcherRuns: Set<string>
+): boolean {
+  if (artifactIdsFromWatcherRuns.has(artifact.id)) return true;
+  const metadata = artifact.metadata ?? {};
+  if (metadata["packSlug"] === entry.slug) return true;
+  const slugPath = entry.slug.replace(".", "/");
+  const slugDash = entry.slug.replace(".", "-");
+  return (
+    artifact.rawRef.includes(entry.slug) ||
+    artifact.rawRef.includes(slugPath) ||
+    artifact.rawRef.includes(slugDash)
+  );
+}
+
+function buildOperatingPackHealth(
+  entry: OperatingPackRegistryBaseEntry,
+  data: ReturnType<typeof listAll> | null,
+  generatedAt: number
+): CompanyBrainOperatingPackHealth {
+  if (!data) return buildMissingOperatingPackHealth(entry);
+
+  const watcherRuns = data.watcherRuns.filter((run) =>
+    entry.watcherIds.includes(run.watcherId)
+  );
+  const artifactIdsFromWatcherRuns = new Set(
+    watcherRuns.flatMap((run) => run.artifactsCreated ?? [])
+  );
+  const artifacts = data.artifacts
+    .filter((artifact) =>
+      operatingPackArtifactMatchesEntry(
+        artifact as { id: string; rawRef: string; metadata: Record<string, unknown> | null },
+        entry,
+        artifactIdsFromWatcherRuns
+      )
+    )
+    .sort((a, b) => b.ingestedAt - a.ingestedAt);
+  const errorRuns = watcherRuns
+    .filter((run) => run.status === "failed" || Boolean(run.errorSummary))
+    .sort((a, b) => b.startedAt - a.startedAt);
+  const openGuidanceCount = data.guidanceItems.filter((item) => {
+    const metadataText = JSON.stringify(item.generatedFrom ?? {});
+    const packSpecific = metadataText.includes(entry.slug);
+    const open = !["done", "ignored", "rejected"].includes(item.status);
+    return open && (packSpecific || (entry.dogfood.enabled && item.area === entry.area));
+  }).length;
+
+  const latestArtifact = artifacts[0] ?? null;
+  const lastArtifactAt = latestArtifact?.ingestedAt ?? null;
+  const lastWatcherRunAt = latestTimestamp(
+    watcherRuns.map((run) => run.finishedAt ?? run.startedAt)
+  );
+  const lastUsedAt = latestTimestamp([lastArtifactAt, lastWatcherRunAt]);
+  const latestError = errorRuns[0] ?? null;
+  const lastErrorAt = latestError?.finishedAt ?? latestError?.startedAt ?? null;
+  const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+  const state: CompanyBrainOperatingPackHealth["state"] =
+    lastErrorAt && (!lastUsedAt || lastErrorAt >= lastUsedAt)
+      ? "error"
+      : !lastUsedAt
+        ? "missing"
+        : generatedAt - lastUsedAt > sevenDaysMs
+          ? "attention"
+          : "healthy";
+
+  const nextAction =
+    state === "error"
+      ? "Review the latest failed watcher/entrypoint before running this pack again."
+      : state === "missing"
+        ? entry.executionMode === "operating_pack_runner"
+          ? "Run the pack once from the operating surface, then promote only useful output."
+          : "Route one real request through this pack and review the generated evidence."
+        : state === "attention"
+          ? "Run or review this pack during the next daily operating pass."
+          : openGuidanceCount > 0
+            ? "Close open guidance or capture feedback from the latest useful output."
+            : "Keep this pack in the daily dogfood loop and capture feedback when used.";
+
+  return {
+    state,
+    lastUsedAt,
+    lastArtifactAt,
+    lastErrorAt,
+    latestArtifactId: latestArtifact?.id ?? null,
+    latestArtifactTitle: latestArtifact?.title ?? null,
+    latestErrorSummary: latestError?.errorSummary ?? null,
+    openGuidanceCount,
+    freshnessLabel: formatOperatingPackFreshness(lastUsedAt, generatedAt),
+    nextAction,
+  };
+}
+
+function buildOperatingPackRegistry(
+  data: ReturnType<typeof listAll> | null = null,
+  timestamp = now()
+): CompanyBrainOperatingPackRegistry {
+  const entries = OPERATING_PACK_REGISTRY_BASE_ENTRIES.map((entry) => ({
+    ...entry,
+    health: buildOperatingPackHealth(entry, data, timestamp),
+  }));
   const totals: CompanyBrainOperatingPackRegistry["totals"] = {
-    entryCount: OPERATING_PACK_REGISTRY_ENTRIES.length,
+    entryCount: entries.length,
     activeCount: 0,
     draftCount: 0,
     pausedCount: 0,
@@ -23165,7 +23516,7 @@ function buildOperatingPackRegistry(timestamp = now()): CompanyBrainOperatingPac
     approvedWritebackCount: 0,
   };
 
-  for (const entry of OPERATING_PACK_REGISTRY_ENTRIES) {
+  for (const entry of entries) {
     if (entry.status === "active") totals.activeCount += 1;
     if (entry.status === "draft") totals.draftCount += 1;
     if (entry.status === "paused") totals.pausedCount += 1;
@@ -23188,7 +23539,7 @@ function buildOperatingPackRegistry(timestamp = now()): CompanyBrainOperatingPac
 
   return {
     generatedAt: timestamp,
-    entries: OPERATING_PACK_REGISTRY_ENTRIES,
+    entries,
     totals,
   };
 }
@@ -23224,7 +23575,7 @@ function operatingPackRouteTextIncludesAny(text: string, terms: string[]): boole
 }
 
 function operatingPackRegistryEntryMatchesText(
-  entry: CompanyBrainOperatingPackRegistryEntry,
+  entry: OperatingPackRegistryBaseEntry,
   text: string
 ): boolean {
   const hints = entry.routingHints;
@@ -23238,9 +23589,9 @@ function operatingPackRegistryEntryMatchesText(
 
 function getOperatingPackRegistryEntry(
   slug: CompanyBrainOperatingPackSlug | null | undefined
-): CompanyBrainOperatingPackRegistryEntry | null {
+): OperatingPackRegistryBaseEntry | null {
   if (!slug) return null;
-  return OPERATING_PACK_REGISTRY_ENTRIES.find((entry) => entry.slug === slug) ?? null;
+  return OPERATING_PACK_REGISTRY_BASE_ENTRIES.find((entry) => entry.slug === slug) ?? null;
 }
 
 function findOperatingPackRegistryEntryForText(
@@ -23249,8 +23600,8 @@ function findOperatingPackRegistryEntryForText(
     executionModes?: CompanyBrainOperatingPackExecutionMode[];
     slugs?: CompanyBrainOperatingPackSlug[];
   } = {}
-): CompanyBrainOperatingPackRegistryEntry | null {
-  const entries = OPERATING_PACK_REGISTRY_ENTRIES.filter((entry) => {
+): OperatingPackRegistryBaseEntry | null {
+  const entries = OPERATING_PACK_REGISTRY_BASE_ENTRIES.filter((entry) => {
     if (entry.status !== "active") return false;
     if (options.executionModes && !options.executionModes.includes(entry.executionMode)) return false;
     if (options.slugs && !options.slugs.includes(entry.slug)) return false;
@@ -23259,9 +23610,9 @@ function findOperatingPackRegistryEntryForText(
   return entries.find((entry) => operatingPackRegistryEntryMatchesText(entry, text)) ?? null;
 }
 
-function getDefaultOperatingPackRunnerEntry(): CompanyBrainOperatingPackRegistryEntry | null {
+function getDefaultOperatingPackRunnerEntry(): OperatingPackRegistryBaseEntry | null {
   return (
-    OPERATING_PACK_REGISTRY_ENTRIES.find(
+    OPERATING_PACK_REGISTRY_BASE_ENTRIES.find(
       (entry) => entry.status === "active" && entry.executionMode === "operating_pack_runner"
     ) ?? null
   );
@@ -23383,7 +23734,7 @@ function inferOperatingPackSlug(
     executionModes: ["operating_pack_runner"],
   });
   if (matchedEntry) return matchedEntry.slug;
-  const areaEntry = OPERATING_PACK_REGISTRY_ENTRIES.find(
+  const areaEntry = OPERATING_PACK_REGISTRY_BASE_ENTRIES.find(
     (entry) =>
       entry.status === "active" &&
       entry.executionMode === "operating_pack_runner" &&
@@ -23925,11 +24276,11 @@ app.post("/operating-packs/run", async (c) => {
 });
 
 app.get("/operating-packs", (c) => {
-  return c.json({ data: buildOperatingPackRegistry() });
+  return c.json({ data: buildOperatingPackRegistry(listAll()) });
 });
 
 function buildOperationalSkillRefFromRegistryEntry(
-  entry: CompanyBrainOperatingPackRegistryEntry | null
+  entry: OperatingPackRegistryBaseEntry | null
 ): CompanyBrainOperationalSkillRef | null {
   if (!entry || entry.executionMode !== "agent_route_skill") return null;
   if (entry.slug !== "operations.pulso_dags") return null;
@@ -23945,7 +24296,7 @@ function buildOperationalSkillRefFromRegistryEntry(
 
 function findAgentRouteSkillRegistryEntry(
   text: string
-): CompanyBrainOperatingPackRegistryEntry | null {
+): OperatingPackRegistryBaseEntry | null {
   return findOperatingPackRegistryEntryForText(text, {
     executionModes: ["agent_route_skill"],
   });
@@ -23980,7 +24331,7 @@ function resolveAgentRouteSkill(
   const matchedEntry = findAgentRouteSkillRegistryEntry(request.text);
   if (matchedEntry) return buildOperationalSkillRefFromRegistryEntry(matchedEntry);
 
-  const areaEntry = OPERATING_PACK_REGISTRY_ENTRIES.find(
+  const areaEntry = OPERATING_PACK_REGISTRY_BASE_ENTRIES.find(
     (entry) =>
       entry.status === "active" &&
       entry.executionMode === "agent_route_skill" &&

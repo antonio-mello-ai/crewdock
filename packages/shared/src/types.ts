@@ -4266,6 +4266,32 @@ export interface CompanyBrainOperatingPackRoutingHints {
   targetTerms: string[];
 }
 
+export type CompanyBrainOperatingPackHealthState =
+  | "healthy"
+  | "attention"
+  | "missing"
+  | "error";
+
+export interface CompanyBrainOperatingPackHealth {
+  state: CompanyBrainOperatingPackHealthState;
+  lastUsedAt: number | null;
+  lastArtifactAt: number | null;
+  lastErrorAt: number | null;
+  latestArtifactId: string | null;
+  latestArtifactTitle: string | null;
+  latestErrorSummary: string | null;
+  openGuidanceCount: number;
+  freshnessLabel: string;
+  nextAction: string;
+}
+
+export interface CompanyBrainOperatingPackDogfood {
+  enabled: boolean;
+  cadence: string | null;
+  successMetric: string | null;
+  reviewCadence: string | null;
+}
+
 export interface CompanyBrainOperatingPackRegistryEntry {
   slug: CompanyBrainOperatingPackSlug;
   title: string;
@@ -4283,6 +4309,8 @@ export interface CompanyBrainOperatingPackRegistryEntry {
   workflowBlueprintIds: string[];
   watcherIds: string[];
   routingHints: CompanyBrainOperatingPackRoutingHints;
+  health: CompanyBrainOperatingPackHealth;
+  dogfood: CompanyBrainOperatingPackDogfood;
   maxRiskClass: RiskClass;
   actionPolicy: ActionPolicy;
   memoryPolicy: CompanyBrainOperatingPackMemoryPolicy;
@@ -4308,6 +4336,38 @@ export interface CompanyBrainOperatingPackRegistry {
     proposalOnlyCount: number;
     approvedWritebackCount: number;
   };
+}
+
+export type CompanyBrainDailyCommandBriefingItemKind =
+  | "priority"
+  | "risk"
+  | "action";
+
+export interface CompanyBrainDailyCommandBriefingItem {
+  id: string;
+  kind: CompanyBrainDailyCommandBriefingItemKind;
+  title: string;
+  detail: string;
+  severity: "info" | "attention" | "critical";
+  actionLabel: string;
+  href: string;
+  actionKind:
+    | "open_route"
+    | "run_operating_cadence"
+    | "run_briefing"
+    | "generate_daily_handoff"
+    | "run_operating_pack"
+    | "capture_feedback";
+  packSlug?: CompanyBrainOperatingPackSlug | null;
+}
+
+export interface CompanyBrainDailyCommandBriefing {
+  generatedAt: number;
+  title: string;
+  summary: string;
+  priorities: CompanyBrainDailyCommandBriefingItem[];
+  risks: CompanyBrainDailyCommandBriefingItem[];
+  actions: CompanyBrainDailyCommandBriefingItem[];
 }
 
 export interface RunCompanyBrainOperatingPackRequest {
@@ -4707,6 +4767,7 @@ export interface CompanyBrainOperatingSnapshot {
     missingCount: number;
   };
   cards: CompanyBrainOperatingSnapshotCard[];
+  dailyCommandBriefing: CompanyBrainDailyCommandBriefing;
   nextWork: CompanyBrainNextWork;
   lastBriefing: CompanyBrainBriefingSnapshot | null;
   latestAgentContext: AgentContext | null;

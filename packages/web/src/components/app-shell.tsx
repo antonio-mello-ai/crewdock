@@ -6,6 +6,11 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useAppNotifications } from "@/hooks/use-notifications";
 import {
+  isOperationalPath,
+  isPublicAiosHost,
+  protectedOperationalUrl,
+} from "@/lib/operational-surface";
+import {
   LayoutDashboard,
   MessageSquare,
   SquareTerminal,
@@ -20,6 +25,7 @@ import {
   Menu,
   X,
   Bot,
+  LockKeyhole,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -68,10 +74,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [publicOperationalUrl, setPublicOperationalUrl] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    if (!isPublicAiosHost(window.location.hostname) || !isOperationalPath(pathname)) {
+      return null;
+    }
+    return protectedOperationalUrl(pathname, window.location.search);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (isPublicAiosHost(window.location.hostname) && isOperationalPath(pathname)) {
+      setPublicOperationalUrl(
+        protectedOperationalUrl(pathname, window.location.search)
+      );
+      return;
+    }
+    setPublicOperationalUrl(null);
+  }, [pathname]);
 
   // Watch for failed jobs and pending HITL, fire browser notifications,
   // and update tab title badge. Silent if permission not granted.
-  useAppNotifications();
+  useAppNotifications(!publicOperationalUrl);
 
   // Close mobile nav on route change
   useEffect(() => {
@@ -209,6 +233,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
     [collapsed, pathname]
   );
+
+  if (publicOperationalUrl) {
+    return (
+      <main className="min-h-screen bg-background p-6 text-foreground">
+        <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col justify-center">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md border border-border bg-muted">
+              <LockKeyhole className="size-5 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Protected operational area</p>
+              <h1 className="text-2xl font-semibold tracking-normal">
+                Open this route in AIOS
+              </h1>
+            </div>
+          </div>
+          <p className="mt-4 text-sm leading-6 text-muted-foreground">
+            This public domain serves the static app shell. Company Brain and Runtime
+            routes use the protected operational API behind Cloudflare Access.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <Button onClick={() => (window.location.href = publicOperationalUrl)}>
+              Open protected route
+            </Button>
+            <Button variant="outline" onClick={() => (window.location.href = "/")}>
+              Back to public home
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">

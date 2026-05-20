@@ -134,9 +134,9 @@ export function notify(title: string, options?: NotifyOptions): void {
  * Skips notifications on the first load (seed phase) so the user doesn't
  * get blasted with history when they open the tab.
  */
-export function useAppNotifications() {
-  const { data: jobsData } = useJobs({ limit: 20 });
-  const { data: hitlData } = useHitlRequests("pending");
+export function useAppNotifications(enabled = true) {
+  const { data: jobsData } = useJobs({ limit: 20, enabled });
+  const { data: hitlData } = useHitlRequests("pending", enabled);
 
   const seenFailedJobs = useRef<Set<string>>(new Set());
   const seenHitl = useRef<Set<string>>(new Set());
@@ -147,6 +147,7 @@ export function useAppNotifications() {
   // count for the tab title badge though.
   const [pushActive, setPushActive] = useState(false);
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       const sub = await getExistingPushSubscription();
@@ -155,13 +156,14 @@ export function useAppNotifications() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   // Track pending count for tab badge
   const [pendingCount, setPendingCount] = useState(0);
 
   // Detect new failed jobs (only if push is NOT active — otherwise SW handles it)
   useEffect(() => {
+    if (!enabled) return;
     const jobs = jobsData?.data ?? [];
     const failed = jobs.filter((j) => j.status === "failed");
 
@@ -182,10 +184,14 @@ export function useAppNotifications() {
         });
       }
     }
-  }, [jobsData, pushActive]);
+  }, [enabled, jobsData, pushActive]);
 
   // Detect new HITL requests + update pending count
   useEffect(() => {
+    if (!enabled) {
+      setPendingCount(0);
+      return;
+    }
     const requests = hitlData?.data ?? [];
     setPendingCount(requests.length);
 
@@ -208,7 +214,7 @@ export function useAppNotifications() {
         });
       }
     }
-  }, [hitlData, jobsData, pushActive]);
+  }, [enabled, hitlData, jobsData, pushActive]);
 
   // Update tab title with badge
   useEffect(() => {
