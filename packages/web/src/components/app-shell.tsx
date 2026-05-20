@@ -72,30 +72,38 @@ function isNavItemActive(pathname: string, item: NavItem) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const operationalPath = isOperationalPath(pathname);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [publicOperationalUrl, setPublicOperationalUrl] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    if (!isPublicAiosHost(window.location.hostname) || !isOperationalPath(pathname)) {
-      return null;
-    }
-    return protectedOperationalUrl(pathname, window.location.search);
-  });
+  const [surfaceDecision, setSurfaceDecision] = useState<{
+    pathname: string | null;
+    publicOperationalUrl: string | null;
+  }>(() => ({
+    pathname: operationalPath ? null : pathname,
+    publicOperationalUrl: null,
+  }));
+  const surfaceChecked =
+    !operationalPath || surfaceDecision.pathname === pathname;
+  const publicOperationalUrl = surfaceChecked
+    ? surfaceDecision.publicOperationalUrl
+    : null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (isPublicAiosHost(window.location.hostname) && isOperationalPath(pathname)) {
-      setPublicOperationalUrl(
-        protectedOperationalUrl(pathname, window.location.search)
-      );
+    if (!operationalPath) {
+      setSurfaceDecision({ pathname, publicOperationalUrl: null });
       return;
     }
-    setPublicOperationalUrl(null);
-  }, [pathname]);
+    let nextUrl: string | null = null;
+    if (isPublicAiosHost(window.location.hostname)) {
+      nextUrl = protectedOperationalUrl(pathname, window.location.search);
+    }
+    setSurfaceDecision({ pathname, publicOperationalUrl: nextUrl });
+  }, [operationalPath, pathname]);
 
   // Watch for failed jobs and pending HITL, fire browser notifications,
   // and update tab title badge. Silent if permission not granted.
-  useAppNotifications(!publicOperationalUrl);
+  useAppNotifications(surfaceChecked && !publicOperationalUrl);
 
   // Close mobile nav on route change
   useEffect(() => {
@@ -233,6 +241,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     },
     [collapsed, pathname]
   );
+
+  if (!surfaceChecked) {
+    return <main className="min-h-screen bg-background" />;
+  }
 
   if (publicOperationalUrl) {
     return (
