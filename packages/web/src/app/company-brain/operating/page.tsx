@@ -12,15 +12,18 @@ import {
   FileText,
   GitPullRequest,
   Loader2,
+  PlayCircle,
   RefreshCw,
   ShieldCheck,
   Target,
+  ThumbsUp,
 } from "lucide-react";
 import {
   useCompanyBrainAiosPrReviewIntake,
   useCompanyBrainOperatingPackRegistry,
   useCompanyBrainOperatingSnapshot,
   useGenerateCompanyBrainDailyAgentHandoff,
+  useRunCompanyBrainOperatingPack,
   useRunCompanyBrainOperatingCadence,
   useRunCompanyBrainWatcher,
   useSyncCompanyBrainAiosPrReviews,
@@ -29,7 +32,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatTimeAgo } from "@/lib/utils";
 import type {
+  CompanyBrainDailyCommandBriefingItem,
   CompanyBrainOperatingPackRegistryEntry,
+  CompanyBrainOperatingPackRunResponse,
   CompanyBrainOperatingSnapshotCard,
   CompanyBrainOperatingSnapshotCardKey,
 } from "@aios/shared";
@@ -57,15 +62,23 @@ function formatTimestamp(value: number | null) {
   return value ? formatTimeAgo(value) : "never";
 }
 
+function defaultPackText(entry: CompanyBrainOperatingPackRegistryEntry) {
+  if (entry.slug === "marketing.nr1") return "briefing NR-1 para contabilidades";
+  if (entry.slug === "operations.pulso_dags") return "verifique os DAGs do Pulso no Airflow";
+  return `run ${entry.slug}`;
+}
+
 export default function CompanyBrainOperatingPage() {
   const { data, isLoading } = useCompanyBrainOperatingSnapshot();
   const { data: operatingPackRegistryData } = useCompanyBrainOperatingPackRegistry();
   const { data: prReviewData } = useCompanyBrainAiosPrReviewIntake();
   const runCadence = useRunCompanyBrainOperatingCadence();
   const runWatcher = useRunCompanyBrainWatcher();
+  const runPack = useRunCompanyBrainOperatingPack();
   const generateHandoff = useGenerateCompanyBrainDailyAgentHandoff();
   const syncPrReviews = useSyncCompanyBrainAiosPrReviews();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [packResult, setPackResult] = useState<CompanyBrainOperatingPackRunResponse | null>(null);
 
   const [nextWorkCopyState, setNextWorkCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -161,7 +174,10 @@ export default function CompanyBrainOperatingPage() {
   };
 
   const running =
-    runCadence.isPending || runWatcher.isPending || generateHandoff.isPending;
+    runCadence.isPending ||
+    runWatcher.isPending ||
+    generateHandoff.isPending ||
+    runPack.isPending;
 
   const syncAiosPrReviews = () => {
     syncPrReviews.mutate({
@@ -174,6 +190,72 @@ export default function CompanyBrainOperatingPage() {
       visibility: "internal",
       createSignals: true,
     });
+  };
+
+  const runOperatingPack = (
+    entry: CompanyBrainOperatingPackRegistryEntry,
+    action: "run" | "promote" | "feedback" = "run",
+    feedbackStatus?: string
+  ) => {
+    const targetArtifactId = entry.health.latestArtifactId;
+    runPack.mutate(
+      {
+        text:
+          action === "feedback"
+            ? `${feedbackStatus ?? "accepted"} ${entry.slug}`
+            : defaultPackText(entry),
+        packSlug: entry.slug,
+        action,
+        actor: "web",
+        channel: "web",
+        dryRun: action === "run",
+        promoteReason:
+          action === "promote"
+            ? "Daily operating surface quick promotion"
+            : undefined,
+        targetArtifactId: action === "feedback" ? targetArtifactId : undefined,
+        feedbackStatus: action === "feedback" ? feedbackStatus : undefined,
+        feedbackNote:
+          action === "feedback"
+            ? `Captured from Operating Pack Registry as ${feedbackStatus}.`
+            : undefined,
+      },
+      {
+        onSuccess: (result) => setPackResult(result.data),
+      }
+    );
+  };
+
+  const handleDailyCommandAction = (item: CompanyBrainDailyCommandBriefingItem) => {
+    if (item.actionKind === "run_operating_cadence") {
+      runCadence.mutate({ mode: "all" });
+      return;
+    }
+    if (item.actionKind === "run_briefing") {
+      runWatcher.mutate({
+        watcherId: "watcher-aios-briefing-v0",
+        body: {
+          title: "AIOS Operating Briefing",
+          summary: "Manual run from Daily Command Briefing.",
+        },
+      });
+      return;
+    }
+    if (item.actionKind === "generate_daily_handoff") {
+      generateHandoff.mutate({ targetAgent: "codex" });
+      return;
+    }
+    if (item.actionKind === "run_operating_pack" && item.packSlug) {
+      const entry = operatingPackRegistry?.entries.find((candidate) => candidate.slug === item.packSlug);
+      if (entry) runOperatingPack(entry, "run");
+      return;
+    }
+    if (item.actionKind === "capture_feedback" && item.packSlug) {
+      const entry = operatingPackRegistry?.entries.find((candidate) => candidate.slug === item.packSlug);
+      if (entry?.health.latestArtifactId) runOperatingPack(entry, "feedback", "accepted");
+      return;
+    }
+    window.location.href = item.href;
   };
 
   if (isLoading || !snapshot) {
@@ -272,6 +354,73 @@ export default function CompanyBrainOperatingPage() {
         </header>
 
         <section className="rounded-md border border-primary/40 bg-primary/5 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Brain className="size-5 text-primary" />
+                <h2 className="text-lg font-semibold">
+                  {snapshot.dailyCommandBriefing.title}
+                </h2>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {snapshot.dailyCommandBriefing.summary}
+              </p>
+            </div>
+            <Badge variant="outline">
+              {formatTimeAgo(snapshot.dailyCommandBriefing.generatedAt)}
+            </Badge>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {[
+              ["Priorities", snapshot.dailyCommandBriefing.priorities],
+              ["Risks", snapshot.dailyCommandBriefing.risks],
+              ["Actions", snapshot.dailyCommandBriefing.actions],
+            ].map(([label, items]) => (
+              <div key={label as string} className="rounded-md border border-border bg-background p-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {label as string}
+                </h3>
+                <div className="mt-3 space-y-3">
+                  {(items as CompanyBrainDailyCommandBriefingItem[]).map((item) => (
+                    <div key={item.id} className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{item.title}</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            {item.detail}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            item.severity === "critical"
+                              ? "destructive"
+                              : item.severity === "attention"
+                                ? "secondary"
+                                : "outline"
+                          }
+                        >
+                          {item.severity}
+                        </Badge>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDailyCommandAction(item)}
+                        disabled={running}
+                      >
+                        <PlayCircle className="size-3" />
+                        {item.actionLabel}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="next-work" className="rounded-md border border-primary/40 bg-primary/5 p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <Target className="size-5 text-primary" />
@@ -455,7 +604,7 @@ export default function CompanyBrainOperatingPage() {
           </div>
         </section>
 
-        <section className="rounded-md border border-border p-4">
+        <section id="operating-pack-registry" className="rounded-md border border-border p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
@@ -495,7 +644,12 @@ export default function CompanyBrainOperatingPage() {
                       <h3 className="truncate text-sm font-semibold">{entry.title}</h3>
                       <p className="mt-1 text-xs text-muted-foreground">{entry.slug}</p>
                     </div>
-                    <Badge variant={stateVariant(entry.status)}>{entry.status}</Badge>
+                    <div className="flex flex-col items-end gap-1">
+                      <Badge variant={stateVariant(entry.status)}>{entry.status}</Badge>
+                      <Badge variant={stateVariant(entry.health.state)}>
+                        {entry.health.state}
+                      </Badge>
+                    </div>
                   </div>
 
                   <p className="mt-3 min-h-16 text-sm text-muted-foreground">
@@ -508,9 +662,39 @@ export default function CompanyBrainOperatingPage() {
                     <Badge variant="outline">Risk {entry.maxRiskClass}</Badge>
                     <Badge variant="outline">{entry.actionPolicy}</Badge>
                     <Badge variant="outline">{entry.externalWritePolicy}</Badge>
+                    {entry.dogfood.enabled ? (
+                      <Badge variant="default">dogfood</Badge>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 space-y-3 text-xs">
+                    <div>
+                      <div className="font-semibold text-muted-foreground">Health</div>
+                      <div className="mt-1 grid gap-1 text-muted-foreground">
+                        <div>Last use: {entry.health.freshnessLabel}</div>
+                        <div>
+                          Latest artifact:{" "}
+                          {entry.health.latestArtifactTitle ?? "none"}
+                        </div>
+                        <div>Open guidance: {entry.health.openGuidanceCount}</div>
+                        {entry.health.latestErrorSummary ? (
+                          <div className="text-destructive">
+                            Error: {entry.health.latestErrorSummary}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {entry.dogfood.enabled ? (
+                      <div>
+                        <div className="font-semibold text-muted-foreground">Dogfood</div>
+                        <div className="mt-1 grid gap-1 text-muted-foreground">
+                          <div>{entry.dogfood.cadence}</div>
+                          <div>{entry.dogfood.successMetric}</div>
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div>
                       <div className="font-semibold text-muted-foreground">Channels</div>
                       <div className="mt-1 flex flex-wrap gap-1">
@@ -547,6 +731,64 @@ export default function CompanyBrainOperatingPage() {
                   <div className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
                     {entry.statusNote}
                   </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {entry.executionMode === "operating_pack_runner" ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runOperatingPack(entry, "run")}
+                          disabled={running}
+                        >
+                          <PlayCircle className="size-3" />
+                          Run
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runOperatingPack(entry, "promote")}
+                          disabled={running}
+                        >
+                          <Download className="size-3" />
+                          Promote
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runOperatingPack(entry, "feedback", "accepted")}
+                          disabled={running || !entry.health.latestArtifactId}
+                        >
+                          <ThumbsUp className="size-3" />
+                          Useful
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runOperatingPack(entry, "feedback", "completed")}
+                          disabled={running || !entry.health.latestArtifactId}
+                        >
+                          <CheckCircle2 className="size-3" />
+                          Done
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => (window.location.href = "/company-brain/command")}
+                      >
+                        <ExternalLink className="size-3" />
+                        Open route
+                      </Button>
+                    )}
+                  </div>
+
+                  {packResult?.packSlug === entry.slug ? (
+                    <pre className="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded border border-border bg-muted/30 p-2 text-[11px] leading-4">
+                      {packResult.responseText}
+                    </pre>
+                  ) : null}
                 </article>
               )
             )}
@@ -683,7 +925,7 @@ export default function CompanyBrainOperatingPage() {
             </div>
           </div>
 
-          <aside className="rounded-md border border-border p-4">
+          <aside id="daily-agent-handoff" className="rounded-md border border-border p-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Daily Agent Handoff</h2>
               <Badge variant={snapshot.latestAgentContext ? "default" : "secondary"}>
