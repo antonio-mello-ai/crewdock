@@ -25,6 +25,7 @@ import type {
   CompanyBrainWritebackAuditTrailResponse,
   CompanyBrainWritebackEvidenceIntegrityGapsResponse,
   CompanyBrainWritebackEvidenceRemediationSuggestionsResponse,
+  CompanyBrainOperatingPackRegistry,
   CompanyBrainOperatingSnapshot,
   CompanyBrainSummary,
   CompanyBrainCommandRouterResult,
@@ -576,6 +577,14 @@ export function useCompanyBrainOperatingMap() {
     queryKey: ["company-brain", "operating-map"],
     queryFn: () => api("/api/company-brain/operating-map"),
     refetchInterval: 15_000,
+  });
+}
+
+export function useCompanyBrainOperatingPackRegistry() {
+  return useQuery<ApiResponse<CompanyBrainOperatingPackRegistry>>({
+    queryKey: ["company-brain", "operating-pack-registry"],
+    queryFn: () => api("/api/company-brain/operating-packs"),
+    refetchInterval: 30_000,
   });
 }
 

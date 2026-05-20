@@ -31,6 +31,7 @@ O alvo agora adiciona:
 - Drift Inbox;
 - Guidance Engine;
 - Workflow Blueprint Engine;
+- Operating Pack Registry;
 - Work Management Layer;
 - Agent Context Generator;
 - AutoImprove UI/API.
@@ -60,6 +61,7 @@ O core deste repo precisa sustentar operacao multi-area com estado e provenance:
 | Company Brain/Graph | Estrategia, metas, decisoes, owners, work items, artifacts, signals e proposals. |
 | Goal/Cadence | Metas, prazos, milestones, metricas, review cadence e SLA status. |
 | Workflow Orchestration | Blueprints/runs/gates por area. |
+| Operating Pack Registry | Rotinas reutilizaveis por area com owner, canais, policy, entrypoints e metricas de sucesso. |
 | Agent Runtime | Agentes executando etapas sob gates e policies. |
 | Governance/Policy | Risco A/B/C, HITL, rollback, tenant/source visibility, retention e write permissions. |
 | Context/Retrieval | QMD, search, embeddings e memory. |
@@ -129,6 +131,7 @@ Se uma feature so ingere informacao e nao ajuda a fechar o loop, ela e suporte, 
 | UI | `packages/web/src/app/` | Criar telas de Strategy Map, Evidence Inbox, Drift Inbox, Workflow Runs e Guidance. |
 | MCP | `packages/mcp-server/src/index.ts` | Expor ferramentas para agentes criarem/lerem artifacts, work items, workflow runs e guidance. |
 | Auth/tenancy | `packages/daemon/src/middleware/` e `docs/auth-rollout.md` | Preservar CF Access e preparar separacao de fonte/tenant antes de qualquer piloto externo. |
+| Operating Packs | `packages/daemon/src/routes/company-brain.ts` | Expor registry read-only de packs aprovados antes de permitir criacao/edicao em UI. |
 
 ## Primeiro slice recomendado
 
@@ -146,6 +149,7 @@ Se uma feature so ingere informacao e nao ajuda a fechar o loop, ela e suporte, 
 9. Gerar o primeiro `WorkflowRun` real a partir de um ticket pequeno deste repo ou do dogfood ERP.
 10. Registrar failures/residuais como novos signals ou work items.
 11. Fazer o fechamento do run atualizar docs oficiais.
+12. Registrar packs operacionais aprovados como registry read-only antes de transformar canais em bots ou scripts paralelos.
 
 ## O que nao fazer agora
 

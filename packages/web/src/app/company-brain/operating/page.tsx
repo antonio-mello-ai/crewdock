@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import {
   useCompanyBrainAiosPrReviewIntake,
+  useCompanyBrainOperatingPackRegistry,
   useCompanyBrainOperatingSnapshot,
   useGenerateCompanyBrainDailyAgentHandoff,
   useRunCompanyBrainOperatingCadence,
@@ -28,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatTimeAgo } from "@/lib/utils";
 import type {
+  CompanyBrainOperatingPackRegistryEntry,
   CompanyBrainOperatingSnapshotCard,
   CompanyBrainOperatingSnapshotCardKey,
 } from "@aios/shared";
@@ -57,6 +59,7 @@ function formatTimestamp(value: number | null) {
 
 export default function CompanyBrainOperatingPage() {
   const { data, isLoading } = useCompanyBrainOperatingSnapshot();
+  const { data: operatingPackRegistryData } = useCompanyBrainOperatingPackRegistry();
   const { data: prReviewData } = useCompanyBrainAiosPrReviewIntake();
   const runCadence = useRunCompanyBrainOperatingCadence();
   const runWatcher = useRunCompanyBrainWatcher();
@@ -67,6 +70,7 @@ export default function CompanyBrainOperatingPage() {
   const [nextWorkCopyState, setNextWorkCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   const snapshot = data?.data;
+  const operatingPackRegistry = operatingPackRegistryData?.data;
   const prReviewIntake = prReviewData?.data;
   const pendingPrReviews =
     prReviewIntake?.items.filter((item) =>
@@ -448,6 +452,104 @@ export default function CompanyBrainOperatingPage() {
                 </article>
               );
             })}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-border p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Brain className="size-4 text-muted-foreground" />
+                <h2 className="text-lg font-semibold">Operating Pack Registry</h2>
+                {operatingPackRegistry ? (
+                  <Badge variant="outline">
+                    {operatingPackRegistry.totals.activeCount} active
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Approved reusable routines by area, channel, policy and entrypoint.
+              </p>
+            </div>
+            {operatingPackRegistry ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">
+                  {operatingPackRegistry.totals.entryCount} packs
+                </Badge>
+                <Badge variant="outline">
+                  {operatingPackRegistry.totals.noExternalWriteCount} no write
+                </Badge>
+                <Badge variant="outline">
+                  {operatingPackRegistry.totals.proposalOnlyCount} proposal-only
+                </Badge>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {(operatingPackRegistry?.entries ?? []).map(
+              (entry: CompanyBrainOperatingPackRegistryEntry) => (
+                <article key={entry.slug} className="rounded-md border border-border p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold">{entry.title}</h3>
+                      <p className="mt-1 text-xs text-muted-foreground">{entry.slug}</p>
+                    </div>
+                    <Badge variant={stateVariant(entry.status)}>{entry.status}</Badge>
+                  </div>
+
+                  <p className="mt-3 min-h-16 text-sm text-muted-foreground">
+                    {entry.summary}
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-1.5 text-xs">
+                    <Badge variant="outline">{entry.area}</Badge>
+                    <Badge variant="outline">{entry.executionMode}</Badge>
+                    <Badge variant="outline">Risk {entry.maxRiskClass}</Badge>
+                    <Badge variant="outline">{entry.actionPolicy}</Badge>
+                    <Badge variant="outline">{entry.externalWritePolicy}</Badge>
+                  </div>
+
+                  <div className="mt-4 space-y-3 text-xs">
+                    <div>
+                      <div className="font-semibold text-muted-foreground">Channels</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {entry.channels.map((channel) => (
+                          <Badge key={channel} variant="secondary">
+                            {channel}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-semibold text-muted-foreground">Entrypoints</div>
+                      <div className="mt-1 space-y-1">
+                        {entry.entrypoints.map((entrypoint) => (
+                          <div
+                            key={`${entry.slug}-${entrypoint.kind}-${entrypoint.label}`}
+                            className="rounded border border-border bg-muted/30 px-2 py-1"
+                          >
+                            <span className="font-medium">{entrypoint.label}</span>
+                            <span className="mx-1 text-muted-foreground">/</span>
+                            <span className="break-all text-muted-foreground">
+                              {entrypoint.path ??
+                                entrypoint.mcpTool ??
+                                entrypoint.watcherId ??
+                                entrypoint.kind}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                    {entry.statusNote}
+                  </div>
+                </article>
+              )
+            )}
           </div>
         </section>
 
