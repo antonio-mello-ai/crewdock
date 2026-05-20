@@ -2606,6 +2606,22 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_company_brain_operating_pack_registry",
+  {
+    title: "Get Company Brain Operating Pack Registry",
+    description:
+      "Read-only registry of approved AIOS Operating Packs and operational skills by area, channel, policy, entrypoint, risk ceiling and memory rules. Use this before routing pack-like requests so channels do not become separate orchestration layers.",
+    inputSchema: {},
+  },
+  async () => {
+    const result = await daemonFetch<{ data: unknown }>(
+      "/api/company-brain/operating-packs"
+    );
+    return formatJsonResult(result.data);
+  }
+);
+
+server.registerTool(
   "resolve_company_brain_agent_route",
   {
     title: "Resolve Company Brain agent route",

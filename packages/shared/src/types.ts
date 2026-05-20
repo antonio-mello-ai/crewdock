@@ -4227,13 +4227,81 @@ export interface CompanyBrainCommandRouterResult {
   routing: CommandRouterRouting;
 }
 
-export type CompanyBrainOperatingPackSlug = "marketing.nr1";
+export type CompanyBrainOperatingPackSlug =
+  | "marketing.nr1"
+  | "operations.pulso_dags"
+  | "development.pr_ci";
 export type CompanyBrainOperatingPackAction = "run" | "promote" | "feedback";
 export type CompanyBrainOperatingPackMemoryPolicy =
   | "ephemeral"
   | "promote_recommended"
   | "promote_required"
   | "promoted";
+export type CompanyBrainOperatingPackStatus =
+  | "active"
+  | "draft"
+  | "paused"
+  | "archived";
+export type CompanyBrainOperatingPackExecutionMode =
+  | "operating_pack_runner"
+  | "agent_route_skill"
+  | "watcher_adapter";
+export type CompanyBrainOperatingPackEntrypointKind =
+  | "api"
+  | "mcp"
+  | "watcher"
+  | "agent_route";
+
+export interface CompanyBrainOperatingPackEntrypoint {
+  kind: CompanyBrainOperatingPackEntrypointKind;
+  label: string;
+  path?: string | null;
+  mcpTool?: string | null;
+  watcherId?: string | null;
+}
+
+export interface CompanyBrainOperatingPackRegistryEntry {
+  slug: CompanyBrainOperatingPackSlug;
+  title: string;
+  area: CompanyBrainArea;
+  status: CompanyBrainOperatingPackStatus;
+  owner: string;
+  ownerType: OwnerType;
+  summary: string;
+  docsPath: string;
+  executionMode: CompanyBrainOperatingPackExecutionMode;
+  entrypoints: CompanyBrainOperatingPackEntrypoint[];
+  channels: string[];
+  capabilities: string[];
+  sourceRefs: string[];
+  workflowBlueprintIds: string[];
+  watcherIds: string[];
+  maxRiskClass: RiskClass;
+  actionPolicy: ActionPolicy;
+  memoryPolicy: CompanyBrainOperatingPackMemoryPolicy;
+  externalWritePolicy: "none" | "proposal_only" | "approved_writeback";
+  successMetrics: string[];
+  promotionPolicy: string;
+  statusNote: string;
+}
+
+export interface CompanyBrainOperatingPackRegistry {
+  generatedAt: number;
+  entries: CompanyBrainOperatingPackRegistryEntry[];
+  totals: {
+    entryCount: number;
+    activeCount: number;
+    draftCount: number;
+    pausedCount: number;
+    archivedCount: number;
+    operatingPackRunnerCount: number;
+    agentRouteSkillCount: number;
+    watcherAdapterCount: number;
+    noExternalWriteCount: number;
+    proposalOnlyCount: number;
+    approvedWritebackCount: number;
+  };
+}
 
 export interface RunCompanyBrainOperatingPackRequest {
   text: string;

@@ -164,6 +164,8 @@ import type {
   CompanyBrainAgentRouteResponse,
   CompanyBrainOperatingPackAction,
   CompanyBrainOperatingPackArtifactRef,
+  CompanyBrainOperatingPackRegistry,
+  CompanyBrainOperatingPackRegistryEntry,
   CompanyBrainOperatingPackMemoryPolicy,
   CompanyBrainOperatingPackRunResponse,
   CompanyBrainOperatingPackSlug,
@@ -22947,6 +22949,178 @@ app.post("/command-router", async (c) => {
 const MARKETING_NR1_DEFAULT_SEGMENT =
   "contabilidades e consultorias que atendem empresas de 50-500 colaboradores";
 
+const OPERATING_PACK_REGISTRY_ENTRIES: CompanyBrainOperatingPackRegistryEntry[] = [
+  {
+    slug: "marketing.nr1",
+    title: "Spa da Vida NR-1 marketing pack",
+    area: "marketing",
+    status: "active",
+    owner: "Felhen Marketing",
+    ownerType: "team",
+    summary:
+      "Daily commercial briefing, explicit memory promotion and HITL feedback for Spa da Vida Empresas / NR-1 demand generation.",
+    docsPath: "docs/action/aios-marketing-operating-pack-v0-2026-05-13.md",
+    executionMode: "operating_pack_runner",
+    entrypoints: [
+      {
+        kind: "api",
+        label: "Run pack",
+        path: "/api/company-brain/operating-packs/run",
+      },
+    ],
+    channels: ["telegram", "web", "mcp"],
+    capabilities: ["briefing", "explicit_promotion", "hitl_feedback"],
+    sourceRefs: ["telegram://aios-bots", "aios://operating-packs/marketing/nr1"],
+    workflowBlueprintIds: ["marketing-operating-pack-v0"],
+    watcherIds: [],
+    maxRiskClass: "B",
+    actionPolicy: "create_artifacts",
+    memoryPolicy: "ephemeral",
+    externalWritePolicy: "none",
+    successMetrics: [
+      "useful briefing returned without opening Codex",
+      "strategic learnings promoted only by explicit command",
+      "feedback creates reusable evidence when an artifact is promoted",
+    ],
+    promotionPolicy:
+      "Briefings are ephemeral by default; promoted artifacts require explicit human reason and feedback.",
+    statusNote:
+      "Live runner exists in the daemon; Telegram is only a gateway and does not own pack logic.",
+  },
+  {
+    slug: "operations.pulso_dags",
+    title: "PulsoOnline DAG health check skill",
+    area: "operations",
+    status: "active",
+    owner: "Felhen Operations",
+    ownerType: "team",
+    summary:
+      "Read-only Airflow DAG health triage for PulsoOnline with current GCP Airflow routing, stale-context guardrails and no rerun/restart side effects.",
+    docsPath: "docs/action/aios-operations-pulso-dags-pack-v0-2026-05-13.md",
+    executionMode: "agent_route_skill",
+    entrypoints: [
+      {
+        kind: "api",
+        label: "Resolve route",
+        path: "/api/company-brain/agent-routing/resolve",
+      },
+      {
+        kind: "mcp",
+        label: "Resolve via MCP",
+        mcpTool: "resolve_company_brain_agent_route",
+      },
+    ],
+    channels: ["telegram", "mcp"],
+    capabilities: ["read_only_triage", "stale_context_guard", "agent_prompt_generation"],
+    sourceRefs: ["gcp://felhen-pulso-live-prod/pulso-live-airflow"],
+    workflowBlueprintIds: ["operations-read-only-triage-v0"],
+    watcherIds: [],
+    maxRiskClass: "B",
+    actionPolicy: "observe_only",
+    memoryPolicy: "ephemeral",
+    externalWritePolicy: "none",
+    successMetrics: [
+      "route lands in pulsoonline-backend context",
+      "answer separates execution status from output freshness and business impact",
+      "no rerun, restart, unpause or backfill without explicit HITL",
+    ],
+    promotionPolicy:
+      "Only repeated operational findings or accepted incident learnings become Company Brain evidence.",
+    statusNote:
+      "Implemented as an operational skill resolved by agent-routing; no direct daemon executor yet.",
+  },
+  {
+    slug: "development.pr_ci",
+    title: "Development PR/CI operating pack",
+    area: "development",
+    status: "active",
+    owner: "Felhen Platform",
+    ownerType: "team",
+    summary:
+      "PR/CI watcher and review intake loop for AIOS development work: observe PRs, checks, reviews and stale gates before agent execution.",
+    docsPath: "docs/action/company-brain-production-operating-loop-2026-05-07.md",
+    executionMode: "watcher_adapter",
+    entrypoints: [
+      {
+        kind: "watcher",
+        label: "PR/CI watcher",
+        watcherId: "watcher-github-pr-ci-v0",
+      },
+      {
+        kind: "api",
+        label: "Sync PR/CI",
+        path: "/api/company-brain/adapters/github/pr-ci/sync",
+      },
+      {
+        kind: "api",
+        label: "Sync AIOS-authored PR reviews",
+        path: "/api/company-brain/adapters/github/aios-pr-reviews/sync",
+      },
+    ],
+    channels: ["web", "mcp", "operating_loop"],
+    capabilities: ["pr_ci_observation", "review_intake", "guidance_generation"],
+    sourceRefs: ["github://antonio-mello-ai/crewdock"],
+    workflowBlueprintIds: ["development-blueprint-v0"],
+    watcherIds: ["watcher-github-pr-ci-v0", "watcher-github-notifications-v0"],
+    maxRiskClass: "B",
+    actionPolicy: "observe_only",
+    memoryPolicy: "promote_recommended",
+    externalWritePolicy: "proposal_only",
+    successMetrics: [
+      "PR/CI state creates artifacts and signals",
+      "AIOS-authored PR review state returns to Company Brain",
+      "writeback remains proposal or approved path only",
+    ],
+    promotionPolicy:
+      "Execution learnings should become guidance or ImprovementProposal only after evidence packet review.",
+    statusNote:
+      "Backed by existing watchers and adapters; no new external write path in this registry slice.",
+  },
+];
+
+function buildOperatingPackRegistry(timestamp = now()): CompanyBrainOperatingPackRegistry {
+  const totals: CompanyBrainOperatingPackRegistry["totals"] = {
+    entryCount: OPERATING_PACK_REGISTRY_ENTRIES.length,
+    activeCount: 0,
+    draftCount: 0,
+    pausedCount: 0,
+    archivedCount: 0,
+    operatingPackRunnerCount: 0,
+    agentRouteSkillCount: 0,
+    watcherAdapterCount: 0,
+    noExternalWriteCount: 0,
+    proposalOnlyCount: 0,
+    approvedWritebackCount: 0,
+  };
+
+  for (const entry of OPERATING_PACK_REGISTRY_ENTRIES) {
+    if (entry.status === "active") totals.activeCount += 1;
+    if (entry.status === "draft") totals.draftCount += 1;
+    if (entry.status === "paused") totals.pausedCount += 1;
+    if (entry.status === "archived") totals.archivedCount += 1;
+    if (entry.executionMode === "operating_pack_runner") {
+      totals.operatingPackRunnerCount += 1;
+    }
+    if (entry.executionMode === "agent_route_skill") {
+      totals.agentRouteSkillCount += 1;
+    }
+    if (entry.executionMode === "watcher_adapter") {
+      totals.watcherAdapterCount += 1;
+    }
+    if (entry.externalWritePolicy === "none") totals.noExternalWriteCount += 1;
+    if (entry.externalWritePolicy === "proposal_only") totals.proposalOnlyCount += 1;
+    if (entry.externalWritePolicy === "approved_writeback") {
+      totals.approvedWritebackCount += 1;
+    }
+  }
+
+  return {
+    generatedAt: timestamp,
+    entries: OPERATING_PACK_REGISTRY_ENTRIES,
+    totals,
+  };
+}
+
 function normalizeOperatingPackMatchText(value: string): string {
   return value
     .normalize("NFD")
@@ -23589,7 +23763,7 @@ app.post("/operating-packs/run", async (c) => {
       request,
       router,
       handled: false,
-      packSlug: null,
+      packSlug,
       action,
       responseText: formatCommandRouterPreview(router),
       memoryPolicy: "ephemeral",
@@ -23600,6 +23774,10 @@ app.post("/operating-packs/run", async (c) => {
     const message = err instanceof Error ? err.message : "Unknown error";
     return c.json({ error: "operating_pack_run_failed", message }, 400);
   }
+});
+
+app.get("/operating-packs", (c) => {
+  return c.json({ data: buildOperatingPackRegistry() });
 });
 
 const PULSO_DAGS_SKILL_DOCS_PATH =
