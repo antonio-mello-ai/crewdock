@@ -60,9 +60,7 @@ async def save_history(session_id: str, messages: list[dict[str, str]]) -> None:
     _memory_store[session_id] = trimmed
 
 
-async def append_message(
-    session_id: str, role: str, content: str
-) -> list[dict[str, str]]:
+async def append_message(session_id: str, role: str, content: str) -> list[dict[str, str]]:
     """Append a message to history and return updated history."""
     history = await get_history(session_id)
     history.append({"role": role, "content": content})

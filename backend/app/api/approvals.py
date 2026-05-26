@@ -11,9 +11,7 @@ from app.models.approval import Approval, ApprovalStatus
 from app.schemas.approval import ApprovalCreate, ApprovalDecision, ApprovalResponse
 from app.services.activity_logger import log_activity
 
-router = APIRouter(
-    prefix="/approvals", tags=["approvals"], dependencies=[Depends(verify_token)]
-)
+router = APIRouter(prefix="/approvals", tags=["approvals"], dependencies=[Depends(verify_token)])
 
 
 @router.get("", response_model=list[ApprovalResponse])

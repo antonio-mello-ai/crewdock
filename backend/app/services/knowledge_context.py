@@ -37,17 +37,12 @@ async def get_relevant_context(query: str, max_results: int = 3) -> str | None:
                 lines = clean_snippet.split("\n", 1)
                 clean_snippet = lines[1] if len(lines) > 1 else clean_snippet
 
-            context_parts.append(
-                f"### {title}\n"
-                f"Source: {file}\n"
-                f"{clean_snippet}\n"
-            )
+            context_parts.append(f"### {title}\nSource: {file}\n{clean_snippet}\n")
 
         return (
             "## Relevant Knowledge Base Context\n\n"
             "Use the following information from the knowledge base to inform your response. "
-            "Reference specific documents when relevant.\n\n"
-            + "\n---\n".join(context_parts)
+            "Reference specific documents when relevant.\n\n" + "\n---\n".join(context_parts)
         )
     except Exception as e:
         logger.warning("Knowledge context retrieval failed: %s", e)

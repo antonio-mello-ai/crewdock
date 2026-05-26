@@ -39,9 +39,7 @@ async def chat_with_agent(
 ) -> ChatResponse:
     agent = await session.get(Agent, agent_id)
     if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
 
     session_id = request.session_id or str(uuid.uuid4())
 
@@ -50,9 +48,7 @@ async def chat_with_agent(
 
     # Retrieve relevant knowledge context
     knowledge = await get_relevant_context(request.message)
-    enhanced_prompt = build_enhanced_prompt(
-        agent.system_prompt or agent.description, knowledge
-    )
+    enhanced_prompt = build_enhanced_prompt(agent.system_prompt or agent.description, knowledge)
 
     # Use tool-enabled chat if MCP servers are configured
     mcp_servers = await get_enabled_servers(session)
@@ -109,9 +105,7 @@ async def chat_stream(
     async with async_session_factory() as session:
         agent = await session.get(Agent, agent_id)
         if agent is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
         agent_name = agent.name
         agent_model = agent.model
         agent_prompt = agent.system_prompt or agent.description

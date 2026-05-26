@@ -26,9 +26,7 @@ async def dispatch_webhooks(
     data: dict[str, Any],
 ) -> None:
     """Send webhook notifications for an event to all matching webhooks."""
-    result = await session.execute(
-        select(Webhook).where(Webhook.enabled.is_(True))
-    )
+    result = await session.execute(select(Webhook).where(Webhook.enabled.is_(True)))
     webhooks = result.scalars().all()
 
     for webhook in webhooks:
@@ -43,9 +41,7 @@ async def dispatch_webhooks(
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    webhook.url, content=payload, headers=headers
-                )
+                response = await client.post(webhook.url, content=payload, headers=headers)
                 logger.info(
                     "Webhook sent: %s → %s (status %d)",
                     event_type,
@@ -53,6 +49,4 @@ async def dispatch_webhooks(
                     response.status_code,
                 )
         except Exception as e:
-            logger.warning(
-                "Webhook failed: %s → %s — %s", event_type, webhook.url, e
-            )
+            logger.warning("Webhook failed: %s → %s — %s", event_type, webhook.url, e)
