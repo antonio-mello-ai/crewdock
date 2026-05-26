@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" fill="none">
+  <!-- Logo CrewDock: Anchor + Circuit Nodes + CD Letters -->
+
+  <!-- Top ring (anchor ring) -->
+  <circle cx="100" cy="28" r="14" stroke="currentColor" stroke-width="8" fill="none"/>
+
+  <!-- Small node on top -->
+  <circle cx="100" cy="8" r="5" fill="currentColor"/>
+
+  <!-- Vertical shaft from ring to base -->
+  <line x1="100" y1="42" x2="100" y2="195" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Horizontal crossbar -->
+  <line x1="55" y1="82" x2="145" y2="82" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Crossbar end nodes -->
+  <circle cx="55" cy="82" r="7" fill="currentColor"/>
+  <circle cx="145" cy="82" r="7" fill="currentColor"/>
+
+  <!-- V-shaped circuit arms (inverted triangle) -->
+  <line x1="70" y1="95" x2="100" y2="130" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+  <line x1="130" y1="95" x2="100" y2="130" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+
+  <!-- V-arm nodes -->
+  <circle cx="70" cy="95" r="6" fill="currentColor"/>
+  <circle cx="130" cy="95" r="6" fill="currentColor"/>
+  <circle cx="100" cy="130" r="6" fill="currentColor"/>
+
+  <!-- Bottom anchor arms splitting to C and D -->
+  <line x1="100" y1="195" x2="55" y2="215" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+  <line x1="100" y1="195" x2="145" y2="215" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Bottom split nodes -->
+  <circle cx="55" cy="215" r="6" fill="currentColor"/>
+  <circle cx="145" cy="215" r="6" fill="currentColor"/>
+
+  <!-- Letter C (left side) -->
+  <path d="M 52 188 C 20 188 20 235 52 235" stroke="currentColor" stroke-width="8" stroke-linecap="round" fill="none"/>
+
+  <!-- Letter D (right side) -->
+  <path d="M 148 188 C 180 188 180 235 148 235" stroke="currentColor" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <line x1="148" y1="188" x2="148" y2="235" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+</svg>

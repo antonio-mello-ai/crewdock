@@ -1,0 +1,12 @@
+# Production example behind a reverse proxy or tunnel.
+:80 {
+    # API
+    handle /api/* {
+        reverse_proxy backend:8001
+    }
+
+    # Frontend
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
