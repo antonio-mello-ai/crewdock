@@ -45,9 +45,7 @@ class McpToolDefinition:
 
 async def get_enabled_servers(session: AsyncSession) -> list[McpServer]:
     """Get all enabled MCP servers from DB."""
-    result = await session.execute(
-        select(McpServer).where(McpServer.enabled.is_(True))
-    )
+    result = await session.execute(select(McpServer).where(McpServer.enabled.is_(True)))
     return list(result.scalars().all())
 
 
@@ -68,9 +66,7 @@ async def list_tools_from_server(server: McpServer) -> list[McpToolDefinition]:
     return tools
 
 
-async def execute_tool(
-    server: McpServer, tool_name: str, arguments: dict[str, Any]
-) -> str:
+async def execute_tool(server: McpServer, tool_name: str, arguments: dict[str, Any]) -> str:
     """Execute a tool on an MCP server and return the result as text."""
     try:
         if server.transport == "stdio":
@@ -141,9 +137,7 @@ async def _list_tools_sse(server: McpServer) -> list[McpToolDefinition]:
         ]
 
 
-async def _execute_tool_stdio(
-    server: McpServer, tool_name: str, arguments: dict[str, Any]
-) -> str:
+async def _execute_tool_stdio(server: McpServer, tool_name: str, arguments: dict[str, Any]) -> str:
     """Execute a tool on a stdio MCP server."""
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -168,9 +162,7 @@ async def _execute_tool_stdio(
         return "\n".join(texts) if texts else "[No output]"
 
 
-async def _execute_tool_sse(
-    server: McpServer, tool_name: str, arguments: dict[str, Any]
-) -> str:
+async def _execute_tool_sse(server: McpServer, tool_name: str, arguments: dict[str, Any]) -> str:
     """Execute a tool on an SSE MCP server."""
     from mcp import ClientSession
     from mcp.client.sse import sse_client

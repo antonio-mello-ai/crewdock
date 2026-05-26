@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in contributing to AI Platform!
+Thank you for your interest in contributing to CrewDock.
 
 ## Development Setup
 
@@ -75,4 +75,5 @@ npm run build
 
 ## Architecture
 
-See `docs/plan-v1.md` for the full architecture and implementation plan.
+Start with `README.md`, `docs/roadmap.md`, and `docs/known-issues.md` for the
+current architecture, roadmap, and known limitations.

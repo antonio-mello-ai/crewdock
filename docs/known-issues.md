@@ -1,6 +1,6 @@
 # CrewDock — Known Issues
 
-**Atualizado**: 15 Mar 2026 | **Versão**: v1.1.0
+**Updated**: 26 May 2026 | **Version**: public OSS snapshot
 
 ---
 
@@ -57,4 +57,5 @@ O botão de logout não está visível no sidebar. Para deslogar, o usuário pre
 
 ## Contribuindo
 
-Encontrou um bug? Abra uma [issue no GitHub](https://github.com/antonio-mello-ai/crewdock/issues).
+Found a bug? Open a [GitHub Issue](https://github.com/antonio-mello-ai/crewdock/issues).
+For broader product or implementation questions, use [GitHub Discussions](https://github.com/antonio-mello-ai/crewdock/discussions).

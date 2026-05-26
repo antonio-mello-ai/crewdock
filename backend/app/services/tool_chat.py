@@ -107,37 +107,37 @@ async def chat_with_tools(
                     match = find_server_for_tool(servers, tool_name)
                     if match:
                         server, actual_name = match
-                        result_text = await execute_tool(
-                            server, actual_name, tool_input
-                        )
+                        result_text = await execute_tool(server, actual_name, tool_input)
                     else:
                         result_text = f"[Error] Tool not found: {tool_name}"
 
-                    logger.info(
-                        "Tool result (%s): %s", tool_name, result_text[:100]
+                    logger.info("Tool result (%s): %s", tool_name, result_text[:100])
+
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result_text,
+                        }
                     )
 
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result_text,
-                    })
-
             # Add assistant response + tool results to conversation
-            conversation.append({
-                "role": "assistant",
-                "content": [b.model_dump() for b in response.content],
-            })
-            conversation.append({
-                "role": "user",
-                "content": tool_results,
-            })
+            conversation.append(
+                {
+                    "role": "assistant",
+                    "content": [b.model_dump() for b in response.content],
+                }
+            )
+            conversation.append(
+                {
+                    "role": "user",
+                    "content": tool_results,
+                }
+            )
             continue
 
         # No tool use — extract text and return
-        text_blocks = [
-            block.text for block in response.content if hasattr(block, "text")
-        ]
+        text_blocks = [block.text for block in response.content if hasattr(block, "text")]
         text = "\n".join(text_blocks) if text_blocks else "[No response]"
 
         return LLMResponse(

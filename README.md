@@ -1,17 +1,25 @@
 # CrewDock
 
-Open-source platform for orchestrating, monitoring, and managing multiple autonomous AI agents. Your AI crew, docked and ready.
+Open-source control plane for operating focused AI agents. CrewDock gives teams
+one self-hosted place to manage agent roles, task state, approvals, activity
+streams, knowledge context, and cost visibility.
+
+Built by [Felhen](https://felhen.ai), an applied AI company building governed AI
+operating systems for real businesses.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
 ## Why CrewDock?
 
-Most AI agent platforms are closed SaaS products. CrewDock is **open-source and self-hosted** — you own your data, your agents, and your costs.
+Most teams start with a powerful agent in a terminal. That works until the work
+needs coordination, memory, approvals, observability, and a clear operating
+model. CrewDock is the open-source base layer for that next step.
 
-- **Agents that actually think** — connected to real LLMs (Anthropic API) with streaming responses
-- **Knowledge-aware** — agents automatically search your document base and respond with context from your actual files
-- **Cost visibility** — every chat records real token usage, see spend per agent
-- **Self-hosted** — Docker Compose, runs anywhere, no vendor lock-in
+- **Focused agents** — create agents with explicit roles, models, prompts, and responsibilities
+- **Operational surface** — chat, tasks, approvals, schedules, activity, and costs in one place
+- **Knowledge-aware execution** — agents search your document base before responding
+- **Governed autonomy** — human-in-the-loop workflows and audit trails for agent actions
+- **Self-hosted by default** — Docker Compose, portable stack, no vendor lock-in
 
 ## Features
 
@@ -40,6 +48,18 @@ Most AI agent platforms are closed SaaS products. CrewDock is **open-source and 
 - **Onboarding** — guided setup for new users
 
 ![Templates](docs/screenshots/templates.png)
+
+## Built by Felhen
+
+CrewDock is public because the basic shape of agent operations should be
+inspectable: roles, context, task state, approvals, observability, and cost
+control. Felhen uses this foundation to build private AI operating systems,
+company knowledge workflows, and governed agent operations for companies that
+need AI to move real work, not just answer prompts.
+
+- **Use CrewDock** if you want a practical self-hosted agent control plane.
+- **Contribute** if you are building agent runtime, knowledge, approval, or observability primitives.
+- **Talk to Felhen** if your company wants help designing or deploying governed AI operations.
 
 ## Stack
 
@@ -172,9 +192,13 @@ crewdock/
 ## Links
 
 - **Website**: [crewdock.ai](https://crewdock.ai)
+- **Felhen**: [felhen.ai](https://felhen.ai)
+- **Questions and ideas**: [GitHub Discussions](https://github.com/antonio-mello-ai/crewdock/discussions)
+- **Issues**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
 - **Roadmap**: [docs/roadmap.md](docs/roadmap.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Known Issues**: [docs/known-issues.md](docs/known-issues.md)
+- **Support**: [SUPPORT.md](SUPPORT.md)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
