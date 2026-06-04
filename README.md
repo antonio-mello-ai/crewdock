@@ -1,5 +1,10 @@
 # CrewDock
 
+[![CI](https://github.com/antonio-mello-ai/crewdock/actions/workflows/ci.yml/badge.svg)](https://github.com/antonio-mello-ai/crewdock/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Website](https://img.shields.io/badge/site-crewdock.ai-0ea5e9)](https://crewdock.ai)
+[![Stars](https://img.shields.io/github/stars/antonio-mello-ai/crewdock?style=social)](https://github.com/antonio-mello-ai/crewdock/stargazers)
+
 Open-source control plane for operating focused AI agents. CrewDock gives teams
 one self-hosted place to manage agent roles, task state, approvals, activity
 streams, knowledge context, and cost visibility.
