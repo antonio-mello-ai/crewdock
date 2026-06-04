@@ -20,7 +20,7 @@ async def _get_redis() -> Any:
         import redis.asyncio as aioredis
 
         r = aioredis.from_url(settings.redis_url)
-        await r.ping()  # type: ignore[misc]
+        await r.ping()
         return r
     except Exception:
         return None
