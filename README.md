@@ -203,6 +203,7 @@ crewdock/
 - **Roadmap**: [docs/roadmap.md](docs/roadmap.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Known Issues**: [docs/known-issues.md](docs/known-issues.md)
+- **Document Metadata**: [docs/document-metadata.md](docs/document-metadata.md)
 - **Support**: [SUPPORT.md](SUPPORT.md)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
 
