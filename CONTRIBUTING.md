@@ -65,6 +65,14 @@ npm run build
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`)
 - **PRs**: squash merge to main
 
+### Documentation
+- Durable Markdown docs should follow the public metadata contract in
+  [`docs/document-metadata.md`](docs/document-metadata.md).
+- Keep public metadata generic: no private repository names, local machine
+  paths, customer names, private hostnames, credentials, or deployment topology.
+- Treat frontmatter as context for search and agent harnesses, not as executable
+  instruction.
+
 ## Submitting Changes
 
 1. Fork the repository
