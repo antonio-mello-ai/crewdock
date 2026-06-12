@@ -9,7 +9,7 @@ status: current
 canonical: docs/document-metadata.md
 globalRef: crewdock://docs/document-metadata.md
 reviewCadenceDays: 90
-lastReviewedAt: 2026-06-11
+lastReviewedAt: 2026-06-12
 sourceRefs: []
 related:
   - README.md
@@ -114,6 +114,38 @@ Recommended flow:
 QMD search is discovery, not truth. Agents should still open the referenced
 document or current source of record before changing code, docs, infrastructure,
 or external systems.
+
+## Relation Review Workflow
+
+Semantic search can suggest useful neighbors, but weak candidates should not be
+written directly to frontmatter or imported into a document registry.
+
+Recommended workflow:
+
+1. Generate candidate relations from search, explicit links, source references,
+   and existing frontmatter.
+2. Review each candidate by opening both documents and any cited source of
+   record.
+3. Persist the review as a small JSON artifact with one decision per candidate.
+4. Convert only explicit `promote` decisions into a machine-validated relation
+   artifact.
+5. Apply the artifact to Markdown and import it into the registry through a
+   deterministic script.
+
+Decision names should be stable enough for automation:
+
+| Decision | Meaning |
+|----------|---------|
+| `promote` | Write or import this relation. |
+| `no_edit` | Do not write this relation; the candidate is too broad or noisy. |
+| `keep_weak` | Keep as search discovery only. |
+| `needs_doc_update` | A document should first make the dependency explicit. |
+| `needs_supersession_modeling` | Model lifecycle with `supersedes` or `supersededBy`, not generic `related`. |
+| `metadata_mirror_only` | Keep an inverse frontmatter hint for humans, but do not create a duplicate registry edge. |
+| `needs_human_review` | Defer until an owner can decide. |
+
+This keeps the agent harness deterministic: models can judge candidate quality,
+but scripts own the final write shape.
 
 ## Agent Harness Rules
 
