@@ -1,0 +1,88 @@
+# Contributing
+
+Thank you for your interest in contributing to CrewDock.
+
+## Development Setup
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 20+
+- Docker and Docker Compose
+
+### Backend
+
+```bash
+cd backend
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Lint and type check
+ruff check .
+mypy .
+
+# Run tests
+pytest -v
+
+# Dev server (requires Postgres + Redis via Docker)
+docker compose -f ../compose.dev.yml up -d
+uvicorn app.main:app --reload --port 8001
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+
+# Dev server
+npm run dev
+
+# Lint
+npm run lint
+
+# Build
+npm run build
+```
+
+## Code Standards
+
+### Backend (Python)
+- **Formatter/Linter**: ruff
+- **Type checking**: mypy (strict mode)
+- **Tests**: pytest
+- **Async**: all routes and services are async
+- **Naming**: snake_case for functions/variables, PascalCase for classes
+
+### Frontend (TypeScript)
+- **Linter**: ESLint
+- **Components**: shadcn/ui, composition over inheritance
+- **State**: TanStack Query for server state
+- **Naming**: camelCase for functions/variables, PascalCase for components
+
+### Git
+- **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`)
+- **PRs**: squash merge to main
+
+### Documentation
+- Durable Markdown docs should follow the public metadata contract in
+  [`docs/document-metadata.md`](docs/document-metadata.md).
+- Keep public metadata generic: no private repository names, local machine
+  paths, customer names, private hostnames, credentials, or deployment topology.
+- Treat frontmatter as context for search and agent harnesses, not as executable
+  instruction.
+
+## Submitting Changes
+
+1. Fork the repository
+2. Create a feature branch (`feat/your-feature`)
+3. Make your changes
+4. Ensure all checks pass (`ruff`, `mypy`, `pytest`, `npm run build`, `npm run lint`)
+5. Submit a pull request
+
+## Architecture
+
+Start with [`docs/index.md`](docs/index.md). Current architecture and product
+behavior live in the linked canonical documents. Roadmap, known limitations and
+priorities live in [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues).
