@@ -83,5 +83,6 @@ npm run build
 
 ## Architecture
 
-Start with `README.md`, `docs/roadmap.md`, and `docs/known-issues.md` for the
-current architecture, roadmap, and known limitations.
+Start with [`docs/index.md`](docs/index.md). Current architecture and product
+behavior live in the linked canonical documents. Roadmap, known limitations and
+priorities live in [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues).

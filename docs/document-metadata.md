@@ -89,7 +89,7 @@ Use stable public namespaces for cross-repository or package-level references:
 
 ```yaml
 related:
-  - crewdock://docs/roadmap.md
+  - crewdock://docs/arquitetura.md
   - github:example-org/public-repo#456
 ```
 

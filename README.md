@@ -88,14 +88,18 @@ need AI to move real work, not just answer prompts.
 git clone https://github.com/antonio-mello-ai/crewdock.git
 cd crewdock
 
-# Configure (generate secrets automatically)
+# Configure
 cp .env.example .env
-sed -i "s/changeme_password/$(openssl rand -hex 24)/" .env
-sed -i "s/changeme_token/$(openssl rand -hex 32)/" .env
 
-# Add your Anthropic API key for agent chat
-# Get one at https://console.anthropic.com
-echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+# Generate local secrets with commands that work on macOS and Linux
+DB_PASSWORD_VALUE="$(openssl rand -hex 24)"
+LOCAL_AUTH_TOKEN_VALUE="$(openssl rand -hex 32)"
+awk -v password="$DB_PASSWORD_VALUE" -v token="$LOCAL_AUTH_TOKEN_VALUE" \
+  '{gsub(/changeme_password/, password); gsub(/changeme_token/, token); print}' \
+  .env > .env.tmp && mv .env.tmp .env
+unset DB_PASSWORD_VALUE LOCAL_AUTH_TOKEN_VALUE
+
+# Edit .env and set ANTHROPIC_API_KEY to your own key
 
 # Start
 docker compose up -d
@@ -189,7 +193,7 @@ crewdock/
 │       ├── hooks/     # React Query hooks
 │       └── lib/       # API client, auth, templates
 ├── website/           # Landing page (crewdock.ai)
-├── docs/              # Roadmap, changelog, benchmarks
+├── docs/              # Product, architecture, operations, and references
 ├── compose.yml        # Production Docker Compose
 └── .github/workflows/ # CI pipeline
 ```
@@ -200,9 +204,9 @@ crewdock/
 - **Felhen**: [felhen.ai](https://felhen.ai)
 - **Questions and ideas**: [GitHub Discussions](https://github.com/antonio-mello-ai/crewdock/discussions)
 - **Issues**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
-- **Roadmap**: [docs/roadmap.md](docs/roadmap.md)
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
-- **Known Issues**: [docs/known-issues.md](docs/known-issues.md)
+- **Roadmap and priorities**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
+- **Release history**: [GitHub Releases](https://github.com/antonio-mello-ai/crewdock/releases)
+- **Documentation index**: [docs/index.md](docs/index.md)
 - **Document Metadata**: [docs/document-metadata.md](docs/document-metadata.md)
 - **Support**: [SUPPORT.md](SUPPORT.md)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)

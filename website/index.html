@@ -225,9 +225,14 @@ cd crewdock
 
 <span class="text-slate-500"># Configure</span>
 cp .env.example .env
-sed -i "s/changeme_password/$(openssl rand -hex 24)/" .env
-sed -i "s/changeme_token/$(openssl rand -hex 32)/" .env
-echo "ANTHROPIC_API_KEY=your-key" >> .env
+DB_PASSWORD_VALUE="$(openssl rand -hex 24)"
+LOCAL_AUTH_TOKEN_VALUE="$(openssl rand -hex 32)"
+awk -v password="$DB_PASSWORD_VALUE" -v token="$LOCAL_AUTH_TOKEN_VALUE" \
+  '{gsub(/changeme_password/, password); gsub(/changeme_token/, token); print}' \
+  .env > .env.tmp &amp;&amp; mv .env.tmp .env
+unset DB_PASSWORD_VALUE LOCAL_AUTH_TOKEN_VALUE
+
+<span class="text-slate-500"># Edit .env and set ANTHROPIC_API_KEY to your own key</span>
 
 <span class="text-slate-500"># Start</span>
 docker compose up -d
@@ -260,13 +265,13 @@ open http://localhost:3001</code></pre>
     <div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-500">
       <div class="flex items-center gap-2">
         <span>&#x2693;</span>
-        <span>CrewDock v1.1.0</span>
+        <span>CrewDock v1.2.0</span>
         <span>&middot;</span>
         <span>MIT License</span>
       </div>
       <div class="flex items-center gap-6">
         <a href="https://github.com/antonio-mello-ai/crewdock" class="hover:text-slate-300 transition">GitHub</a>
-        <a href="https://github.com/antonio-mello-ai/crewdock/blob/main/docs/roadmap.md" class="hover:text-slate-300 transition">Roadmap</a>
+        <a href="https://github.com/antonio-mello-ai/crewdock/issues" class="hover:text-slate-300 transition">Roadmap</a>
         <a href="https://github.com/antonio-mello-ai/crewdock/blob/main/CONTRIBUTING.md" class="hover:text-slate-300 transition">Contributing</a>
       </div>
     </div>

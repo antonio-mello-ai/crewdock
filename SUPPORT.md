@@ -6,7 +6,7 @@ CrewDock is open-source software maintained by Felhen.
 
 - Ask usage and design questions in GitHub Discussions.
 - Report reproducible bugs in GitHub Issues.
-- Check `docs/known-issues.md` before opening a new issue.
+- Search existing GitHub Issues before opening a new issue.
 
 ## Felhen
 
