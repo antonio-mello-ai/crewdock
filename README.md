@@ -1,9 +1,9 @@
 # CrewDock
 
-[![CI](https://github.com/antonio-mello-ai/crewdock/actions/workflows/ci.yml/badge.svg)](https://github.com/antonio-mello-ai/crewdock/actions/workflows/ci.yml)
+[![CI](https://github.com/felhen-ai/crewdock/actions/workflows/ci.yml/badge.svg)](https://github.com/felhen-ai/crewdock/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Website](https://img.shields.io/badge/site-crewdock.ai-0ea5e9)](https://crewdock.ai)
-[![Stars](https://img.shields.io/github/stars/antonio-mello-ai/crewdock?style=social)](https://github.com/antonio-mello-ai/crewdock/stargazers)
+[![Stars](https://img.shields.io/github/stars/antonio-mello-ai/crewdock?style=social)](https://github.com/felhen-ai/crewdock/stargazers)
 
 Open-source control plane for operating focused AI agents. CrewDock gives teams
 one self-hosted place to manage agent roles, task state, approvals, activity
@@ -85,7 +85,7 @@ need AI to move real work, not just answer prompts.
 
 ```bash
 # Clone
-git clone https://github.com/antonio-mello-ai/crewdock.git
+git clone https://github.com/felhen-ai/crewdock.git
 cd crewdock
 
 # Configure
@@ -202,10 +202,10 @@ crewdock/
 
 - **Website**: [crewdock.ai](https://crewdock.ai)
 - **Felhen**: [felhen.ai](https://felhen.ai)
-- **Questions and ideas**: [GitHub Discussions](https://github.com/antonio-mello-ai/crewdock/discussions)
-- **Issues**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
-- **Roadmap and priorities**: [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues)
-- **Release history**: [GitHub Releases](https://github.com/antonio-mello-ai/crewdock/releases)
+- **Questions and ideas**: [GitHub Discussions](https://github.com/felhen-ai/crewdock/discussions)
+- **Issues**: [GitHub Issues](https://github.com/felhen-ai/crewdock/issues)
+- **Roadmap and priorities**: [GitHub Issues](https://github.com/felhen-ai/crewdock/issues)
+- **Release history**: [GitHub Releases](https://github.com/felhen-ai/crewdock/releases)
 - **Documentation index**: [docs/index.md](docs/index.md)
 - **Document Metadata**: [docs/document-metadata.md](docs/document-metadata.md)
 - **Support**: [SUPPORT.md](SUPPORT.md)

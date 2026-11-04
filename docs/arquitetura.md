@@ -11,7 +11,7 @@ globalRef: crewdock://docs/arquitetura.md
 reviewCadenceDays: 90
 lastReviewedAt: 2026-09-28
 sourceRefs:
-  - github:antonio-mello-ai/crewdock
+  - github:felhen-ai/crewdock
 related:
   - docs/fluxos-negocio.md
   - docs/operacao.md

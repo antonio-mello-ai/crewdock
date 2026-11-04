@@ -4,7 +4,7 @@
 
 Please **do not** report security vulnerabilities through public GitHub issues.
 
-Instead, use GitHub's [private vulnerability reporting](https://github.com/antonio-mello-ai/crewdock/security/advisories/new)
+Instead, use GitHub's [private vulnerability reporting](https://github.com/felhen-ai/crewdock/security/advisories/new)
 to disclose the issue privately to the maintainers.
 
 Please include:

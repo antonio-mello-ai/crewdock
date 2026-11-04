@@ -11,7 +11,7 @@ globalRef: crewdock://docs/operacao.md
 reviewCadenceDays: 90
 lastReviewedAt: 2026-09-28
 sourceRefs:
-  - github:antonio-mello-ai/crewdock
+  - github:felhen-ai/crewdock
 related:
   - README.md
   - CONTRIBUTING.md

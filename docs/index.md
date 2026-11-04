@@ -11,7 +11,7 @@ globalRef: crewdock://docs/index.md
 reviewCadenceDays: 90
 lastReviewedAt: 2026-09-28
 sourceRefs:
-  - github:antonio-mello-ai/crewdock
+  - github:felhen-ai/crewdock
 related:
   - AGENTS.md
   - docs/fluxos-negocio.md
@@ -46,11 +46,11 @@ sensitivity: public
 
 ## External Sources Of Truth
 
-- [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues) — bugs,
+- [GitHub Issues](https://github.com/felhen-ai/crewdock/issues) — bugs,
   limitations, decisions and planned work.
-- [GitHub Releases](https://github.com/antonio-mello-ai/crewdock/releases) —
+- [GitHub Releases](https://github.com/felhen-ai/crewdock/releases) —
   published release history.
-- [Pull requests](https://github.com/antonio-mello-ai/crewdock/pulls) — review
+- [Pull requests](https://github.com/felhen-ai/crewdock/pulls) — review
   and delivery evidence.
 
 Repository files named `roadmap.md`, `backlog.md` or `CHANGELOG.md` are not part

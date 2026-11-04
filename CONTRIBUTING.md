@@ -85,4 +85,4 @@ npm run build
 
 Start with [`docs/index.md`](docs/index.md). Current architecture and product
 behavior live in the linked canonical documents. Roadmap, known limitations and
-priorities live in [GitHub Issues](https://github.com/antonio-mello-ai/crewdock/issues).
+priorities live in [GitHub Issues](https://github.com/felhen-ai/crewdock/issues).
